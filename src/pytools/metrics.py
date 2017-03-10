@@ -1,4 +1,7 @@
-''' metrics for the fs cnn project '''
+'''
+custom metrics for the fs cnn project 
+This module is currently very experimental...
+'''
 
 import numpy as np
 
