@@ -4,133 +4,106 @@ This module is currently very experimental...
 '''
 
 import numpy as np
+import keras.backend as K
+
+# medipy package 
+import medipy.metrics
+
+class Dice(object):
+    ''' UNTESTED
+    dice-based metric(s)
+
+    Variables:
+        labels: optional numpy array of shape (L,) where L is the number of labels to be evaluated.
+            if not provided, all non-
+
+    Usage
+        diceloss = metrics.dice([1, 2, 3])
+        model.compile(diceloss, ...)
+    '''
+
+    def __init__(self, labels=None):
+        self.labels = labels
+
+    def loss(self, y_true, y_pred):
+        ''' the loss '''
+        dicem = medipy.metrics.dice(y_true.eval(), y_pred.eval(), self.labels)
+        return K.variable(-np.mean(dicem))
 
 
 
-# using dice loss functions inspired from
-# https://github.com/jocicmarko/ultrasound-nerve-segmentation/blob/master/train.py
-smooth = 1
-# def dice_coef(y_true, y_pred):
-#     y_true_f = K.flatten(y_true)
-#     print(y_true, y_true_f)
-#     z = tf.to_float(tf.argmax(y_pred, axis=4)); # argmax seems to cause some massive error in keras/tf :S. Not sure why.
-#     y_pred_f = K.flatten(z)
-#     z2 = tf.reduce_max(y_pred, axis=4);
-# #     y_pred_f = K.flatten(z2)
-#     print("z:", z, z2)
-#     print(y_pred, y_pred_f)
-#     #     intersection = K.sum(y_true_f * y_pred_f)
-#     #     return (2. * intersection + smooth) / (K.sum(y_true_f) + K.sum(y_pred_f) + smooth)
-#     intersection = tf.to_float(K.sum(tf.to_float(tf.equal(y_true_f, y_pred_f))))
-#     print(intersection)
-#     res = K.sum(1. * intersection / tf.to_float(tf.size(y_true_f)))
-#     res2 = K.sum(K.categorical_crossentropy(y_true_f, y_pred_f))
-#     print(res) 
-#     print(res2)
-#     return res2
+class CategoricalCrossentropy(object):
+    ''' UNTESTED
+    Categorical crossentropy with optional weights and spatial prior
 
+    Adapted from weighted categorical crossentropy via wassname:
+    https://gist.github.com/wassname/ce364fddfc8a025bfab4348cf5de852d
 
-
-# def dice_coef(y_true, y_pred):
-#     y_true_f = K.flatten(y_true)
-#     y_pred_f = K.flatten(y_pred)
-#     #     intersection = K.sum(y_true_f * y_pred_f)
-#     #     return (2. * intersection + smooth) / (K.sum(y_true_f) + K.sum(y_pred_f) + smooth)
-# #     intersection = K.sum(tf.to_float(tf.equal(y_true_f, y_pred_f)))
-# #     res = intersection
-#     n = y_true.get_shape()
-#     print(n)
-#     y_true_r = tf.reshape(y_true, [n/nb_classes, nb_classes])
-#     y_pred_r = tf.reshape(y_pred, [n/nb_classes, nb_classes])
-#     res2 = -K.sum(K.binary_crossentropy(y_true_r, y_pred_r))
-#     return res2
-
-# def dice_coef_loss(y_true, y_pred):
-#     return -dice_coef(y_true, y_pred)
-
-
-
-# https://gist.github.com/wassname/ce364fddfc8a025bfab4348cf5de852d
-class weighted_categorical_crossentropy(object):
-    """
-    A weighted version of keras.objectives.categorical_crossentropy
-    
     Variables:
         weights: numpy array of shape (C,) where C is the number of classes
-    
+        prior:
+
     Usage:
-        loss = weighted_categorical_crossentropy(weights).loss
+        loss = CategoricalCrossentropy().loss # or
+        loss = CategoricalCrossentropy(weights=weights).loss # or
+        loss = CategoricalCrossentropy(..., prior=prior).loss
         model.compile(loss=loss,optimizer='adam')
-    """
-    
-    def __init__(self,weights):
-        self.weights = K.variable(weights)
-        
-    def loss(self,y_true, y_pred):
+    '''
+
+    def __init__(self, weights=None, prior=None):
+        self.weights = None if weights is None else K.variable(weights)
+
+        # process prior
+        if prior is not None:
+            data = np.load(prior)
+            loc_vol = data['prior']
+            loc_vol = np.expand_dims(loc_vol, axis=0) # reshape for model
+            self.log_prior = K.log(K.clip(K.variable(loc_vol), K.epsilon(), 1))
+        else:
+            self.log_prior = None
+
+    def loss(self, y_true, y_pred):
+        ''' categorical crossentropy loss '''
         # scale preds so that the class probas of each sample sum to 1
         y_pred /= K.sum(y_pred, axis=-1, keepdims=True)
         # clip
         y_pred = K.clip(y_pred, K.epsilon(), 1)
-        # calc        
-        p = y_true*K.log(y_pred)
-        loss = p*self.weights
-        loss =-K.sum(loss,-1)
-#         return loss
+
+        # combine
+        log_post = K.log(y_pred)
+        if self.log_prior is not None:
+            log_post += self.log_prior
+
+        # calc
+        p = y_true * log_post
+        loss = p
+        if self.weights is not None:
+            loss *= self.weights
+
+        loss =-K.sum(loss, -1)
         return K.mean(loss)
 
-# def nonzero_acc(y_true, y_pred):
-#     lab_true = K.argmax(y_true, axis=-1)
-#     lab_pred = K.argmax(y_pred, axis=-1)
-#     non_zero = ~K.equal(lab_true, 0)
-#     print(lab_pred.get_shape())
-#     print(non_zero.get_shape())
-#     print(K.equal(lab_true, lab_pred).get_shape())
-#     K.
-#     return K.sum(K.equal(non_zero, K.equal(lab_true, lab_pred)))
 
 
-# samples=3
-# maxlen=4
-# vocab=5
+class Nonbg(object):
+    ''' UNTESTED
+    class to modify output on operating only on the non-bg class
 
-# # test
-# y_pred_n = np.random.random((samples,maxlen,vocab))
-# y_pred = tf.Variable(y_pred_n)
-# y_true_n = np.random.random((samples,maxlen,vocab))
-# y_true = tf.Variable(y_true_n)
-# init_op = tf.global_variables_initializer()
-# r = nonzero_acc(y_true,y_pred)
-# sess.run(init_op)
-# sess.run(r)
+    All data is aggregated and the (passed) metric is called on flattened true and
+    predicted outputs in all (true) non-bg regions
 
+    Usage:
+        loss = metrics.dice
+        nonbgloss = nonbg(loss).loss
+    '''
 
-# import numpy as np
-# from keras.activations import softmax
-# from keras.objectives import categorical_crossentropy
+    def __init__(self, metric):
+        self.metric = metric
 
-# samples=3
-# maxlen=4
-# vocab=5
-
-# sess = tf.Session()
-
-# y_pred_n = np.random.random((samples,maxlen,vocab))
-# y_pred = tf.Variable(y_pred_n)
-
-# v2 = np.random.random((samples,maxlen,vocab))
-# y_true = tf.nn.softmax(v2) # this isn't binary
-# y_true = tf.cast(y_true, tf.float64)
-
-# weights = np.array([0, 0.2, 0.4, 0.6, 0.8])
-# # weights = tf.cast(tf.Variable(weights / np.sum(weights)), tf.float64)
-# print('y_true:', y_true)
-# print('y_pred:', y_pred)
-# print('weights:', weights)
-
-# init_op = tf.global_variables_initializer()
-# r=weighted_categorical_crossentropy(weights).loss(y_true,y_pred)
-# sess.run(init_op)
-# sess.run(r)
-# #     rr=categorical_crossentropy(y_true_n,y_pred_n).eval()
-# #     np.testing.assert_almost_equal(r,rr)
-# #     print('OK')
+    def loss(self, y_true, y_pred):
+        ''' prepare a loss of the given metric/loss operating on non-bg data '''
+        yt = y_true.eval()
+        ytbg = np.where(yt == 0)
+        y_true_fix = K.variable(yt.flat(ytbg))
+        y_pred_fix = K.variable(y_pred.eval().flat(ytbg))
+        return self.metric(y_true_fix, y_pred_fix)
