@@ -7,13 +7,11 @@ import numpy as np
 import scipy.ndimage.interpolation
 from tqdm import tqdm # for verbosity for forloops
 
-from imp import reload # for re-loading modules, since some of the modules are still in development
-
-
 # import local ndutils
-sys.path.append("C:\\Users\\adalca\\Dropbox (Personal)\\code\\python\\pynd-lib\\src")
-import ndutils as nd
-reload(nd)
+import pynd.ndutils as nd
+
+# from imp import reload # for re-loading modules, since some of the modules are still in development
+# reload(nd)
 
 
 def proc_mgh_vols(inpath, outpath, ext='.mgz',
