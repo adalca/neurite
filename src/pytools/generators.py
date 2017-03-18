@@ -1,16 +1,22 @@
-''' generators for the fs_cnn project '''
+''' generators for the neuron project '''
 import os
 import numpy as np
 import nibabel as nib
-from keras.utils import np_utils 
+from keras.utils import np_utils
+
+# local packages
+import pynd.ndutils as nd
+
+# other neuron packages
 from . import dataproc
 
 
 # generator for single volume
 def single_vol(volpath,
                ext='.npz',
+               batch_size=1,
                expected_nb_files=-1,
-               data_proc_fn=None, # processing function that takes in one arg (the volume)         
+               data_proc_fn=None, # processing function that takes in one arg (the volume)
                relabel=None, # relabeling array
                nb_labels_reshape=0, # reshape to categorial format for keras, need # labels
                name='single_vol', # name, optional
@@ -30,43 +36,49 @@ def single_vol(volpath,
     # iterate through files
     fileidx = -1
     while 1:
-        fileidx = np.mod(fileidx + 1, nb_files)
-        if verbose_rate is not None and np.mod(fileidx, verbose_rate) == 0:
-            print("%s: %d" %(name, fileidx))
+        for batch_idx in range(batch_size):
+            fileidx = np.mod(fileidx + 1, nb_files)
+            if verbose_rate is not None and np.mod(fileidx, verbose_rate) == 0:
+                print("%s: %d" %(name, fileidx))
 
-        # read next file (circular)
-        if ext == '.npz':
-            vol_file = np.load(os.path.join(volpath, volfiles[fileidx]))
-            vol_data = vol_file['vol_data']
-        elif ext == '.mgz' or ext == '.nii' or ext == '.nii.gz':
-            vol_med = nib.load(os.path.join(volpath, volfiles[fileidx]))
-            vol_data = vol_med.get_data()
-        else:
-            raise ValueError("Unexpected extension %s" % ext)
+            # read next file (circular)
+            if ext == '.npz':
+                vol_file = np.load(os.path.join(volpath, volfiles[fileidx]))
+                vol_data = vol_file['vol_data']
+            elif ext == '.mgz' or ext == '.nii' or ext == '.nii.gz':
+                vol_med = nib.load(os.path.join(volpath, volfiles[fileidx]))
+                vol_data = vol_med.get_data()
+            else:
+                raise ValueError("Unexpected extension %s" % ext)
 
-        # process volume
-        if data_proc_fn is not None:
-            vol_data = data_proc_fn(vol_data)
- 
-        # need to reshape for Keras model.
-        # TODO: not sure why this needs these specific dimensions
-        vol_data = np.expand_dims(vol_data, axis=0)
+            # process volume
+            if data_proc_fn is not None:
+                vol_data = data_proc_fn(vol_data)
 
-        # the original segmentation files have non-sequential relabel (i.e. some relabel are 
-        # missing to avoid exploding our model, we only care about the relabel that exist.
-        if relabel is not None:
-            resized_seg_data_fix = np.copy(vol_data)
-            for idx, val in np.ndenumerate(relabel): vol_data[resized_seg_data_fix == val] = idx
-
-        # reshape output layer as categorical
-        if nb_labels_reshape > 0:
-            vol_data = np_utils.to_categorical(vol_data, nb_labels_reshape)
+            # need to reshape for Keras model.
             vol_data = np.expand_dims(vol_data, axis=0)
-        else:
-            vol_data = np.expand_dims(vol_data, axis=4)
+
+            # the original segmentation files have non-sequential relabel (i.e. some relabel are
+            # missing to avoid exploding our model, we only care about the relabel that exist.
+            if relabel is not None:
+                resized_seg_data_fix = np.copy(vol_data)
+                for idx, val in np.ndenumerate(relabel): vol_data[resized_seg_data_fix == val] = idx
+
+            # reshape output layer as categorical
+            if nb_labels_reshape > 0:
+                vol_data = np_utils.to_categorical(vol_data, nb_labels_reshape)
+                vol_data = np.expand_dims(vol_data, axis=0)
+            else:
+                vol_data = np.expand_dims(vol_data, axis=4)
+
+            # add to batch of volume data, unless the batch is currently empty
+            if batch_idx == 0:
+                vol_data_batch = vol_data
+            else:
+                vol_data_batch = np.vstack([vol_data_batch, vol_data])
 
         # output matrix volume, position (pre-computed but crop)
-        yield vol_data
+        yield vol_data_batch
 
 
 
@@ -74,6 +86,7 @@ def single_vol(volpath,
 def vol_loc_seg(volpath,
                 segpath,
                 ext='.npz',
+                batch_size=1,
                 crop=None, resize_shape=None, rescale=None, # processing parameters
                 relabel=None, # relabeling array
                 nb_labels_reshape=0, # reshape to categorial format for keras, need # labels
@@ -90,17 +103,18 @@ def vol_loc_seg(volpath,
 
     # get vol generator
     vol_gen = single_vol(volpath, ext=ext, data_proc_fn=proc_vol_fn, relabel=relabel,
+                         batch_size=batch_size,
                          nb_labels_reshape=-1, name='vol', verbose_rate=None)
 
     # get seg generator, matching nb_files
     nb_files = len([f for f in os.listdir(volpath) if f.endswith(ext)])
     seg_gen = single_vol(segpath, ext=ext, data_proc_fn=proc_seg_fn, relabel=relabel,
-                         expected_nb_files=nb_files,
+                         expected_nb_files=nb_files, batch_size=batch_size,
                          nb_labels_reshape=nb_labels_reshape, name='seg', verbose_rate=None)
 
     # get prior
     if prior == 'location':
-        loc_vol = np.mgrid[0:vol_size[0], 0:vol_size[1], 0:vol_size[2]]
+        loc_vol = nd.volsize2ndgrid(vol_size)
         loc_vol = np.transpose(loc_vol, [1, 2, 3, 0])
         loc_vol = np.expand_dims(loc_vol, axis=0) # reshape for model
 
@@ -110,11 +124,11 @@ def vol_loc_seg(volpath,
         loc_vol = np.expand_dims(loc_vol, axis=0) # reshape for model
 
     # on next (while):
-    fileidx = -1
+    idx = -1
     while 1:
-        fileidx = np.mod(fileidx + 1, nb_files)
-        if verbose_rate is not None and np.mod(fileidx, verbose_rate) == 0:
-            print("%s: %d" %(name, fileidx))
+        idx = np.mod(idx + 1, nb_files)
+        if verbose_rate is not None and np.mod(idx, verbose_rate) == 0:
+            print("%s: %d" %(name, idx))
 
         # get input and output (seg) vols
         input_vol = next(vol_gen)
