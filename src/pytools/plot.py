@@ -18,7 +18,7 @@ def slices(slices,              # the 2D slices
 
     def input_check(inputs, nb_plots, name):
         ''' change input from None/single-link '''
-        assert (titles is None) or (len(inputs) == nb_plots) or (len(inputs) == 1), \
+        assert (inputs is None) or (len(inputs) == nb_plots) or (len(inputs) == 1), \
             'number of %s is incorrect' % name
         if inputs is None:
             inputs = [None]
