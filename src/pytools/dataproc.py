@@ -1,4 +1,4 @@
-''' data processing for fs mgh project '''
+''' data processing for neuron project '''
 
 import sys
 import os
