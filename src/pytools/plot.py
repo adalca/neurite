@@ -1,4 +1,4 @@
-''' plot tools for the fs cnn project '''
+''' plot tools for the neuron project '''
 
 import numpy as np
 import matplotlib.pyplot as plt

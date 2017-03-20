@@ -1,22 +1,25 @@
 ''' generators for the neuron project '''
+
+# general imports
 import os
 import numpy as np
 import nibabel as nib
-from keras.utils import np_utils
+from keras.utils import np_utils 
 
 # local packages
 import pynd.ndutils as nd
 
 # other neuron packages
-from . import dataproc
+from . import dataproc as nrn_proc
 
 def get_file_list(volpath, ext):
     '''
-    get a file list of file in the given path with the given extension
+    get a list of files at the given path with the given extension
     '''
     return [f for f in sorted(os.listdir(volpath)) if f.endswith(ext)]
 
-# generator for single volume
+
+
 def single_vol(volpath,
                ext='.npz',
                batch_size=1,
@@ -27,8 +30,12 @@ def single_vol(volpath,
                nb_labels_reshape=0, # reshape to categorial format for keras, need # labels
                name='single_vol', # name, optional
                verbose_rate=None):
-    ''' simple volume generator that loads a volume (via npy/mgz/nii/niigz), processes it,
-        and prepares it for keras model formats'''
+    '''
+    generator for single volume
+    
+    simple volume generator that loads a volume (via npy/mgz/nii/niigz), processes it,
+    and prepares it for keras model formats
+    '''
 
     # get filenames at given paths
     volfiles = get_file_list(volpath, ext)
@@ -101,12 +108,14 @@ def vol_loc_seg(volpath,
                 name='vol_loc_seg', # name, optional
                 prior='location', # prior type: None, 'location', npz filename
                 verbose_rate=None):
-    '''prepare a generator with ((volume, location), segmentation)'''
+    '''
+    generator with ((volume, location), segmentation)
+    '''
 
     # compute processing function
-    proc_vol_fn = lambda x: dataproc.vol_proc(x, crop=crop, resize_shape=resize_shape,
+    proc_vol_fn = lambda x: nrn_proc.vol_proc(x, crop=crop, resize_shape=resize_shape,
                                               interp_order=2, rescale=rescale)
-    proc_seg_fn = lambda x: dataproc.vol_proc(x, crop=crop, resize_shape=resize_shape,
+    proc_seg_fn = lambda x: nrn_proc.vol_proc(x, crop=crop, resize_shape=resize_shape,
                                               interp_order=0, rescale=rescale)
 
     # get vol generator
