@@ -10,12 +10,18 @@ import pynd.ndutils as nd
 # other neuron packages
 from . import dataproc
 
+def get_file_list(volpath, ext):
+    '''
+    get a file list of file in the given path with the given extension
+    '''
+    return [f for f in sorted(os.listdir(volpath)) if f.endswith(ext)]
 
 # generator for single volume
 def single_vol(volpath,
                ext='.npz',
                batch_size=1,
                expected_nb_files=-1,
+               expected_files=None,
                data_proc_fn=None, # processing function that takes in one arg (the volume)
                relabel=None, # relabeling array
                nb_labels_reshape=0, # reshape to categorial format for keras, need # labels
@@ -25,13 +31,15 @@ def single_vol(volpath,
         and prepares it for keras model formats'''
 
     # get filenames at given paths
-    volfiles = [f for f in os.listdir(volpath) if f.endswith(ext)]
+    volfiles = get_file_list(volpath, ext)
     nb_files = len(volfiles)
 
     # check the number of files matches expected (if passed)
     if expected_nb_files >= 0:
         assert nb_files == expected_nb_files, \
             "number of files do not match: %d, %d" % (nb_files, expected_nb_files)
+    if expected_files is not None:
+        assert volfiles == expected_files, 'file lists did not match'
 
     # iterate through files
     fileidx = -1
@@ -107,9 +115,10 @@ def vol_loc_seg(volpath,
                          nb_labels_reshape=-1, name='vol', verbose_rate=None)
 
     # get seg generator, matching nb_files
-    nb_files = len([f for f in os.listdir(volpath) if f.endswith(ext)])
+    vol_files = [f.replace('norm', 'aseg') for f in get_file_list(volpath, ext)]
+    nb_files = len(vol_files)
     seg_gen = single_vol(segpath, ext=ext, data_proc_fn=proc_seg_fn, relabel=relabel,
-                         expected_nb_files=nb_files, batch_size=batch_size,
+                         expected_files=vol_files, batch_size=batch_size,
                          nb_labels_reshape=nb_labels_reshape, name='seg', verbose_rate=None)
 
     # get prior
@@ -120,7 +129,7 @@ def vol_loc_seg(volpath,
 
     elif prior is not None: # assumes a npz filename passed in
         data = np.load(prior)
-        loc_vol = data['prior']
+        loc_vol = data['prior'].astype('float16')
         loc_vol = np.expand_dims(loc_vol, axis=0) # reshape for model
 
     # on next (while):
@@ -131,8 +140,8 @@ def vol_loc_seg(volpath,
             print("%s: %d" %(name, idx))
 
         # get input and output (seg) vols
-        input_vol = next(vol_gen)
-        output_vol = next(seg_gen)
+        input_vol = next(vol_gen).astype('float16')
+        output_vol = next(seg_gen).astype('int8')
 
         #    make sure the samples match size
         # assert input_vol.shape == output_vol.shape, "data sizes do not match"
