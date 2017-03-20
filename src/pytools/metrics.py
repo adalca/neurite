@@ -8,8 +8,8 @@ import keras.backend as K
 
 # medipy package 
 import sys
-sys.path.append("C:\\Users\\adalca\\Dropbox (Personal)\\code\\python\\medipy-lib")
 import medipy.metrics
+import tftools.metrics
 
 class Dice(object):
     ''' UNTESTED
@@ -28,9 +28,12 @@ class Dice(object):
         model.compile(diceloss, ...)
     '''
 
-    def __init__(self, labels=None, weights=None, prior=None):
+    def __init__(self, labels=[1], weights=None, prior=None):
+
         self.labels = labels
-        self.weights = weights
+        if weights is None:
+            weights = np.ones(len(labels))
+        self.weights = K.variable(weights.flatten())
 
         # process prior
         if prior is not None:
@@ -38,28 +41,31 @@ class Dice(object):
             loc_vol = data['prior']
             loc_vol = np.expand_dims(loc_vol, axis=0) # reshape for model
             loc_vol /= np.sum(loc_vol, axis=-1, keepdims=True)
-            self.log_prior = np.log(loc_vol)
+            self.log_prior = K.log(K.clip(K.variable(loc_vol), K.epsilon(), 1))
         else:
             self.log_prior = None
 
     def loss(self, y_true, y_pred):
         ''' the loss. Assumes y_pred is prob (in [0,1] and sum_row = 1) '''
 
-        y_pred_np = np.log(y_pred.eval())
+        y_pred_np = K.log(K.clip(y_pred, K.epsilon(), 1))
         if self.log_prior is not None:
             y_pred_np = y_pred_np + self.log_prior
-        lab_pred = np.argmax(y_pred_np)
-        lab_true = np.argmax(y_true.eval())
+        lab_pred = K.argmax(y_pred_np, axis=2)
+        lab_true = K.argmax(y_true, axis=2)
 
         # compute dice measure
-        dicem = medipy.metrics.dice(lab_true, lab_pred, self.labels)
+        dicem = tftools.metrics.dice(lab_true, lab_pred, self.labels)
+        dicem = K.variable(dicem)
 
         # weight the labels
         if self.weights is not None:
+            print(dicem)
+            print(self.weights)
             dicem *= self.weights
 
         # return negative mean dice as loss
-        return K.variable(-np.mean(dicem))
+        return K.mean(-dicem)
 
 
 
@@ -133,8 +139,8 @@ class Nonbg(object):
 
     def loss(self, y_true, y_pred):
         ''' prepare a loss of the given metric/loss operating on non-bg data '''
-        yt = y_true.eval()
+        yt = y_true #.eval()
         ytbg = np.where(yt == 0)
         y_true_fix = K.variable(yt.flat(ytbg))
-        y_pred_fix = K.variable(y_pred.eval().flat(ytbg))
+        y_pred_fix = K.variable(y_pred.flat(ytbg))
         return self.metric(y_true_fix, y_pred_fix)
