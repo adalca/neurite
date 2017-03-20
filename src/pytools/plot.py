@@ -65,8 +65,8 @@ def slices(slices,              # the 2D slices
             fig.colorbar(im_ax, cax=cax)
 
     # show the plots
+    fig.set_size_inches(12, rows/cols*12)
     if show:
-        fig.set_size_inches(12, rows/cols*12)
         plt.show()
 
     return (fig, axs)
