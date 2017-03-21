@@ -9,7 +9,7 @@ import keras.backend as K
 # medipy package 
 import sys
 import medipy.metrics
-import tftools.metrics
+import neuron.src.tftools.metrics
 
 class Dice(object):
     ''' UNTESTED

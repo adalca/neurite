@@ -32,7 +32,7 @@ def single_vol(volpath,
                verbose_rate=None):
     '''
     generator for single volume
-    
+
     simple volume generator that loads a volume (via npy/mgz/nii/niigz), processes it,
     and prepares it for keras model formats
     '''
