@@ -102,14 +102,69 @@ class PlotTestSlices(keras.callbacks.Callback):
         slices = list(map(lambda x: np.transpose(x[:, :, slice_nrs[2]]), vols))
         f, _ = n_plt.slices(slices, **kwargs)
         f.savefig(self.filepath.format(epoch=epoch, axis='coronal', slice_nr=slice_nrs[2]))
-        # plt.close()
+        plt.close()
 
         slices = list(map(lambda x: np.rot90(x[:, slice_nrs[1], :]), vols))
         f, _ = n_plt.slices(slices, **kwargs)
         f.savefig(self.filepath.format(epoch=epoch, axis='axial', slice_nr=slice_nrs[1]))
-        # plt.close()
+        plt.close()
 
         slices = list(map(lambda x: x[slice_nrs[0], :, :], vols))
         f, _ = n_plt.slices(slices, **kwargs)
         f.savefig(self.filepath.format(epoch=epoch, axis='saggital', slice_nr=slice_nrs[0]))
-        # plt.close()
+        plt.close()
+
+
+
+class PredictMetrics(keras.callbacks.Callback):
+    '''
+    Compute metrics and save to CSV
+    '''
+
+    def __init__(self, filepath,  # filepath with epoch and metric
+                 metrics,  # list of metrics (functions)
+                 validation_generator,  # validation generator
+                 nb_validation,  # number of validation samples to get (# of times to call next())
+                 nb_labels,  # number of labels
+                 crop=None,  # allow for cropping of volume (volume edges are troublesome)
+                 vol_size=None):  # if cropping, need volume size
+        self.metrics = metrics
+        self.validation_generator = validation_generator
+        self.nb_validation = nb_validation
+        self.filepath = filepath
+        self.nb_labels = nb_labels
+        self.crop = crop
+        self.vol_size = vol_size
+        if crop is not None:
+            assert vol_size is not None, "if cropping, need volume size"
+
+    def on_epoch_end(self, epoch, logs=None):
+
+        # prepare files
+        for idx, metric in enumerate(self.metrics):
+            filen = self.filepath.format(epoch=epoch, metric=metric.__name__)
+
+            # prepare metric
+            met = np.zeros((self.nb_validation, self.nb_labels))
+            for idx in range(self.nb_validation):
+                # predict output for a new sample
+                sample = next(self.validation_generator)
+                res = self.model.predict(sample[0])
+
+                # compute resulting volume(s)
+                pred_maxlabel = np.argmax(res, -1)
+                true_maxlabel = np.argmax(sample[1], -1)
+
+                # crop volumes if required
+                if self.crop is not None:
+                    print(pred_maxlabel.shape, self.vol_size)
+                    pred_maxlabel = np.reshape(np.squeeze(pred_maxlabel), self.vol_size)
+                    pred_maxlabel = nd.volcrop(pred_maxlabel, crop=self.crop)
+                    true_maxlabel = np.reshape(np.squeeze(true_maxlabel), self.vol_size)
+                    true_maxlabel = nd.volcrop(true_maxlabel, crop=self.crop)
+
+                # compute metric
+                met[idx, :] = metric(pred_maxlabel, true_maxlabel)
+
+            # write metric to csv file
+            np.savetxt(filen, met, fmt='%f', delimiter=',')
