@@ -29,6 +29,7 @@ def single_vol(volpath,
                relabel=None, # relabeling array
                nb_labels_reshape=0, # reshape to categorial format for keras, need # labels
                name='single_vol', # name, optional
+               nb_restart_cycle=None, # number of files to restart after
                verbose_rate=None):
     '''
     generator for single volume
@@ -41,6 +42,10 @@ def single_vol(volpath,
     volfiles = get_file_list(volpath, ext)
     nb_files = len(volfiles)
 
+    if nb_restart_cycle is None:
+        nb_restart_cycle = nb_files
+    assert nb_restart_cycle <= nb_files, 'restart cycle has to be <= nb_files'
+
     # check the number of files matches expected (if passed)
     if expected_nb_files >= 0:
         assert nb_files == expected_nb_files, \
@@ -52,7 +57,7 @@ def single_vol(volpath,
     fileidx = -1
     while 1:
         for batch_idx in range(batch_size):
-            fileidx = np.mod(fileidx + 1, nb_files)
+            fileidx = np.mod(fileidx + 1, nb_restart_cycle)
             if verbose_rate is not None and np.mod(fileidx, verbose_rate) == 0:
                 print("%s: %d" %(name, fileidx))
 
@@ -107,6 +112,7 @@ def vol_loc_seg(volpath,
                 nb_labels_reshape=0, # reshape to categorial format for keras, need # labels
                 name='vol_loc_seg', # name, optional
                 prior='location', # prior type: None, 'location', npz filename
+                nb_restart_cycle=None, # number of files to restart after
                 verbose_rate=None):
     '''
     generator with ((volume, location), segmentation)
@@ -120,7 +126,7 @@ def vol_loc_seg(volpath,
 
     # get vol generator
     vol_gen = single_vol(volpath, ext=ext, data_proc_fn=proc_vol_fn, relabel=relabel,
-                         batch_size=batch_size,
+                         batch_size=batch_size, nb_restart_cycle=nb_restart_cycle,
                          nb_labels_reshape=-1, name='vol', verbose_rate=None)
 
     # get seg generator, matching nb_files
@@ -128,6 +134,7 @@ def vol_loc_seg(volpath,
     nb_files = len(vol_files)
     seg_gen = single_vol(segpath, ext=ext, data_proc_fn=proc_seg_fn, relabel=relabel,
                          expected_files=vol_files, batch_size=batch_size,
+                         nb_restart_cycle=nb_restart_cycle,
                          nb_labels_reshape=nb_labels_reshape, name='seg', verbose_rate=None)
 
     # get prior
