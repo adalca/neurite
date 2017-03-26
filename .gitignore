@@ -52,5 +52,6 @@ Temporary Items
 # python caches
 __pycache__
 
-# vs code
+# IDEs
 .vscode
+.idea
