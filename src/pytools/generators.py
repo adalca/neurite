@@ -1,4 +1,4 @@
-''' generators for the neuron project '''
+""" generators for the neuron project """
 
 # general imports
 import os
@@ -13,9 +13,9 @@ import pynd.ndutils as nd
 from . import dataproc as nrn_proc
 
 def get_file_list(volpath, ext):
-    '''
+    """
     get a list of files at the given path with the given extension
-    '''
+    """
     return [f for f in sorted(os.listdir(volpath)) if f.endswith(ext)]
 
 
@@ -31,12 +31,12 @@ def single_vol(volpath,
                name='single_vol', # name, optional
                nb_restart_cycle=None, # number of files to restart after
                verbose_rate=None):
-    '''
+    """
     generator for single volume
 
     simple volume generator that loads a volume (via npy/mgz/nii/niigz), processes it,
     and prepares it for keras model formats
-    '''
+    """
 
     # get filenames at given paths
     volfiles = get_file_list(volpath, ext)
@@ -114,9 +114,9 @@ def vol_loc_seg(volpath,
                 prior='location', # prior type: None, 'location', npz filename
                 nb_restart_cycle=None, # number of files to restart after
                 verbose_rate=None):
-    '''
+    """
     generator with ((volume, location), segmentation)
-    '''
+    """
 
     # compute processing function
     proc_vol_fn = lambda x: nrn_proc.vol_proc(x, crop=crop, resize_shape=resize_shape,

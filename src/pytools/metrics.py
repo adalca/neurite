@@ -1,9 +1,9 @@
-'''
+"""
 custom metrics for the neuron project 
 This module is currently very experimental...
 
 contact: adalca@csail.mit.edu
-'''
+"""
 import sys
 import numpy as np
 import keras.backend as K
@@ -13,9 +13,8 @@ import medipy.metrics
 import neuron.src.tftools.metrics
 
 
-
 class CategoricalCrossentropy(object):
-    '''
+    """
     Categorical crossentropy with optional categorical weights and spatial prior
 
     Adapted from weighted categorical crossentropy via wassname:
@@ -31,7 +30,7 @@ class CategoricalCrossentropy(object):
         loss = CategoricalCrossentropy(weights=weights).loss # or
         loss = CategoricalCrossentropy(..., prior=prior).loss
         model.compile(loss=loss, optimizer='adam')
-    '''
+    """
 
     def __init__(self, weights=None, prior=None):
         self.weights = weights if (weights is not None) else K.variable(weights)
@@ -46,7 +45,7 @@ class CategoricalCrossentropy(object):
             self.log_prior = None
 
     def loss(self, y_true, y_pred):
-        ''' categorical crossentropy loss '''
+        """ categorical crossentropy loss """
         # scale and clip probabilities
         # this should not be necessary for softmax output.
         y_pred /= K.sum(y_pred, axis=-1, keepdims=True)
@@ -72,7 +71,7 @@ class CategoricalCrossentropy(object):
 
 
 class Dice(object):
-    ''' UNTESTED
+    """ UNTESTED
     Currently there is a problem with tf being able to compute derivates for this implementation
 
     Dice-based metric(s)
@@ -87,7 +86,7 @@ class Dice(object):
     Usage
         diceloss = metrics.dice([1, 2, 3])
         model.compile(diceloss, ...)
-    '''
+    """
 
     def __init__(self, labels=[1], weights=None, prior=None):
 
@@ -107,7 +106,7 @@ class Dice(object):
             self.log_prior = None
 
     def loss(self, y_true, y_pred):
-        ''' the loss. Assumes y_pred is prob (in [0,1] and sum_row = 1) '''
+        """ the loss. Assumes y_pred is prob (in [0,1] and sum_row = 1) """
 
         y_pred_np = K.log(K.clip(y_pred, K.epsilon(), 1))
         if self.log_prior is not None:
@@ -131,7 +130,7 @@ class Dice(object):
 
 
 class Nonbg(object):
-    ''' UNTESTED
+    """ UNTESTED
     class to modify output on operating only on the non-bg class
 
     All data is aggregated and the (passed) metric is called on flattened true and
@@ -140,13 +139,13 @@ class Nonbg(object):
     Usage:
         loss = metrics.dice
         nonbgloss = nonbg(loss).loss
-    '''
+    """
 
     def __init__(self, metric):
         self.metric = metric
 
     def loss(self, y_true, y_pred):
-        ''' prepare a loss of the given metric/loss operating on non-bg data '''
+        """ prepare a loss of the given metric/loss operating on non-bg data """
         yt = y_true #.eval()
         ytbg = np.where(yt == 0)
         y_true_fix = K.variable(yt.flat(ytbg))
