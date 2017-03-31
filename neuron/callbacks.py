@@ -20,7 +20,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 
 # the neuron folder should be on the path
-import neuron.src.pytools.plot as n_plt
+import neuron.plot as n_plt
 
 class PlotTestSlices(keras.callbacks.Callback):
     '''

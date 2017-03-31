@@ -10,7 +10,11 @@ import keras.backend as K
 
 # local packages
 import medipy.metrics
-import neuron.src.tftools.metrics
+from . import metrics as nrn_metrics
+import neuron.generators as nrn_gen
+
+from imp import reload
+reload(nrn_gen)
 
 
 class CategoricalCrossentropy(object):
@@ -32,20 +36,48 @@ class CategoricalCrossentropy(object):
         model.compile(loss=loss, optimizer='adam')
     """
 
-    def __init__(self, weights=None, prior=None):
+    def __init__(self, weights=None, prior=None, use_float16=False, 
+                 use_sep_prior=False, patch_size=None, patch_stride=1,
+                 batch_size=1):
+        self.use_float16 = use_float16
         self.weights = weights if (weights is not None) else K.variable(weights)
+        self.use_sep_prior = use_sep_prior
+
+        if use_sep_prior:
+            assert prior is None, "cannot use both prior and separate prior"
 
         # process prior
         if prior is not None:
             if isinstance(prior, str):  # assuming file
                 loc_vol = np.load(prior)['prior']
-                prior = np.expand_dims(loc_vol, axis=0)  # reshape for keras model
-            self.log_prior = K.log(K.clip(K.variable(prior), K.epsilon(), 1))
+                if self.use_float16:
+                    loc_vol = loc_vol.astype('float16')
+                prior=loc_vol
+                
+            if patch_size is None:
+                patch_size = prior.shape[0:3]
+            print(prior.shape)
+            nb_channels = prior.shape[3]
+
+            prior_gen = nrn_gen.patch(loc_vol, patch_size + (nb_channels,),
+                    patch_stride=patch_stride, batch_size=batch_size, infinite=True)
+            # prior = np.expand_dims(loc_vol, axis=0)  # reshape for keras model
+
+            self.log_prior = prior_gen 
         else:
             self.log_prior = None
 
     def loss(self, y_true, y_pred):
         """ categorical crossentropy loss """
+
+        if self.use_sep_prior:
+            self.log_prior = K.log(y_true[1])
+            y_true = y_true[0]
+
+        if self.use_float16:
+            y_true = K.cast(y_true, 'float16')
+            y_pred = K.cast(y_pred, 'float16')
+
         # scale and clip probabilities
         # this should not be necessary for softmax output.
         y_pred /= K.sum(y_pred, axis=-1, keepdims=True)
@@ -56,7 +88,18 @@ class CategoricalCrossentropy(object):
 
         # add prior to form posterior
         if self.log_prior is not None:
-            log_post += self.log_prior
+            prior = next(self.log_prior)
+            ps = prior.shape
+            print("before:", prior.shape)
+            prior = np.reshape(prior, (ps[0], np.prod(ps[1:4]), ps[4]))
+            print("after:", prior.shape)
+
+            # prior to keras
+            if self.use_float16:
+                k_prior = K.variable(prior, dtype='float16')
+            else:
+                k_prior = K.variable(prior)
+            log_post += K.log(K.clip(k_prior, K.epsilon(), 1))
 
         # loss
         loss = - y_true * log_post
@@ -66,7 +109,7 @@ class CategoricalCrossentropy(object):
             loss *= self.weights
 
         # take the mean loss
-        return K.mean(K.sum(loss, -1))
+        return K.mean(K.sum(K.cast(loss, 'float32'), -1))
 
 
 
@@ -115,7 +158,7 @@ class Dice(object):
         lab_true = K.argmax(y_true, axis=2)
 
         # compute dice measure
-        dicem = tftools.metrics.dice(lab_true, lab_pred, self.labels)
+        dicem = tfmetrics.dice(lab_true, lab_pred, self.labels)
         dicem = K.variable(dicem)
 
         # weight the labels
