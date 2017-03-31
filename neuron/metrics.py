@@ -53,17 +53,16 @@ class CategoricalCrossentropy(object):
                 if self.use_float16:
                     loc_vol = loc_vol.astype('float16')
                 prior=loc_vol
-                
+
             if patch_size is None:
                 patch_size = prior.shape[0:3]
-            print(prior.shape)
             nb_channels = prior.shape[3]
 
             prior_gen = nrn_gen.patch(loc_vol, patch_size + (nb_channels,),
                     patch_stride=patch_stride, batch_size=batch_size, infinite=True)
             # prior = np.expand_dims(loc_vol, axis=0)  # reshape for keras model
 
-            self.log_prior = prior_gen 
+            self.log_prior = prior_gen
         else:
             self.log_prior = None
 
@@ -90,9 +89,7 @@ class CategoricalCrossentropy(object):
         if self.log_prior is not None:
             prior = next(self.log_prior)
             ps = prior.shape
-            print("before:", prior.shape)
             prior = np.reshape(prior, (ps[0], np.prod(ps[1:4]), ps[4]))
-            print("after:", prior.shape)
 
             # prior to keras
             if self.use_float16:

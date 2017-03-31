@@ -73,7 +73,7 @@ def vol(volpath,
         nb_patches_per_vol = np.prod(pl.gridsize(vol_data, patch_size, patch_stride))
     if nb_restart_cycle is None:
         nb_restart_cycle = nb_files * nb_patches_per_vol
-    print(nb_restart_cycle, nb_files, nb_patches_per_vol)
+    
     assert nb_restart_cycle <= (nb_files * nb_patches_per_vol), 'restart cycle too big'
 
     # check the number of files matches expected (if passed)
@@ -146,7 +146,6 @@ def patch(vol_data,
     while True:
         # create patch generator
         gen = pl.patch_gen(vol_data, patch_size, stride=patch_stride)
-        print("gen:", vol_data.shape, patch_size, patch_stride)
 
         # go through the patch generator
         empty_gen = True
@@ -160,9 +159,7 @@ def patch(vol_data,
                 lpatch = np.expand_dims(lpatch, axis=-1)
 
             # reshape for Keras model.
-            # lpatch = np.reshape(lpatch, (np.prod(lpatch.shape[0:3]), lpatch.shape[3]))
             lpatch = np.expand_dims(lpatch, axis=0)
-            print('patch size:', lpatch.shape)
 
             # add this patch to the stack
             if batch_idx == -1:
