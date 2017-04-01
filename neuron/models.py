@@ -131,9 +131,6 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     layers_dict[name] = KL.Dense(nb_labels, name=name)(last_layer)
     last_layer = layers_dict[name]
 
-    fakeout = KL.Input(shape=patch_size + (nb_labels,), name='q')
-    print(fakeout)
-
     # create the model
-    model = Model(inputs=[layers_dict['input'], fakeout], outputs=[layers_dict['dense']])
+    model = Model(inputs=[layers_dict['input']], outputs=[layers_dict['dense']])
     return model
