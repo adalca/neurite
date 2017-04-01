@@ -55,3 +55,6 @@ __pycache__
 # IDEs
 .vscode
 .idea
+
+# old code
+.old_code
