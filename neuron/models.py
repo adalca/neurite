@@ -4,15 +4,16 @@ Keras CNN models
 Tested on keras 2.0
 """
 
-import keras.layers as KL
+# third party
 import numpy as np
+import keras.layers as KL
 from keras.models import Model, Sequential
 
 
 def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
-         feat_mult=1, pool_size=(2, 2, 2),
-         padding='same', activation='relu',
-         nb_conv_per_level=2):
+                feat_mult=1, pool_size=(2, 2, 2),
+                padding='same', activation='relu',
+                nb_conv_per_level=2):
     """
     unet-style model
 
@@ -87,16 +88,18 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
 
     # create the model
     model = Model(inputs=[layers_dict['input']], outputs=[layers_dict['output']])
-    
+
     # compile
     return model
 
+
 def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
-         feat_mult=1, pool_size=(2, 2, 2),
-         padding='same', activation='relu',
-         nb_conv_per_level=2):
+               feat_mult=1, pool_size=(2, 2, 2),
+               padding='same', activation='relu',
+               final_dense=True, final_global_max_pool=False,
+               nb_conv_per_level=2):
     """
-    "deep" cnn with dense layer @ end...
+    "deep" cnn with dense or global max pooling layer @ end...
 
     Could use sequential...
     """
@@ -127,8 +130,20 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
         last_layer = layers_dict[name]
 
     # dense layer
-    name = 'dense'
-    layers_dict[name] = KL.Dense(nb_labels, name=name)(last_layer)
+    if final_dense:
+        assert not final_global_max_pool, "cannot ask for final dense and max pool"
+        name = 'dense'
+        layers_dict[name] = KL.Dense(nb_labels, name=name)(last_layer)
+    
+    # global max pooling layer
+    else:
+        assert not final_dense, "cannot ask for final dense and max pool"
+        name = 'squeeze'
+        target_shape = (np.prod(last_layer.output_shape[1:4]), nb_features)
+        layers_dict[name] = KL.Reshape(target_shape, name=name)(last_layer)
+        last_layer = layers_dict[name]
+        name = 'global_max_pool'
+        layers_dict[name] = KL.GlobalMaxPooling1D(name=name)(last_layer)
     last_layer = layers_dict[name]
 
     # create the model
