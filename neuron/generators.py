@@ -16,11 +16,7 @@ reload(pl)
 # other neuron packages
 from . import dataproc as nrn_proc
 
-def get_file_list(volpath, ext=None):
-    """
-    get a list of files at the given path with the given extension
-    """
-    return [f for f in sorted(os.listdir(volpath)) if ext is None or f.endswith(ext)]
+
 
 
 def load_medical_volume(filename, ext):
@@ -62,7 +58,7 @@ def vol(volpath,
     """
 
     # get filenames at given paths
-    volfiles = get_file_list(volpath, ext)
+    volfiles = _get_file_list(volpath, ext)
     nb_files = len(volfiles)
     assert nb_files > 0, "Could not find any files"
 
@@ -206,7 +202,7 @@ def vol_seg(volpath,
                   data_proc_fn=proc_vol_fn, nb_labels_reshape=-1, name='vol', verbose_rate=None)
 
     # get seg generator, matching nb_files
-    vol_files = [f.replace('norm', 'aseg') for f in get_file_list(volpath, ext)]
+    vol_files = [f.replace('norm', 'aseg') for f in _get_file_list(volpath, ext)]
     nb_files = len(vol_files)
     seg_gen = vol(segpath, **kwargs, ext=ext,
                   data_proc_fn=proc_seg_fn, nb_labels_reshape=nb_labels_reshape,
@@ -284,3 +280,12 @@ def vol_seg_prior(*args,
         else:
             assert prior_feed == 'output'
             yield (input_vol, [output_vol, prior_batch])
+
+
+# Some internal use functions
+
+def _get_file_list(volpath, ext=None):
+    """
+    get a list of files at the given path with the given extension
+    """
+    return [f for f in sorted(os.listdir(volpath)) if ext is None or f.endswith(ext)]
