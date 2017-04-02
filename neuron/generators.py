@@ -106,6 +106,7 @@ def vol(volpath,
                           nb_labels_reshape=nb_labels_reshape, batch_size=1, infinite=False)
         empty_gen = True
         for lpatch in patch_gen:
+            empty_gen = False
             # add to batch of volume data, unless the batch is currently empty
             if batch_idx == -1:
                 vol_data_batch = lpatch
@@ -117,8 +118,9 @@ def vol(volpath,
             if batch_idx == batch_size - 1:
                 batch_idx = -1
                 yield vol_data_batch
+        
         if empty_gen:
-            raise Exception('generator was empty')
+            raise ValueError('Patch generator was empty for file %s', volfiles[fileidx])
 
 import time
 
