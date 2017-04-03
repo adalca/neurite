@@ -2,6 +2,8 @@
 
 # general imports
 import os
+
+# third party imports
 import numpy as np
 import nibabel as nib
 from keras.utils import np_utils 
@@ -10,31 +12,14 @@ from keras.utils import np_utils
 import pynd.ndutils as nd
 import pytools.patchlib as pl
 
+# reload patchlib (it's often updated right now...)
 from imp import reload
 reload(pl)
 
-# other neuron packages
+# other neuron (this project) packages
 from . import dataproc as nrn_proc
 
 
-
-
-def load_medical_volume(filename, ext):
-    """
-    load a medical volume from one of a number of file types
-    """
-    if ext == '.npz':
-        vol_file = np.load(filename)
-        vol_data = vol_file['vol_data']
-    elif ext == 'npy':
-        vol_data = np.load(filename)
-    elif ext == '.mgz' or ext == '.nii' or ext == '.nii.gz':
-        vol_med = nib.load(filename)
-        vol_data = vol_med.get_data()
-    else:
-        raise ValueError("Unexpected extension %s" % ext)
-
-    return vol_data
 
 
 def vol(volpath,
@@ -63,7 +48,7 @@ def vol(volpath,
     assert nb_files > 0, "Could not find any files"
 
     # compute subvolume split
-    vol_data = load_medical_volume(os.path.join(volpath, volfiles[0]), ext)
+    vol_data = _load_medical_volume(os.path.join(volpath, volfiles[0]), ext)
     nb_patches_per_vol = 1
     if patch_size is not None:
         nb_patches_per_vol = np.prod(pl.gridsize(vol_data, patch_size, patch_stride))
@@ -88,7 +73,7 @@ def vol(volpath,
             print("%s fileidx: %d" %(name, fileidx))
 
         # read next file (circular)
-        vol_data = load_medical_volume(os.path.join(volpath, volfiles[fileidx]), ext)
+        vol_data = _load_medical_volume(os.path.join(volpath, volfiles[fileidx]), ext)
 
         # process volume
         if data_proc_fn is not None:
@@ -125,14 +110,17 @@ def vol(volpath,
 import time
 
 
-def patch(vol_data,
-          patch_size,
-          patch_stride=1,
-          nb_labels_reshape=0,
-          batch_size=1,
-          infinite=False):
+def patch(vol_data,             # the volume
+          patch_size,           # patch size
+          patch_stride=1,       # patch stride (spacing)
+          nb_labels_reshape=0,  # number of labels for categorical resizing. 0 if no resizing
+          batch_size=1,         # batch size
+          infinite=False):      # whether the generator should continue (re)-generating patches
     """
-    generate patches from volume
+    generate patches from volume for keras package
+
+    Yields:
+        patch: nd array of shape [batch_size, *patch_size], unless resized via nb_labels_reshape
     """
 
     # some parameter setup
@@ -291,3 +279,21 @@ def _get_file_list(volpath, ext=None):
     get a list of files at the given path with the given extension
     """
     return [f for f in sorted(os.listdir(volpath)) if ext is None or f.endswith(ext)]
+
+
+def _load_medical_volume(filename, ext):
+    """
+    load a medical volume from one of a number of file types
+    """
+    if ext == '.npz':
+        vol_file = np.load(filename)
+        vol_data = vol_file['vol_data']
+    elif ext == 'npy':
+        vol_data = np.load(filename)
+    elif ext == '.mgz' or ext == '.nii' or ext == '.nii.gz':
+        vol_med = nib.load(filename)
+        vol_data = vol_med.get_data()
+    else:
+        raise ValueError("Unexpected extension %s" % ext)
+
+    return vol_data
