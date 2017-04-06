@@ -13,7 +13,7 @@ from keras.models import Model, Sequential
 def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
                 feat_mult=1, pool_size=(2, 2, 2),
                 padding='same', activation='relu',
-                nb_conv_per_level=2):
+                nb_conv_per_level=2, add_prior_layer=False):
     """
     unet-style model
 
@@ -48,7 +48,6 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
             name = 'maxpool_%d' % level
             layers_dict[name] = KL.MaxPooling3D(pool_size=pool_size)(last_layer)
             last_layer = layers_dict[name]
-    
 
     # up arm:
     # nb_levels - 1 layers of Deconvolution3D
@@ -82,12 +81,33 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     layers_dict[name] = KL.Reshape((vol_numel, nb_features), name=name)(last_layer)
     last_layer = layers_dict[name]
 
-    # output layer
-    name = 'output'
-    layers_dict[name] = KL.Conv1D(nb_labels, 1, activation='softmax', name=name)(last_layer)
+    if add_prior_layer:
+        # likelihood layer
+        name = 'likelihood'
+        layers_dict[name] = KL.Conv1D(nb_labels, 1, activation='softmax', name=name)(last_layer)
+        last_layer = layers_dict[name]
+
+        # prior input layer
+        name = 'prior-input'
+        layers_dict[name] = KL.Input(shape=patch_size + (nb_labels,), name=name)
+        name = 'prior-input-reshape'
+        layers_dict[name] = KL.Reshape((vol_numel, nb_labels), name=name)(layers_dict['prior-input'])
+
+        # final prediction
+        name = 'prediction'
+        layers_dict[name] = KL.multiply([layers_dict['prior-input-reshape'], layers_dict['likelihood']])
+
+        model_inputs = [layers_dict['input'], layers_dict['prior-input']]
+
+    else:
+        # output (liklihood) prediction layer
+        name = 'prediction'
+        layers_dict[name] = KL.Conv1D(nb_labels, 1, activation='softmax', name=name)(last_layer)
+
+        model_inputs = [layers_dict['input']]
 
     # create the model
-    model = Model(inputs=[layers_dict['input']], outputs=[layers_dict['output']])
+    model = Model(inputs=model_inputs, outputs=[layers_dict['prediction']])
 
     # compile
     return model
