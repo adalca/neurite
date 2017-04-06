@@ -27,10 +27,12 @@ class PlotTestSlices(keras.callbacks.Callback):
     plot slices of a test subject from several directions
     '''
 
-    def __init__(self, filepath, sample_inputs, sample_output, vol_size, prior=None):
-        self.filepath = filepath
-        self.sample_inputs = sample_inputs
-        self.sample_output = sample_output
+    def __init__(self, savefilepath, generator, vol_size, prior=None):
+        super().__init__()
+
+        # save some parameters
+        self.savefilepath = savefilepath
+        self.generator = generator
         self.vol_size = vol_size
         self.prior = None
         if prior is not None:
@@ -44,10 +46,15 @@ class PlotTestSlices(keras.callbacks.Callback):
         vol_size = self.vol_size
         nb_classes = self.sample_output.shape[-1]
 
+
+        sample = next(self.generator)
+        sample_inputs = sample[0]
+        sample_output = sample[1]
+
         # TODO: Separate the part that outputs slices.
 
         # if sample_input is a tuple, we assume it's (vol, prior)
-        do_explicit_prior = isinstance(self.sample_inputs, tuple)
+        do_explicit_prior = isinstance(self.sample_inputs, list)
 
         # extract volume and prior
         if do_explicit_prior:
@@ -101,17 +108,17 @@ class PlotTestSlices(keras.callbacks.Callback):
         slice_nrs = np.floor(np.array(vol_size) / 2).astype('int')
         slices = list(map(lambda x: np.transpose(x[:, :, slice_nrs[2]]), vols))
         f, _ = n_plt.slices(slices, **kwargs)
-        f.savefig(self.filepath.format(epoch=epoch, axis='coronal', slice_nr=slice_nrs[2]))
+        f.savefig(self.savefilepath.format(epoch=epoch, axis='coronal', slice_nr=slice_nrs[2]))
         plt.close()
 
         slices = list(map(lambda x: np.rot90(x[:, slice_nrs[1], :]), vols))
         f, _ = n_plt.slices(slices, **kwargs)
-        f.savefig(self.filepath.format(epoch=epoch, axis='axial', slice_nr=slice_nrs[1]))
+        f.savefig(self.savefilepath.format(epoch=epoch, axis='axial', slice_nr=slice_nrs[1]))
         plt.close()
 
         slices = list(map(lambda x: x[slice_nrs[0], :, :], vols))
         f, _ = n_plt.slices(slices, **kwargs)
-        f.savefig(self.filepath.format(epoch=epoch, axis='saggital', slice_nr=slice_nrs[0]))
+        f.savefig(self.savefilepath.format(epoch=epoch, axis='saggital', slice_nr=slice_nrs[0]))
         plt.close()
 
 
@@ -139,6 +146,7 @@ class PredictMetrics(keras.callbacks.Callback):
             assert vol_size is not None, "if cropping, need volume size"
 
     def on_epoch_end(self, epoch, logs=None):
+        print('print callback')
 
         # prepare files
         for idx, metric in enumerate(self.metrics):

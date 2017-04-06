@@ -51,7 +51,7 @@ def vol(volpath,
     vol_data = _load_medical_volume(os.path.join(volpath, volfiles[0]), ext)
     nb_patches_per_vol = 1
     if patch_size is not None:
-        nb_patches_per_vol = np.prod(pl.gridsize(vol_data, patch_size, patch_stride))
+        nb_patches_per_vol = np.prod(pl.gridsize(vol_data.shape, patch_size, patch_stride))
     if nb_restart_cycle is None:
         nb_restart_cycle = nb_files * nb_patches_per_vol
     
@@ -113,7 +113,7 @@ import time
 def patch(vol_data,             # the volume
           patch_size,           # patch size
           patch_stride=1,       # patch stride (spacing)
-          nb_labels_reshape=0,  # number of labels for categorical resizing. 0 if no resizing
+          nb_labels_reshape=1,  # number of labels for categorical resizing. 0 if no resizing
           batch_size=1,         # batch size
           infinite=False):      # whether the generator should continue (re)-generating patches
     """
@@ -139,9 +139,9 @@ def patch(vol_data,             # the volume
             empty_gen = False
 
             # reshape output layer as categorical
-            if nb_labels_reshape > 0:
+            if nb_labels_reshape > 1:
                 lpatch = np_utils.to_categorical(lpatch, nb_labels_reshape)
-            else:
+            elif nb_labels_reshape == 1:
                 lpatch = np.expand_dims(lpatch, axis=-1)
 
             # reshape for Keras model.
@@ -189,7 +189,7 @@ def vol_seg(volpath,
 
     # get vol generator
     vol_gen = vol(volpath, **kwargs, ext=ext,
-                  data_proc_fn=proc_vol_fn, nb_labels_reshape=-1, name='vol', verbose_rate=None)
+                  data_proc_fn=proc_vol_fn, nb_labels_reshape=1, name='vol', verbose_rate=None)
 
     # get seg generator, matching nb_files
     vol_files = [f.replace('norm', 'aseg') for f in _get_file_list(volpath, ext)]
@@ -251,7 +251,7 @@ def vol_seg_prior(*args,
     if patch_size is None:
         patch_size = prior_vol.shape[0:3]
     prior_gen = patch(prior_vol, patch_size + (nb_channels,),
-                      patch_stride=patch_stride, batch_size=batch_size, infinite=True)
+                      patch_stride=patch_stride, batch_size=batch_size, infinite=True, nb_labels_reshape=0)
 
     # generator loop
     while 1:
@@ -263,7 +263,7 @@ def vol_seg_prior(*args,
         prior_batch = next(prior_gen)
 
         # reshape for model
-        prior_batch = np_utils.to_categorical(prior_batch, nb_channels)
+        # prior_batch = np.reshape(prior_batch, (batch_size, np.prod(patch_size), nb_channels))
 
         if prior_feed == 'input':
             yield ([input_vol, prior_batch], output_vol)
