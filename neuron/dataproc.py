@@ -1,7 +1,11 @@
 ''' data processing for neuron project '''
 
+# built-in
 import sys
 import os
+import six
+
+# third party
 import nibabel as nib
 import numpy as np
 import scipy.ndimage.interpolation
@@ -69,3 +73,29 @@ def vol_proc(vol_data,
         vol_data = nd.volcrop(vol_data, crop=crop)
 
     return vol_data
+
+
+def prior_to_weights(prior_filename, nargout=1):
+    ''' transform a 4D prior (3D + nb_labels) into a class weight vector '''
+
+    # load prior
+    if isinstance(prior_filename, six.string_types):
+        prior = np.load(prior_filename)['prior']
+
+    # assumes prior is 4D.
+    assert np.ndim(prior) == 4, "prior is the wrong number of dimensions"
+    prior = np.reshape(prior, (np.prod(prior.shape[0:3]), prior.shape[-1]))
+
+    # sum total class votes
+    class_count = np.sum(prior, 0)
+    prior = class_count / np.sum(class_count)
+
+    # compute weights from class frequencies
+    weights = 1/prior
+    weights = weights / np.sum(weights)
+    # weights[0] = 0 # explicitly don't care about bg
+
+    if nargout == 1:
+        return weights
+    else:
+        return (weights, prior)
