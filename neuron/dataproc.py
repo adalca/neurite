@@ -56,8 +56,12 @@ def vol_proc(vol_data,
              crop=None,
              resize_shape=None, # None (to not resize), or vector. If vector, third entry can be None
              interp_order=None,
-             rescale=None):
+             rescale=None,
+             offset=None):
     ''' process a volume with a series of intensity rescale, resize and crop rescale'''
+
+    if offset is not None:
+        vol_data = vol_data + offset
 
     # intensity normalize data .* rescale
     if rescale is not None:
