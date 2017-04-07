@@ -43,8 +43,12 @@ def proc_mgh_vols(inpath, outpath, ext='.mgz',
         vol_data = volnii.get_data().astype(float)
 
         # process volume
-        vol_data = vol_proc(vol_data, crop=crop, resize_shape=resize_shape,
-                            interp_order=interp_order, rescale=rescale, offset=None, clip=None)
+        try:
+            vol_data = vol_proc(vol_data, crop=crop, resize_shape=resize_shape,
+                            interp_order=interp_order, rescale=rescale, offset=offset, clip=clip)
+        except Exception as e:
+            print("Skipping %s\nError: %s" % (files[fileidx], str(e)), file=sys.stderr)
+            continue
 
         # save numpy file
         outname = os.path.splitext(os.path.join(outpath, files[fileidx]))[0] + '.npz'
