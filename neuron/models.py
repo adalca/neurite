@@ -167,7 +167,7 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
         print("pre-gmp size", last_layer)
         name = 'global_max_pool'
         # layers_dict[name] = KL.GlobalMaxPooling1D(name=name, activation="sigmoid")(last_layer)
-        layers_dict[name] = KL.Lambda(_global_max_nd, name=name)(last_layer)
+        layers_dict[name] = KL.Lambda(_global_max_nd, name=name, activation="sigmoid")(last_layer)
         print("gmp size", layers_dict[name].get_shape())
 
     last_layer = layers_dict[name]
