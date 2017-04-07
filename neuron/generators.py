@@ -50,11 +50,11 @@ def vol(volpath,
     # compute subvolume split
     vol_data = _load_medical_volume(os.path.join(volpath, volfiles[0]), ext)
     nb_patches_per_vol = 1
-    if patch_size is not None:
+    if patch_size is not None and all(f is not None for f in patch_size):
         nb_patches_per_vol = np.prod(pl.gridsize(vol_data.shape, patch_size, patch_stride))
     if nb_restart_cycle is None:
         nb_restart_cycle = nb_files * nb_patches_per_vol
-    
+
     assert nb_restart_cycle <= (nb_files * nb_patches_per_vol), 'restart cycle too big'
 
     # check the number of files matches expected (if passed)
@@ -87,8 +87,18 @@ def vol(volpath,
                 vol_data[resized_seg_data_fix == val] = idx
 
         # split volume into patches if necessary and yield
-        patch_gen = patch(vol_data, patch_size, patch_stride=patch_stride,
-                          nb_labels_reshape=nb_labels_reshape, batch_size=1, infinite=False)
+        if patch_size is not None and all(f is not None for f in patch_size):
+            patch_gen = patch(vol_data, patch_size, patch_stride=patch_stride,
+                            nb_labels_reshape=nb_labels_reshape, batch_size=1, infinite=False)
+        else:
+            # reshape output layer as categorical
+            if nb_labels_reshape > 1:
+                lpatch = np_utils.to_categorical(vol_data, nb_labels_reshape)
+            elif nb_labels_reshape == 1:
+                lpatch = np.expand_dims(vol_data, axis=-1)
+            lpatch = np.expand_dims(lpatch, axis=0)
+            patch_gen = (lpatch, )
+
         empty_gen = True
         for lpatch in patch_gen:
             empty_gen = False
@@ -103,7 +113,7 @@ def vol(volpath,
             if batch_idx == batch_size - 1:
                 batch_idx = -1
                 yield vol_data_batch
-        
+
         if empty_gen:
             raise ValueError('Patch generator was empty for file %s', volfiles[fileidx])
 
@@ -212,6 +222,35 @@ def vol_seg(volpath,
         # output input and output
         yield (input_vol, output_vol)
 
+
+def vol_cat(volpaths, # expect two folders in here
+            crop=None, resize_shape=None, rescale=None, # processing parameters
+            verbose_rate=None,
+            name='vol_seg', # name, optional
+            ext='.npz',
+            nb_labels_reshape=-1,
+            **kwargs): # named arguments for vol(...), except verbose_rate, data_proc_fn, ext, nb_labels_reshape and name (which this function will control when calling vol()) 
+    """
+    generator with (volume, binary_bit)
+    """
+
+    folders = [f for f in sorted(os.listdir(volpaths))]
+
+    # compute processing function
+    proc_vol_fn = lambda x: nrn_proc.vol_proc(x, crop=crop, resize_shape=resize_shape,
+                                              interp_order=2, rescale=rescale)
+
+    # get vol generators
+    generators = ()
+    for folder in folders:
+        vol_gen = vol(os.path.join(volpaths, folder), **kwargs, ext=ext,
+                      data_proc_fn=proc_vol_fn, nb_labels_reshape=1, name='vol', verbose_rate=None)
+        generators += (vol_gen, )
+
+    # on next (while):
+    while 1:
+        for idx, gen in enumerate(generators):
+            yield (next(gen).astype('float16'), np.array([idx]))
 
 
 def vol_seg_prior(*args,

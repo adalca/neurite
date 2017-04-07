@@ -8,6 +8,7 @@ Tested on keras 2.0
 import numpy as np
 import keras.layers as KL
 from keras.models import Model, Sequential
+import keras.backend as K
 
 
 def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
@@ -116,7 +117,7 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
 def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
                feat_mult=1, pool_size=(2, 2, 2),
                padding='same', activation='relu',
-               final_dense=True, final_global_max_pool=False,
+               final_layer='dense',
                nb_conv_per_level=2):
     """
     "deep" cnn with dense or global max pooling layer @ end...
@@ -150,22 +151,31 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
         last_layer = layers_dict[name]
 
     # dense layer
-    if final_dense:
-        assert not final_global_max_pool, "cannot ask for final dense and max pool"
+    if final_layer == 'dense':
         name = 'dense'
+        print("pre-dense size", last_layer)
         layers_dict[name] = KL.Dense(nb_labels, name=name)(last_layer)
-    
+        print("dense size", layers_dict[name].get_shape())
+
     # global max pooling layer
-    else:
-        assert not final_dense, "cannot ask for final dense and max pool"
-        name = 'squeeze'
-        target_shape = (np.prod(last_layer.output_shape[1:4]), nb_features)
-        layers_dict[name] = KL.Reshape(target_shape, name=name)(last_layer)
-        last_layer = layers_dict[name]
+    elif final_layer == 'globalmaxpooling':
+        # name = 'squeeze'
+        # target_shape = (np.prod(last_layer.get_shape()[1:4]), nb_features)
+        # layers_dict[name] = KL.Reshape(target_shape, name=name)(last_layer)
+        # last_layer = layers_dict[name]
+
+        print("pre-gmp size", last_layer)
         name = 'global_max_pool'
-        layers_dict[name] = KL.GlobalMaxPooling1D(name=name)(last_layer)
+        # layers_dict[name] = KL.GlobalMaxPooling1D(name=name, activation="sigmoid")(last_layer)
+        layers_dict[name] = KL.Lambda(_global_max_nd, name=name)(last_layer)
+        print("gmp size", layers_dict[name].get_shape())
+
     last_layer = layers_dict[name]
 
     # create the model
-    model = Model(inputs=[layers_dict['input']], outputs=[layers_dict['dense']])
+    model = Model(inputs=[layers_dict['input']], outputs=[last_layer])
     return model
+
+def _global_max_nd(x):
+    y = K.batch_flatten(x)
+    return K.max(y, 1, keepdims=True)
