@@ -19,7 +19,7 @@ import pynd.ndutils as nd
 
 
 def proc_mgh_vols(inpath, outpath, ext='.mgz',
-                  resize_shape=None, interp_order=2, rescale=None, crop=None):
+                  resize_shape=None, interp_order=2, rescale=None, crop=None, offset=None, clip=None):
     ''' process mgh data from mgz format and save to numpy format
 
         1. load file
@@ -44,7 +44,7 @@ def proc_mgh_vols(inpath, outpath, ext='.mgz',
 
         # process volume
         vol_data = vol_proc(vol_data, crop=crop, resize_shape=resize_shape,
-                            interp_order=interp_order, rescale=rescale)
+                            interp_order=interp_order, rescale=rescale, offset=None, clip=None)
 
         # save numpy file
         outname = os.path.splitext(os.path.join(outpath, files[fileidx]))[0] + '.npz'
