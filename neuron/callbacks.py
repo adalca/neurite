@@ -18,6 +18,7 @@ import keras
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
+import pynd.ndutils as nd
 
 # the neuron folder should be on the path
 import neuron.plot as n_plt
@@ -125,14 +126,16 @@ class PlotTestSlices(keras.callbacks.Callback):
 
 class PredictMetrics(keras.callbacks.Callback):
     '''
-    Compute metrics and save to CSV
+    Compute metrics and save to CSV/log
     '''
 
-    def __init__(self, filepath,  # filepath with epoch and metric
+    def __init__(self, 
+                 filepath,  # filepath with epoch and metric
                  metrics,  # list of metrics (functions)
                  validation_generator,  # validation generator
                  nb_validation,  # number of validation samples to get (# of times to call next())
                  nb_labels,  # number of labels
+                 label_ids=None,
                  crop=None,  # allow for cropping of volume (volume edges are troublesome)
                  vol_size=None):  # if cropping, need volume size
         self.metrics = metrics
@@ -140,21 +143,22 @@ class PredictMetrics(keras.callbacks.Callback):
         self.nb_validation = nb_validation
         self.filepath = filepath
         self.nb_labels = nb_labels
+        if label_ids is None:
+            self.label_ids = list(range(nb_labels))
+        else:
+            self.label_ids = label_ids
         self.crop = crop
         self.vol_size = vol_size
         if crop is not None:
             assert vol_size is not None, "if cropping, need volume size"
 
-    def on_epoch_end(self, epoch, logs=None):
-        print('print callback')
-
+    def on_epoch_end(self, epoch, logs={}):
         # prepare files
-        for idx, metric in enumerate(self.metrics):
-            filen = self.filepath.format(epoch=epoch, metric=metric.__name__)
+        for metric in self.metrics:
 
             # prepare metric
             met = np.zeros((self.nb_validation, self.nb_labels))
-            for idx in range(self.nb_validation):
+            for batch_idx in range(self.nb_validation):
                 # predict output for a new sample
                 sample = next(self.validation_generator)
                 res = self.model.predict(sample[0])
@@ -165,14 +169,20 @@ class PredictMetrics(keras.callbacks.Callback):
 
                 # crop volumes if required
                 if self.crop is not None:
-                    print(pred_maxlabel.shape, self.vol_size)
                     pred_maxlabel = np.reshape(np.squeeze(pred_maxlabel), self.vol_size)
                     pred_maxlabel = nd.volcrop(pred_maxlabel, crop=self.crop)
                     true_maxlabel = np.reshape(np.squeeze(true_maxlabel), self.vol_size)
                     true_maxlabel = nd.volcrop(true_maxlabel, crop=self.crop)
 
                 # compute metric
-                met[idx, :] = metric(pred_maxlabel, true_maxlabel)
+                met[batch_idx, :] = metric(pred_maxlabel, true_maxlabel)
 
             # write metric to csv file
-            np.savetxt(filen, met, fmt='%f', delimiter=',')
+            if self.filepath is not None:
+                filen = self.filepath.format(epoch=epoch, metric=metric.__name__)
+                np.savetxt(filen, met, fmt='%f', delimiter=',')
+            else:
+                meanmet = np.mean(met, axis=0)
+                for idx in range(self.nb_labels):
+                    varname = 'dice_label_%d' % self.label_ids[idx]
+                    logs[varname] = meanmet[idx]
