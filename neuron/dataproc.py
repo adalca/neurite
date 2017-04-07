@@ -57,7 +57,8 @@ def vol_proc(vol_data,
              resize_shape=None, # None (to not resize), or vector. If vector, third entry can be None
              interp_order=None,
              rescale=None,
-             offset=None):
+             offset=None,
+             clip=None):
     ''' process a volume with a series of intensity rescale, resize and crop rescale'''
 
     if offset is not None:
@@ -66,6 +67,9 @@ def vol_proc(vol_data,
     # intensity normalize data .* rescale
     if rescale is not None:
         vol_data = np.multiply(vol_data, rescale)
+
+    if clip is not None:
+        vol_data = np.clip(vol_data, clip[0], clip[1])
 
     # resize (downsample) matrices
     if resize_shape is not None and resize_shape != vol_data.shape:
