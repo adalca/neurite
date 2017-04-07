@@ -54,7 +54,7 @@ def proc_mgh_vols(inpath, outpath, ext='.mgz',
 
 def vol_proc(vol_data,
              crop=None,
-             resize_shape=None,
+             resize_shape=None, # None (to not resize), or vector. If vector, third entry can be None
              interp_order=None,
              rescale=None):
     ''' process a volume with a series of intensity rescale, resize and crop rescale'''
@@ -65,6 +65,11 @@ def vol_proc(vol_data,
 
     # resize (downsample) matrices
     if resize_shape is not None and resize_shape != vol_data.shape:
+        # allow for the last entry to be None
+        if resize_shape[-1] is None:
+            resize_ratio = np.divide(resize_shape[0], vol_data.shape[0])
+            resize_shape[-1] = np.round(resize_ratio * vol_data.shape[-1]).astype('int')
+
         resize_ratio = np.divide(resize_shape, vol_data.shape)
         vol_data = scipy.ndimage.interpolation.zoom(vol_data, resize_ratio, order=interp_order)
 
