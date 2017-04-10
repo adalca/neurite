@@ -152,23 +152,33 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
 
     # dense layer
     if final_layer == 'dense':
+
+        name = "flatten"
+        layers_dict[name] = KL.Flatten(name=name)(last_layer)
+        last_layer = layers_dict[name]
+
         name = 'dense'
-        print("pre-dense size", last_layer)
         layers_dict[name] = KL.Dense(nb_labels, name=name)(last_layer)
-        print("dense size", layers_dict[name].get_shape())
 
     # global max pooling layer
     elif final_layer == 'globalmaxpooling':
-        # name = 'squeeze'
-        # target_shape = (np.prod(last_layer.get_shape()[1:4]), nb_features)
-        # layers_dict[name] = KL.Reshape(target_shape, name=name)(last_layer)
-        # last_layer = layers_dict[name]
 
-        print("pre-gmp size", last_layer)
+        name = 'batch_norm'
+        layers_dict[name] = KL.BatchNormalization(name=name)(last_layer)
+        last_layer = layers_dict[name]
+
         name = 'global_max_pool'
-        # layers_dict[name] = KL.GlobalMaxPooling1D(name=name, activation="sigmoid")(last_layer)
-        layers_dict[name] = KL.Lambda(_global_max_nd, name=name, activation="sigmoid")(last_layer)
-        print("gmp size", layers_dict[name].get_shape())
+        layers_dict[name] = KL.Lambda(_global_max_nd, name=name)(last_layer)
+        last_layer = layers_dict[name]
+
+        name = 'global_max_pool_reshape'
+        layers_dict[name] = KL.Reshape((1, 1), name=name)(last_layer)
+        last_layer = layers_dict[name]
+
+        # cannot do activation in lambda layer. Could code inside, but will do extra lyaer
+        name = 'global_max_pool_sigmoid'
+        layers_dict[name] = KL.Conv1D(1, 1, name=name, activation="sigmoid", use_bias=True)(last_layer)
+
 
     last_layer = layers_dict[name]
 

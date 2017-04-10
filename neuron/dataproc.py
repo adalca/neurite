@@ -34,6 +34,7 @@ def proc_mgh_vols(inpath, outpath, ext='.mgz',
     files = [f for f in os.listdir(inpath) if f.endswith(ext)]
 
     # go through each file
+    list_skipped_files = ()
     for fileidx in tqdm(range(len(files)), ncols=80):
 
         # load nifti volume
@@ -47,13 +48,16 @@ def proc_mgh_vols(inpath, outpath, ext='.mgz',
             vol_data = vol_proc(vol_data, crop=crop, resize_shape=resize_shape,
                             interp_order=interp_order, rescale=rescale, offset=offset, clip=clip)
         except Exception as e:
-            print("Skipping %s\nError: %s" % (files[fileidx], str(e)), file=sys.stderr)
+            list_skipped_files += (files[fileidx], )
+            # print("Skipping %s\nError: %s" % (files[fileidx], str(e)), file=sys.stderr)
             continue
 
         # save numpy file
         outname = os.path.splitext(os.path.join(outpath, files[fileidx]))[0] + '.npz'
         np.savez_compressed(outname, vol_data=vol_data)
 
+    for file in list_skipped_files:    
+        print("Skipped: %s" % file)     
 
 
 def vol_proc(vol_data,

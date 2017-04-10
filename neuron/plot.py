@@ -40,6 +40,9 @@ def slices(slices,              # the 2D slices
 
     # prepare the subplot
     fig, axs = plt.subplots(rows, cols)
+    if rows == 1 and cols == 1:
+        axs = [axs]
+
     for i in range(nb_plots):
         col = np.remainder(i, cols)
         row = np.floor(i/cols).astype(int)

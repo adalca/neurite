@@ -1,6 +1,7 @@
 """ generators for the neuron project """
 
 # general imports
+import sys
 import os
 
 # third party imports
@@ -55,7 +56,7 @@ def vol(volpath,
     if nb_restart_cycle is None:
         nb_restart_cycle = nb_files * nb_patches_per_vol
 
-    assert nb_restart_cycle <= (nb_files * nb_patches_per_vol), 'restart cycle too big'
+    assert nb_restart_cycle <= (nb_files * nb_patches_per_vol), 'restart cycle (%s) too big (%s)' % (nb_restart_cycle, nb_files * nb_patches_per_vol)
 
     # check the number of files matches expected (if passed)
     if expected_nb_files >= 0:
@@ -231,7 +232,8 @@ def vol_cat(volpaths, # expect two folders in here
             nb_labels_reshape=-1,
             **kwargs): # named arguments for vol(...), except verbose_rate, data_proc_fn, ext, nb_labels_reshape and name (which this function will control when calling vol()) 
     """
-    generator with (volume, binary_bit)
+    generator with (volume, binary_bit) (random order)
+    ONLY works with abtch size of 1 for now
     """
 
     folders = [f for f in sorted(os.listdir(volpaths))]
@@ -242,15 +244,36 @@ def vol_cat(volpaths, # expect two folders in here
 
     # get vol generators
     generators = ()
+    generators_len = ()
     for folder in folders:
         vol_gen = vol(os.path.join(volpaths, folder), **kwargs, ext=ext,
-                      data_proc_fn=proc_vol_fn, nb_labels_reshape=1, name='vol', verbose_rate=None)
+                      data_proc_fn=proc_vol_fn, nb_labels_reshape=1, name=folder, verbose_rate=None)
+        generators_len += (len(_get_file_list(os.path.join(volpaths, folder), '.npz')), )
         generators += (vol_gen, )
+
+    bake_data_test = False
+    if bake_data_test:
+        print('fake_data_test', file=sys.stderr)
 
     # on next (while):
     while 1:
-        for idx, gen in enumerate(generators):
-            yield (next(gen).astype('float16'), np.array([idx]))
+        # build the random order stack
+        order = np.hstack((np.zeros(generators_len[0]), np.ones(generators_len[1]))).astype('int')
+        np.random.shuffle(order) # shuffle
+        for idx in order:
+            gen = generators[idx]
+
+        # for idx, gen in enumerate(generators):
+            z = np.zeros([1, 1, 1]) #1,1,2 for categorical binary style
+            # z[0,0,idx] = 1 #
+            z[0,0,0] = idx
+
+            data = next(gen).astype('float32')
+            if bake_data_test and idx == 0:
+                # data = data*idx
+                data = -data
+
+            yield (data, z)
 
 
 def vol_seg_prior(*args,
