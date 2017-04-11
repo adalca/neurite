@@ -123,7 +123,7 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
                feat_mult=1, pool_size=(2, 2, 2),
                padding='same', activation='relu',
                final_layer='dense',
-               conv_dropout=False,
+               conv_dropout=0,
                nb_conv_per_level=2):
     """
     "deep" cnn with dense or global max pooling layer @ end...
