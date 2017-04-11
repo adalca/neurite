@@ -40,7 +40,7 @@ class CategoricalCrossentropy(object):
                  use_sep_prior=False, patch_size=None, patch_stride=1,
                  batch_size=1):
         self.use_float16 = use_float16
-        self.weights = weights if (weights is not None) else K.variable(weights)
+        self.weights = weights if (weights is not None) else None
         self.use_sep_prior = use_sep_prior
 
         if use_sep_prior:
