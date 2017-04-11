@@ -24,6 +24,11 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     TODO: Need to check that UpSampling3D actually does NN-upsampling!
     """
 
+    ndims = len(patch_size)
+    convL = KL.Conv3D if np.ndim(patch_size) == 3 else KL.Conv2D
+    maxpool = KL.MaxPooling3D if np.ndim(patch_size) == 3 else KL.MaxPooling2D
+    upsample = KL.UpSampling3D if np.ndim(patch_size) == 3 else KL.UpSampling2D
+
     # kwargs for the convolution layer
     conv_kwargs = {'padding': padding, 'activation': activation}
 
@@ -41,13 +46,13 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
         for conv in range(nb_conv_per_level):
             name = 'conv_downarm_%d_%d' % (level, conv)
             nb_local_features = nb_features*(feat_mult**level)
-            layers_dict[name] = KL.Conv3D(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
+            layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
             last_layer = layers_dict[name]
 
         # max pool if we're not at the last level
         if level < (nb_levels - 1):
             name = 'maxpool_%d' % level
-            layers_dict[name] = KL.MaxPooling3D(pool_size=pool_size)(last_layer)
+            layers_dict[name] = maxpool(pool_size=pool_size)(last_layer)
             last_layer = layers_dict[name]
 
     # up arm:
@@ -56,24 +61,24 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     for level in range(nb_levels - 1):
         # upsample matching the max pooling layers
         name = 'up_%d' % (nb_levels + level)
-        layers_dict[name] = KL.UpSampling3D(size=pool_size, name=name)(last_layer)
+        layers_dict[name] = upsample(size=pool_size, name=name)(last_layer)
         last_layer = layers_dict[name]
 
         # upsample matching the max pooling layers
         name = 'upconv_%d' % (nb_levels + level)
         nb_local_features = nb_features*(feat_mult**(nb_levels-2-level))
-        layers_dict[name] = KL.Convolution3D(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
+        layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
         last_layer = layers_dict[name]
 
         # merge layers combining previous layer
         conv_name = 'conv_downarm_%d_%d' % (nb_levels - 2 - level, nb_conv_per_level - 1)
         name = 'merge_%d' % (nb_levels + level)
-        layers_dict[name] = KL.concatenate([layers_dict[conv_name], last_layer], axis=4, name=name)
+        layers_dict[name] = KL.concatenate([layers_dict[conv_name], last_layer], axis=ndims+1, name=name)
         last_layer = layers_dict[name]
 
         for conv in range(nb_conv_per_level):
             name = 'conv_uparm_%d_%d' % (nb_levels + level, conv)
-            layers_dict[name] = KL.Conv3D(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
+            layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
             last_layer = layers_dict[name]
 
     # reshape last layer for prediction
@@ -125,6 +130,10 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     Could use sequential...
     """
 
+    ndims = len(patch_size)
+    convL = KL.Conv3D if np.ndim(patch_size) == 3 else KL.Conv2D
+    maxpool = KL.MaxPooling3D if np.ndim(patch_size) == 3 else KL.MaxPooling2D
+
     # kwargs for the convolution layer
     conv_kwargs = {'padding': padding, 'activation': activation}
 
@@ -142,12 +151,12 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
         for conv in range(nb_conv_per_level):
             name = 'conv_%d_%d' % (level, conv)
             nb_local_features = nb_features*(feat_mult**level)
-            layers_dict[name] = KL.Conv3D(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
+            layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
             last_layer = layers_dict[name]
 
         # max pool
         name = 'maxpool_%d' % level
-        layers_dict[name] = KL.MaxPooling3D(pool_size=pool_size)(last_layer)
+        layers_dict[name] = maxpool(pool_size=pool_size)(last_layer)
         last_layer = layers_dict[name]
 
     # dense layer
