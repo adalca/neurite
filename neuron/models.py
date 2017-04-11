@@ -182,7 +182,7 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
         layers_dict[name] = KL.Dense(nb_labels, name=name)(last_layer)
 
     # global max pooling layer
-    elif final_layer == 'globalmaxpooling':
+    elif final_layer == 'myglobalmaxpooling':
 
         name = 'batch_norm'
         layers_dict[name] = KL.BatchNormalization(name=name)(last_layer)
@@ -200,6 +200,19 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
         name = 'global_max_pool_sigmoid'
         layers_dict[name] = KL.Conv1D(1, 1, name=name, activation="sigmoid", use_bias=True)(last_layer)
 
+    elif final_layer == 'globalmaxpooling':
+
+        name = 'conv_to_2_feats'
+        layers_dict[name] = KL.Conv1D(2, 1, name=name, activation="ReLu")(last_layer)
+        last_layer = layers_dict[name]
+
+        name = 'global_max_pool'
+        layers_dict[name] = KL.GlobalMaxPooling3D(name=name)(last_layer)
+        last_layer = layers_dict[name]
+
+        # cannot do activation in lambda layer. Could code inside, but will do extra lyaer
+        name = 'global_max_pool_sigmoid'
+        layers_dict[name] = KL.Activation('sigmoid', name=name)(last_layer)
 
     last_layer = layers_dict[name]
 
