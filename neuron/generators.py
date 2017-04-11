@@ -7,7 +7,11 @@ import os
 # third party imports
 import numpy as np
 import nibabel as nib
+import scipy
 from keras.utils import np_utils 
+import keras
+import keras.preprocessing
+import keras.preprocessing.image
 
 # local packages
 import pynd.ndutils as nd
@@ -334,6 +338,39 @@ def vol_seg_prior(*args,
             yield (input_vol, [output_vol, prior_batch])
 
 
+def img_seg(volpath,
+            segpath,
+            batch_size=1,
+            verbose_rate=None,
+            name='img_seg', # name, optional
+            ext='.png'):
+    """
+    generator with (image, segmentation)
+    """
+
+    def imggen(path, ext):
+        files = _get_file_list(path, ext)
+        idx = -1
+        while 1:
+            idx = np.mod(idx+1, len(files))
+            im = scipy.misc.imread(os.path.join(path, files[idx]))[:, :, 0]
+            yield im.reshape((1,) + im.shape)
+
+    img_gen = imggen(volpath, ext)
+    seg_gen = imggen(segpath, ext)
+
+    # on next (while):
+    while 1:
+        input_vol = np.vstack([next(img_gen).astype('float16')/255 for i in range(batch_size)])
+        input_vol = np.expand_dims(input_vol, axis=-1)
+
+        output_vols = [np_utils.to_categorical(next(seg_gen).astype('int8'), num_classes=2) for i in range(batch_size)]
+        output_vol = np.vstack([np.expand_dims(f, axis=0) for f in output_vols])
+
+        # output input and output
+        yield (input_vol, output_vol)
+
+
 # Some internal use functions
 
 def _get_file_list(volpath, ext=None):
@@ -359,3 +396,5 @@ def _load_medical_volume(filename, ext):
         raise ValueError("Unexpected extension %s" % ext)
 
     return vol_data
+
+
