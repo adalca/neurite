@@ -9,6 +9,8 @@ import numpy as np
 import keras.layers as KL
 from keras.models import Model, Sequential
 import keras.backend as K
+from keras.constraints import maxnorm
+
 
 
 def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
@@ -25,9 +27,9 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     """
 
     ndims = len(patch_size)
-    convL = KL.Conv3D if np.ndim(patch_size) == 3 else KL.Conv2D
-    maxpool = KL.MaxPooling3D if np.ndim(patch_size) == 3 else KL.MaxPooling2D
-    upsample = KL.UpSampling3D if np.ndim(patch_size) == 3 else KL.UpSampling2D
+    convL = KL.Conv3D if ndims == 3 else KL.Conv2D
+    maxpool = KL.MaxPooling3D if ndims == 3 else KL.MaxPooling2D
+    upsample = KL.UpSampling3D if ndims == 3 else KL.UpSampling2D
 
     # kwargs for the convolution layer
     conv_kwargs = {'padding': padding, 'activation': activation}
@@ -124,6 +126,7 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
                padding='same', activation='relu',
                final_layer='dense',
                conv_dropout=0,
+               conv_maxnorm=0,
                nb_conv_per_level=2):
     """
     "deep" cnn with dense or global max pooling layer @ end...
@@ -132,11 +135,13 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     """
 
     ndims = len(patch_size)
-    convL = KL.Conv3D if np.ndim(patch_size) == 3 else KL.Conv2D
-    maxpool = KL.MaxPooling3D if np.ndim(patch_size) == 3 else KL.MaxPooling2D
+    convL = KL.Conv3D if len(patch_size) == 3 else KL.Conv2D
+    maxpool = KL.MaxPooling3D if len(patch_size) == 3 else KL.MaxPooling2D
 
     # kwargs for the convolution layer
     conv_kwargs = {'padding': padding, 'activation': activation}
+    if conv_maxnorm > 0:
+        conv_kwargs['kernel_constraint'] = maxnorm(conv_maxnorm)
 
     # initialize a dictionary
     layers_dict = {}
