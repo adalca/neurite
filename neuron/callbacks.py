@@ -168,6 +168,7 @@ class PredictMetrics(keras.callbacks.Callback):
                 true_maxlabel = np.argmax(sample[1], -1)
 
                 # crop volumes if required
+                # right now, won't work for batch_sizes > 1
                 if self.crop is not None:
                     pred_maxlabel = np.reshape(np.squeeze(pred_maxlabel), self.vol_size)
                     pred_maxlabel = nd.volcrop(pred_maxlabel, crop=self.crop)
