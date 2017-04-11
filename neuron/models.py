@@ -123,6 +123,7 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
                feat_mult=1, pool_size=(2, 2, 2),
                padding='same', activation='relu',
                final_layer='dense',
+               conv_dropout=False,
                nb_conv_per_level=2):
     """
     "deep" cnn with dense or global max pooling layer @ end...
@@ -149,6 +150,12 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     # add nb_levels of conv + ReLu + conv + ReLu. Pool after each of first nb_levels - 1 layers
     for level in range(nb_levels):
         for conv in range(nb_conv_per_level):
+            
+            if conv_dropout > 0:
+                name = 'dropout_%d_%d' % (level, conv)
+                layers_dict[name] = KL.Dropout(conv_dropout)
+                last_layer = layers_dict[name]
+
             name = 'conv_%d_%d' % (level, conv)
             nb_local_features = nb_features*(feat_mult**level)
             layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
