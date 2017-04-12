@@ -92,7 +92,7 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     if add_prior_layer:
         # likelihood layer
         name = 'likelihood'
-        layers_dict[name] = KL.Conv1D(nb_labels, 1, activation='softmax', name=name)(last_layer)
+        layers_dict[name] = KL.Conv3D(nb_labels, 1, activation='softmax', name=name)(last_layer)
         last_layer = layers_dict[name]
 
         # prior input layer
@@ -202,8 +202,8 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
 
     elif final_layer == 'globalmaxpooling':
 
-        name = 'conv_to_2_feats'
-        layers_dict[name] = KL.Conv1D(2, 1, name=name, activation="ReLu")(last_layer)
+        name = 'conv_to_featmaps'
+        layers_dict[name] = KL.Conv3D(2, 1, name=name, activation="relu")(last_layer)
         last_layer = layers_dict[name]
 
         name = 'global_max_pool'
@@ -211,8 +211,8 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
         last_layer = layers_dict[name]
 
         # cannot do activation in lambda layer. Could code inside, but will do extra lyaer
-        name = 'global_max_pool_sigmoid'
-        layers_dict[name] = KL.Activation('sigmoid', name=name)(last_layer)
+        name = 'global_max_pool_softmax'
+        layers_dict[name] = KL.Activation('softmax', name=name)(last_layer)
 
     last_layer = layers_dict[name]
 

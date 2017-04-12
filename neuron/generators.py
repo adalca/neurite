@@ -268,9 +268,9 @@ def vol_cat(volpaths, # expect two folders in here
             gen = generators[idx]
 
         # for idx, gen in enumerate(generators):
-            z = np.zeros([1, 1, 1]) #1,1,2 for categorical binary style
-            # z[0,0,idx] = 1 #
-            z[0,0,0] = idx
+            z = np.zeros([1, 2]) #1,1,2 for categorical binary style
+            z[0,idx] = 1 #
+            # z[0,0,0] = idx
 
             data = next(gen).astype('float32')
             if bake_data_test and idx == 0:
