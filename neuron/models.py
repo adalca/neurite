@@ -229,7 +229,10 @@ def copy_weights(src_model, dst_model):
     """ copy weights from the src model to the dst model """
 
     for layer in dst_model.layers:
+        print(layer.name)
         layer.set_weights(src_model.get_layer(layer.name).get_weights())
+
+    return dst_model
 
     # seg_model_load = keras.models.load_model('/data/vision/polina/users/adalca/fsCNN/output/unet-prior-v3/hdf5/run_5/model.88-0.00.hdf5', custom_objects={'loss': wcce46})
     # wts46 = seg_model_load.get_layer("likelihood").get_weights()
