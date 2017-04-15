@@ -10,6 +10,7 @@ def slices(slices,              # the 2D slices
            norms=None,          # list of normalizations
            do_colorbars=False,  # option to show colorbars on each slice
            do_grid=False,       # option to plot the images in a grid or a single row
+           width=15,            # width in in
            show=True):          # option to actually show the plot (plt.show())
     ''' plot a grid of slices (2d images) '''
 
@@ -68,7 +69,7 @@ def slices(slices,              # the 2D slices
             fig.colorbar(im_ax, cax=cax)
 
     # show the plots
-    fig.set_size_inches(12, rows/cols*12)
+    fig.set_size_inches(width, rows/cols*width)
     if show:
         plt.show()
 

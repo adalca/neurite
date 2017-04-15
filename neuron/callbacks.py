@@ -183,7 +183,7 @@ class PredictMetrics(keras.callbacks.Callback):
                 filen = self.filepath.format(epoch=epoch, metric=metric.__name__)
                 np.savetxt(filen, met, fmt='%f', delimiter=',')
             else:
-                meanmet = np.mean(met, axis=0)
+                meanmet = np.nanmean(met, axis=0)
                 for idx in range(self.nb_labels):
                     varname = 'dice_label_%d' % self.label_ids[idx]
                     logs[varname] = meanmet[idx]
