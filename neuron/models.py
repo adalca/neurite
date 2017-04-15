@@ -30,7 +30,9 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     convL = KL.Conv3D if ndims == 3 else KL.Conv2D
     maxpool = KL.MaxPooling3D if ndims == 3 else KL.MaxPooling2D
     upsample = KL.UpSampling3D if ndims == 3 else KL.UpSampling2D
+    vol_numel = np.prod(patch_size)
 
+    
     # kwargs for the convolution layer
     conv_kwargs = {'padding': padding, 'activation': activation}
 
@@ -85,14 +87,13 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
 
     # reshape last layer for prediction
     name = 'conv_uparm_%d_%d_reshape' % (2 * nb_levels - 2, nb_conv_per_level - 1)
-    vol_numel = np.prod(patch_size)
     layers_dict[name] = KL.Reshape((vol_numel, nb_features), name=name)(last_layer)
     last_layer = layers_dict[name]
-
+    
     if add_prior_layer:
         # likelihood layer
         name = 'likelihood'
-        layers_dict[name] = KL.Conv3D(nb_labels, 1, activation='softmax', name=name)(last_layer)
+        layers_dict[name] = KL.Conv1D(nb_labels, 1, activation='softmax', name=name)(last_layer)
         last_layer = layers_dict[name]
 
         # prior input layer
@@ -108,6 +109,7 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
         model_inputs = [layers_dict['input'], layers_dict['prior-input']]
 
     else:
+
         # output (liklihood) prediction layer
         name = 'prediction'
         layers_dict[name] = KL.Conv1D(nb_labels, 1, activation='softmax', name=name)(last_layer)
