@@ -220,6 +220,33 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     model = Model(inputs=[layers_dict['input']], outputs=[last_layer])
     return model
 
+
+
+
+def copy_weights(src_model, dst_model):
+    """ copy weights from the src model to the dst model """
+
+    for layer in dst_model.layers:
+        layer.set_weights(src_model.get_layer(layer.name).get_weights())
+
+    # seg_model_load = keras.models.load_model('/data/vision/polina/users/adalca/fsCNN/output/unet-prior-v3/hdf5/run_5/model.88-0.00.hdf5', custom_objects={'loss': wcce46})
+    # wts46 = seg_model_load.get_layer("likelihood").get_weights()
+    # print(wts46[0].shape, wts46[1].shape)
+
+    # for layer in seg_model.layers:
+    #     if layer.name == "likelihood":
+    #         nwts0, nwts1 = seg_model.get_layer("likelihood").get_weights()
+    #         nwts0[:,:,0:19] = wts46[0][:,:,0:19]
+    #         nwts0[:,:,20:] = wts46[0][:,:,19:]
+    #         nwts1[0:19] = wts46[1][0:19]
+    #         nwts1[20:] = wts46[1][19:]
+    #         seg_model.get_layer("likelihood").set_weights((nwts0,nwts1))
+    #     else:
+    #         layer.set_weights(seg_model_load.get_layer(layer.name).get_weights())
+
+    # seg_model.save('/data/vision/polina/users/adalca/fsCNN/output/unet-prior-v3-patches/init-model.hdf5')
+
+
 def _global_max_nd(x):
     y = K.batch_flatten(x)
     return K.max(y, 1, keepdims=True)
