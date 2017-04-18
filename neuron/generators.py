@@ -12,6 +12,7 @@ from keras.utils import np_utils
 import keras
 import keras.preprocessing
 import keras.preprocessing.image
+from keras.models import Model
 
 # local packages
 import pynd.ndutils as nd
@@ -94,7 +95,8 @@ def vol(volpath,
         # split volume into patches if necessary and yield
         if patch_size is not None and all(f is not None for f in patch_size):
             patch_gen = patch(vol_data, patch_size, patch_stride=patch_stride,
-                            nb_labels_reshape=nb_labels_reshape, batch_size=1, infinite=False)
+                              nb_labels_reshape=nb_labels_reshape, batch_size=1,
+                              infinite=False)
         else:
             # reshape output layer as categorical
             if nb_labels_reshape > 1:
@@ -121,8 +123,6 @@ def vol(volpath,
 
         if empty_gen:
             raise ValueError('Patch generator was empty for file %s', volfiles[fileidx])
-
-import time
 
 
 def patch(vol_data,             # the volume
@@ -231,7 +231,7 @@ def vol_seg(volpath,
 def vol_cat(volpaths, # expect two folders in here
             crop=None, resize_shape=None, rescale=None, # processing parameters
             verbose_rate=None,
-            name='vol_seg', # name, optional
+            name='vol_cat', # name, optional
             ext='.npz',
             nb_labels_reshape=-1,
             **kwargs): # named arguments for vol(...), except verbose_rate, data_proc_fn, ext, nb_labels_reshape and name (which this function will control when calling vol()) 
@@ -336,6 +336,46 @@ def vol_seg_prior(*args,
         else:
             assert prior_feed == 'output'
             yield (input_vol, [output_vol, prior_batch])
+
+
+def max_patch_in_vol_cat(volpaths,
+                         patch_size,
+                         patch_stride,
+                         model,
+                         out_layer_name,
+                         name='max_patch_in_vol_cat', # name, optional
+                         **kwargs): # named arguments for vol_cat(...)
+    """
+    given a model by reference
+    goes to the next volume and, given a patch_size, finds
+    the highest prediction of out_layer_name, and yields that patch index to the model
+    """
+
+    # strategy: call vol_cat on full volume
+    vol_cat_gen = vol_cat(volpaths, **kwargs)
+
+    # todo: recompute model
+    tst_model = Model(inputs=model.inputs, outputs=[model.get_layer(out_layer_name).output])
+
+    while 1:
+        # get next volume
+        sample = next(vol_cat_gen)
+        patch_gen = patch(sample[0], patch_size, patch_stride=patch_stride)
+
+        # go through its patches
+        max_resp = -np.infty
+        max_idx = np.nan
+        for ptc, idx in enumerate(patch_gen):
+            # predict
+            res = tst_model.predict(ptc)
+            if res > max_resp:
+                max_resp = res
+                max_idx = idx
+
+        # yield the right patch
+        for ptc, idx in enumerate(patch_gen):
+            if idx == max_idx:
+                yield (ptc, sample[1])
 
 
 def img_seg(volpath,
