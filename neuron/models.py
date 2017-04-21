@@ -15,7 +15,7 @@ from keras.constraints import maxnorm
 
 def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
                 feat_mult=1, pool_size=(2, 2, 2),
-                padding='same', activation='relu',
+                padding='same', activation='relu', use_residuals=False,
                 nb_conv_per_level=2, add_prior_layer=False):
     """
     unet-style model
@@ -47,10 +47,21 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     # down arm:
     # add nb_levels of conv + ReLu + conv + ReLu. Pool after each of first nb_levels - 1 layers
     for level in range(nb_levels):
+        level_init_layer = last_layer
+        nb_local_features = nb_features*(feat_mult**level)
+
         for conv in range(nb_conv_per_level):
             name = 'conv_downarm_%d_%d' % (level, conv)
-            nb_local_features = nb_features*(feat_mult**level)
             layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
+            last_layer = layers_dict[name]
+
+        if use_residuals:
+            convarm_layer = last_layer
+            name = 'expand_down_merge_%d' % (level)
+            layers_dict[name] = convL(nb_local_features, [1, 1, 1], **conv_kwargs, name=name)(level_init_layer)
+            last_layer = layers_dict[name]
+            name = 'res_down_merge_%d' % (level)
+            layers_dict[name] = KL.add([last_layer, convarm_layer], name=name)
             last_layer = layers_dict[name]
 
         # max pool if we're not at the last level
@@ -63,6 +74,7 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     # nb_levels - 1 layers of Deconvolution3D
     #    (approx via up + conv + ReLu) + merge + conv + ReLu + conv + ReLu
     for level in range(nb_levels - 1):
+
         # upsample matching the max pooling layers
         name = 'up_%d' % (nb_levels + level)
         layers_dict[name] = upsample(size=pool_size, name=name)(last_layer)
@@ -83,6 +95,18 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
         for conv in range(nb_conv_per_level):
             name = 'conv_uparm_%d_%d' % (nb_levels + level, conv)
             layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
+            last_layer = layers_dict[name]
+
+        if use_residuals:
+            conv_name = 'upconv_%d' % (nb_levels + level)
+            convarm_layer = last_layer
+
+            name = 'expand_up_merge_%d' % (level)
+            layers_dict[name] = convL(nb_local_features, [1, 1, 1], **conv_kwargs, name=name)(layers_dict[conv_name])
+            last_layer = layers_dict[name]
+
+            name = 'res_up_merge_%d' % (level)
+            layers_dict[name] = KL.add([convarm_layer,last_layer ], name=name)
             last_layer = layers_dict[name]
 
     # reshape last layer for prediction
@@ -228,9 +252,12 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
 def copy_weights(src_model, dst_model):
     """ copy weights from the src model to the dst model """
 
-    for layer in dst_model.layers:
-        print(layer.name)
-        layer.set_weights(src_model.get_layer(layer.name).get_weights())
+    for idx in range(len(dst_model.layers)):
+        layer = dst_model.layers[idx]
+        layer.set_weights(src_model.layers[idx].get_weights())
+
+    # for layer in dst_model.layers:
+    #     layer.set_weights(src_model.get_layer(layer.name).get_weights())
 
     return dst_model
 
