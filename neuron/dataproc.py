@@ -43,10 +43,8 @@ def proc_mgh_vols(inpath, outpath, ext='.mgz',
         # get the data out
         vol_data = volnii.get_data().astype(float)
 
-
         if volnii.header['dim'][4] > 1:
             vol_data = vol_data[:,:,:,-1] 
-
     
         # process volume
         try:
