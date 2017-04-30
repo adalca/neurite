@@ -76,7 +76,7 @@ def vol(volpath,
     while 1:
         fileidx = np.mod(fileidx + 1, nb_restart_cycle)
         if verbose_rate is not None and np.mod(fileidx, verbose_rate) == 0:
-            print("%s fileidx: %d" %(name, fileidx))
+            print("%s fileidx: %d [/%d]" %(name, fileidx, nb_restart_cycle))
 
         # read next file (circular)
         vol_data = _load_medical_volume(os.path.join(volpath, volfiles[fileidx]), ext)
@@ -190,6 +190,7 @@ def vol_seg(volpath,
             verbose_rate=None,
             name='vol_seg', # name, optional
             ext='.npz',
+            nb_restart_cycle=None,  # number of files to restart after
             nb_labels_reshape=-1,
             **kwargs): # named arguments for vol(...), except verbose_rate, data_proc_fn, ext, nb_labels_reshape and name (which this function will control when calling vol()) 
     """
@@ -203,22 +204,22 @@ def vol_seg(volpath,
                                               interp_order=0, rescale=rescale)
 
     # get vol generator
-    vol_gen = vol(volpath, **kwargs, ext=ext,
+    vol_gen = vol(volpath, **kwargs, ext=ext, nb_restart_cycle=nb_restart_cycle,
                   data_proc_fn=proc_vol_fn, nb_labels_reshape=1, name='vol', verbose_rate=None)
 
     # get seg generator, matching nb_files
     vol_files = [f.replace('norm', 'aseg') for f in _get_file_list(volpath, ext)]
     nb_files = len(vol_files)
-    seg_gen = vol(segpath, **kwargs, ext=ext,
+    seg_gen = vol(segpath, **kwargs, ext=ext, nb_restart_cycle=nb_restart_cycle,
                   data_proc_fn=proc_seg_fn, nb_labels_reshape=nb_labels_reshape,
                   expected_files=vol_files, name='seg', verbose_rate=None)
 
     # on next (while):
-    idx = -1
+    idx = -kwargs['batch_size']
     while 1:
-        idx = np.mod(idx + 1, nb_files)
+        idx = np.mod(idx + kwargs['batch_size'], nb_restart_cycle)
         if verbose_rate is not None and np.mod(idx, verbose_rate) == 0:
-            print("%s: %d" %(name, idx))
+            print("%s [vol_seg]: %d [/ %d]" %(name, idx, nb_restart_cycle))
 
         # get input and output (seg) vols
         input_vol = next(vol_gen).astype('float16')
