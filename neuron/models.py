@@ -254,7 +254,10 @@ def copy_weights(src_model, dst_model):
 
     for idx in range(len(dst_model.layers)):
         layer = dst_model.layers[idx]
-        layer.set_weights(src_model.layers[idx].get_weights())
+        print("dst layer", layer)
+        wts = src_model.layers[idx].get_weights()
+        print("src layer", src_model.layers[idx])
+        layer.set_weights(wts)
 
     # for layer in dst_model.layers:
     #     layer.set_weights(src_model.get_layer(layer.name).get_weights())
