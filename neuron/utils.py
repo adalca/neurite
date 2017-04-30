@@ -45,7 +45,7 @@ def gather_model_patch_preds(test_generator, nb_patches, patch_size, nb_labels, 
         argmaxvols = [np.argmax(v, axis=-1) for v in [*models, true]]
 
         # compute the probability of the "true" label
-        label_prob_vols = [prob_of_label(f, argmaxvols[-1]) for f in [*models, true]]
+        label_prob_vols = [prob_of_label(f, argmaxvols[-1]) for f in [*preds, true]]
 
         # append patch
         imgs.append(sample[0][0])
@@ -77,7 +77,7 @@ def prob_of_label(vol, labelvol):
 
     # check dimensions
     ndims = np.ndim(labelvol)
-    assert np.ndim(vol) == ndims + 1, "dimensions do not match"
+    assert np.ndim(vol) == ndims + 1, "vol dimensions do not match [%d] vs [%d]" % (np.ndim(vol)-1, ndims)
     shp = vol.shape
     nb_voxels = np.prod(shp[0:ndims])
     nb_labels = shp[-1]

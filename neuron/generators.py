@@ -24,6 +24,7 @@ reload(pl)
 
 # other neuron (this project) packages
 from . import dataproc as nrn_proc
+from . import models as nrn_models
 
 
 
@@ -61,7 +62,8 @@ def vol(volpath,
     if nb_restart_cycle is None:
         nb_restart_cycle = nb_files * nb_patches_per_vol
 
-    assert nb_restart_cycle <= (nb_files * nb_patches_per_vol), 'restart cycle (%s) too big (%s)' % (nb_restart_cycle, nb_files * nb_patches_per_vol)
+    assert nb_restart_cycle <= (nb_files * nb_patches_per_vol), \
+        '%s restart cycle (%s) too big (%s) in %s' % (name, nb_restart_cycle, nb_files * nb_patches_per_vol, volpath)
 
     # check the number of files matches expected (if passed)
     if expected_nb_files >= 0:
@@ -76,7 +78,7 @@ def vol(volpath,
     while 1:
         fileidx = np.mod(fileidx + 1, nb_restart_cycle)
         if verbose_rate is not None and np.mod(fileidx, verbose_rate) == 0:
-            print("%s fileidx: %d" %(name, fileidx))
+            print("%s fileidx: %d [/%d]" %(name, fileidx, nb_restart_cycle))
 
         # read next file (circular)
         vol_data = _load_medical_volume(os.path.join(volpath, volfiles[fileidx]), ext)
@@ -190,6 +192,7 @@ def vol_seg(volpath,
             verbose_rate=None,
             name='vol_seg', # name, optional
             ext='.npz',
+            nb_restart_cycle=None,  # number of files to restart after
             nb_labels_reshape=-1,
             **kwargs): # named arguments for vol(...), except verbose_rate, data_proc_fn, ext, nb_labels_reshape and name (which this function will control when calling vol()) 
     """
@@ -203,22 +206,22 @@ def vol_seg(volpath,
                                               interp_order=0, rescale=rescale)
 
     # get vol generator
-    vol_gen = vol(volpath, **kwargs, ext=ext,
+    vol_gen = vol(volpath, **kwargs, ext=ext, nb_restart_cycle=nb_restart_cycle,
                   data_proc_fn=proc_vol_fn, nb_labels_reshape=1, name='vol', verbose_rate=None)
 
     # get seg generator, matching nb_files
     vol_files = [f.replace('norm', 'aseg') for f in _get_file_list(volpath, ext)]
     nb_files = len(vol_files)
-    seg_gen = vol(segpath, **kwargs, ext=ext,
+    seg_gen = vol(segpath, **kwargs, ext=ext, nb_restart_cycle=nb_restart_cycle,
                   data_proc_fn=proc_seg_fn, nb_labels_reshape=nb_labels_reshape,
                   expected_files=vol_files, name='seg', verbose_rate=None)
 
     # on next (while):
-    idx = -1
+    idx = -kwargs['batch_size']
     while 1:
-        idx = np.mod(idx + 1, nb_files)
+        idx = np.mod(idx + kwargs['batch_size'], nb_restart_cycle)
         if verbose_rate is not None and np.mod(idx, verbose_rate) == 0:
-            print("%s: %d" %(name, idx))
+            print("%s [vol_seg]: %d [/ %d]" %(name, idx, nb_restart_cycle))
 
         # get input and output (seg) vols
         input_vol = next(vol_gen).astype('float16')
@@ -342,40 +345,53 @@ def max_patch_in_vol_cat(volpaths,
                          patch_size,
                          patch_stride,
                          model,
-                         out_layer_name,
+                         tst_model,
+                         out_layer,
                          name='max_patch_in_vol_cat', # name, optional
                          **kwargs): # named arguments for vol_cat(...)
     """
     given a model by reference
     goes to the next volume and, given a patch_size, finds
     the highest prediction of out_layer_name, and yields that patch index to the model
+
+    TODO: this doesn't work if called while training, something about running through the graph
+    perhaps need to do a different tf session?
     """
 
     # strategy: call vol_cat on full volume
     vol_cat_gen = vol_cat(volpaths, **kwargs)
 
-    # todo: recompute model
-    tst_model = Model(inputs=model.inputs, outputs=[model.get_layer(out_layer_name).output])
+    # need to make a deep copy:
+    #model_tmp = Model(inputs=model.inputs, outputs=model.get_layer(out_layer).output)
+    # nrn_models.copy_weights(model_tmp, tst_model)
+    #nrn_models.copy_weights(tst_model, tst_model)
+    #asdasd
+    tst_model = model
 
     while 1:
         # get next volume
-        sample = next(vol_cat_gen)
-        patch_gen = patch(sample[0], patch_size, patch_stride=patch_stride)
+        try:
+            sample = next(vol_cat_gen)
+        except:
+            print("Failed loading file. Skipping", file=sys.stderr)
+            continue
+        sample_vol = np.squeeze(sample[0])
+        patch_gen = patch(sample_vol, patch_size, patch_stride=patch_stride)
 
         # go through its patches
         max_resp = -np.infty
         max_idx = np.nan
-        for ptc, idx in enumerate(patch_gen):
+        max_out = None
+        for idx, ptc in enumerate(patch_gen):
             # predict
-            res = tst_model.predict(ptc)
+            res = np.squeeze(tst_model.predict(ptc))[1]
             if res > max_resp:
-                max_resp = res
+                max_ptc = ptc
+                max_out = sample[1]
                 max_idx = idx
 
         # yield the right patch
-        for ptc, idx in enumerate(patch_gen):
-            if idx == max_idx:
-                yield (ptc, sample[1])
+        yield (max_ptc, max_out)
 
 
 def img_seg(volpath,
