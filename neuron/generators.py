@@ -24,6 +24,7 @@ reload(pl)
 
 # other neuron (this project) packages
 from . import dataproc as nrn_proc
+from . import models as nrn_models
 
 
 
@@ -61,7 +62,8 @@ def vol(volpath,
     if nb_restart_cycle is None:
         nb_restart_cycle = nb_files * nb_patches_per_vol
 
-    assert nb_restart_cycle <= (nb_files * nb_patches_per_vol), 'restart cycle (%s) too big (%s)' % (nb_restart_cycle, nb_files * nb_patches_per_vol)
+    assert nb_restart_cycle <= (nb_files * nb_patches_per_vol), \
+        '%s restart cycle (%s) too big (%s) in %s' % (name, nb_restart_cycle, nb_files * nb_patches_per_vol, volpath)
 
     # check the number of files matches expected (if passed)
     if expected_nb_files >= 0:
@@ -342,40 +344,53 @@ def max_patch_in_vol_cat(volpaths,
                          patch_size,
                          patch_stride,
                          model,
-                         out_layer_name,
+                         tst_model,
+                         out_layer,
                          name='max_patch_in_vol_cat', # name, optional
                          **kwargs): # named arguments for vol_cat(...)
     """
     given a model by reference
     goes to the next volume and, given a patch_size, finds
     the highest prediction of out_layer_name, and yields that patch index to the model
+
+    TODO: this doesn't work if called while training, something about running through the graph
+    perhaps need to do a different tf session?
     """
 
     # strategy: call vol_cat on full volume
     vol_cat_gen = vol_cat(volpaths, **kwargs)
 
-    # todo: recompute model
-    tst_model = Model(inputs=model.inputs, outputs=[model.get_layer(out_layer_name).output])
+    # need to make a deep copy:
+    #model_tmp = Model(inputs=model.inputs, outputs=model.get_layer(out_layer).output)
+    # nrn_models.copy_weights(model_tmp, tst_model)
+    #nrn_models.copy_weights(tst_model, tst_model)
+    #asdasd
+    tst_model = model
 
     while 1:
         # get next volume
-        sample = next(vol_cat_gen)
-        patch_gen = patch(sample[0], patch_size, patch_stride=patch_stride)
+        try:
+            sample = next(vol_cat_gen)
+        except:
+            print("Failed loading file. Skipping", file=sys.stderr)
+            continue
+        sample_vol = np.squeeze(sample[0])
+        patch_gen = patch(sample_vol, patch_size, patch_stride=patch_stride)
 
         # go through its patches
         max_resp = -np.infty
         max_idx = np.nan
-        for ptc, idx in enumerate(patch_gen):
+        max_out = None
+        for idx, ptc in enumerate(patch_gen):
             # predict
-            res = tst_model.predict(ptc)
+            res = np.squeeze(tst_model.predict(ptc))[1]
             if res > max_resp:
-                max_resp = res
+                max_ptc = ptc
+                max_out = sample[1]
                 max_idx = idx
 
         # yield the right patch
-        for ptc, idx in enumerate(patch_gen):
-            if idx == max_idx:
-                yield (ptc, sample[1])
+        yield (max_ptc, max_out)
 
 
 def img_seg(volpath,
