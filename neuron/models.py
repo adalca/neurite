@@ -15,6 +15,7 @@ from keras.constraints import maxnorm
 
 def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
                 feat_mult=1, pool_size=(2, 2, 2),
+                use_logp=False,
                 padding='same', activation='relu', use_residuals=False,
                 nb_conv_per_level=2, add_prior_layer=False):
     """
@@ -127,8 +128,17 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
         layers_dict[name] = KL.Reshape((vol_numel, nb_labels), name=name)(layers_dict['prior-input'])
 
         # final prediction
-        name = 'prediction'
-        layers_dict[name] = KL.multiply([layers_dict['prior-input-reshape'], layers_dict['likelihood']])
+        
+        if use_logp:
+            assert False, 'UNFINISHED'
+            name = 'log-prediction'
+            layers_dict[name] = KL.add([layers_dict['prior-input-reshape'], layers_dict['likelihood']])
+            name = 'prediction'
+            # layers_dict[name] = ...
+ 
+        else:
+            name = 'prediction'
+            layers_dict[name] = KL.multiply([layers_dict['prior-input-reshape'], layers_dict['likelihood']])
 
         model_inputs = [layers_dict['input'], layers_dict['prior-input']]
 
@@ -285,3 +295,10 @@ def copy_weights(src_model, dst_model):
 def _global_max_nd(x):
     y = K.batch_flatten(x)
     return K.max(y, 1, keepdims=True)
+
+
+def _log_layer(x):
+    return K.log(x + K.epsilon)
+
+def _global_max_nd(x):
+    return K.exp(x)
