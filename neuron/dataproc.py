@@ -10,6 +10,7 @@ import nibabel as nib
 import numpy as np
 import scipy.ndimage.interpolation
 from tqdm import tqdm # for verbosity for forloops
+from PIL import Image
 
 # import local ndutils
 import pynd.ndutils as nd
@@ -18,8 +19,8 @@ import pynd.ndutils as nd
 # reload(nd)
 
 
-def proc_mgh_vols(inpath, outpath, ext='.mgz',
-                  resize_shape=None, interp_order=2, rescale=None, crop=None, offset=None, clip=None):
+def proc_mgh_vols(inpath, outpath, ext='.mgz', resize_shape=None,
+                  interp_order=2, rescale=None, crop=None, offset=None, clip=None):
     ''' process mgh data from mgz format and save to numpy format
 
         1. load file
@@ -44,12 +45,13 @@ def proc_mgh_vols(inpath, outpath, ext='.mgz',
         vol_data = volnii.get_data().astype(float)
 
         if volnii.header['dim'][4] > 1:
-            vol_data = vol_data[:,:,:,-1] 
-    
+            vol_data = vol_data[:, :, :, -1]
+
         # process volume
         try:
             vol_data = vol_proc(vol_data, crop=crop, resize_shape=resize_shape,
-                            interp_order=interp_order, rescale=rescale, offset=offset, clip=clip)
+                                interp_order=interp_order, rescale=rescale,
+                                offset=offset, clip=clip)
         except Exception as e:
             list_skipped_files += (files[fileidx], )
             # print("Skipping %s\nError: %s" % (files[fileidx], str(e)), file=sys.stderr)
@@ -59,9 +61,50 @@ def proc_mgh_vols(inpath, outpath, ext='.mgz',
         outname = os.path.splitext(os.path.join(outpath, files[fileidx]))[0] + '.npz'
         np.savez_compressed(outname, vol_data=vol_data)
 
-    for file in list_skipped_files:    
-        print("Skipped: %s" % file)     
+    for file in list_skipped_files:
+        print("Skipped: %s" % file, file=sys.stderr)
 
+
+def scans_to_slices(inpath, outpath, slice_nr, ext='.mgz', label_idx=None, resize_shape=None,
+                    interp_order=2, rescale=None, crop=None, offset=None, clip=None):
+
+    # get files in input directory
+    files = [f for f in os.listdir(inpath) if f.endswith(ext)]
+
+    # go through each file
+    list_skipped_files = ()
+    for fileidx in tqdm(range(len(files)), ncols=80):
+
+        # load nifti volume
+        volnii = nib.load(os.path.join(inpath, files[fileidx]))
+
+        # get the data out
+        vol_data = volnii.get_data().astype(float)
+
+        
+        if ('dim' in volnii.header) and volnii.header['dim'][4] > 1:
+            vol_data = vol_data[:, :, :, -1]
+
+        # process volume
+        try:
+            vol_data = vol_proc(vol_data, crop=crop, resize_shape=resize_shape,
+                                interp_order=interp_order, rescale=rescale,
+                                offset=offset, clip=clip)
+        except Exception as e:
+            list_skipped_files += (files[fileidx], )
+            # print("Skipping %s\nError: %s" % (files[fileidx], str(e)), file=sys.stderr)
+            continue
+            
+        if label_idx is not None:
+            vol_data = (vol_data == label_idx).astype(int)
+
+        # extract slice
+        vol_data = np.squeeze(vol_data[:, :, slice_nr])
+
+        # save png file
+        img = (vol_data*255).astype('uint8')
+        outname = os.path.splitext(os.path.join(outpath, files[fileidx]))[0] + '.png'
+        Image.fromarray(img).convert('RGB').save(outname)
 
 def vol_proc(vol_data,
              crop=None,
