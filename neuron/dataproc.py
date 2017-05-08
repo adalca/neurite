@@ -65,7 +65,7 @@ def proc_mgh_vols(inpath, outpath, ext='.mgz', resize_shape=None,
         print("Skipped: %s" % file, file=sys.stderr)
 
 
-def scans_to_slices(inpath, outpath, slice_nr, ext='.mgz', label_idx=None, resize_shape=None,
+def scans_to_slices(inpath, outpath, slice_nrs, ext='.mgz', label_idx=None, resize_shape=None,
                     interp_order=2, rescale=None, crop=None, offset=None, clip=None):
 
     # get files in input directory
@@ -100,12 +100,13 @@ def scans_to_slices(inpath, outpath, slice_nr, ext='.mgz', label_idx=None, resiz
             mult_fact = 1
 
         # extract slice
-        vol_data = np.squeeze(vol_data[:, :, slice_nr])
+        for slice_nr in slice_nrs:
+            vol_data = np.squeeze(vol_data[:, :, slice_nrs])
 
-        # save png file
-        img = (vol_data*mult_fact).astype('uint8')
-        outname = os.path.splitext(os.path.join(outpath, files[fileidx]))[0] + '.png'
-        Image.fromarray(img).convert('RGB').save(outname)
+            # save png file
+            img = (vol_data*mult_fact).astype('uint8')
+            outname = os.path.splitext(os.path.join(outpath, files[fileidx]))[0] + '_slice%d.png' % slice_nr
+            Image.fromarray(img).convert('RGB').save(outname)
 
 def vol_proc(vol_data,
              crop=None,
