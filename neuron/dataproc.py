@@ -100,6 +100,9 @@ def scans_to_slices(inpath, outpath, slice_nrs, ext='.mgz', label_idx=None, resi
             mult_fact = 1
 
         # extract slice
+        if slice_nrs is None:
+            slice_nrs = range(vol_size.shape[-1])
+
         for slice_nr in slice_nrs:
             vol_data = np.squeeze(vol_data[:, :, slice_nrs])
 
