@@ -114,7 +114,7 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     name = 'conv_uparm_%d_%d_reshape' % (2 * nb_levels - 2, nb_conv_per_level - 1)
     layers_dict[name] = KL.Reshape((vol_numel, nb_features), name=name)(last_layer)
     last_layer = layers_dict[name]
-    
+
     if add_prior_layer:
         # likelihood layer
         name = 'likelihood'
@@ -128,14 +128,13 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
         layers_dict[name] = KL.Reshape((vol_numel, nb_labels), name=name)(layers_dict['prior-input'])
 
         # final prediction
-        
         if use_logp:
             assert False, 'UNFINISHED'
             name = 'log-prediction'
             layers_dict[name] = KL.add([layers_dict['prior-input-reshape'], layers_dict['likelihood']])
             name = 'prediction'
             # layers_dict[name] = ...
- 
+
         else:
             name = 'prediction'
             layers_dict[name] = KL.multiply([layers_dict['prior-input-reshape'], layers_dict['likelihood']])
