@@ -65,8 +65,8 @@ def proc_mgh_vols(inpath, outpath, ext='.mgz', resize_shape=None,
         print("Skipped: %s" % file, file=sys.stderr)
 
 
-def scans_to_slices(inpath, outpath, slice_nrs, ext='.mgz', label_idx=None, resize_shape=None,
-                    interp_order=2, rescale=None, crop=None, offset=None, clip=None):
+def scans_to_slices(inpath, outpath, slice_nrs, ext='.mgz', label_idx=None, resize_shape=None, rescale_prctle=None,
+                    interp_order=2, rescale=None, crop=None, offset=None, clip=None, dim_idx=2):
 
     # get files in input directory
     files = [f for f in os.listdir(inpath) if f.endswith(ext)]
@@ -87,11 +87,11 @@ def scans_to_slices(inpath, outpath, slice_nrs, ext='.mgz', label_idx=None, resi
         # process volume
         try:
             vol_data = vol_proc(vol_data, crop=crop, resize_shape=resize_shape,
-                                interp_order=interp_order, rescale=rescale,
+                                interp_order=interp_order, rescale=rescale, rescale_prctle=rescale_prctle, 
                                 offset=offset, clip=clip)
         except Exception as e:
             list_skipped_files += (files[fileidx], )
-            # print("Skipping %s\nError: %s" % (files[fileidx], str(e)), file=sys.stderr)
+            print("Skipping %s\nError: %s" % (files[fileidx], str(e)), file=sys.stderr)
             continue
             
         mult_fact = 255
@@ -101,25 +101,38 @@ def scans_to_slices(inpath, outpath, slice_nrs, ext='.mgz', label_idx=None, resi
 
         # extract slice
         if slice_nrs is None:
-            slice_nrs = range(vol_size.shape[-1])
+            slice_nrs_sel = range(vol_data.shape[dim_idx])
+        else:
+            slice_nrs_sel = slice_nrs
 
-        for slice_nr in slice_nrs:
-            vol_data = np.squeeze(vol_data[:, :, slice_nrs])
-
+        for slice_nr in slice_nrs_sel:
+            if dim_idx == 2:  # TODO: fix in one line
+                vol_img = np.squeeze(vol_data[:, :, slice_nr])
+            elif dim_idx == 1:
+                vol_img = np.squeeze(vol_data[:, slice_nr, :])
+            else:
+                vol_img = np.squeeze(vol_data[slice_nr, :, :])
+           
             # save png file
-            img = (vol_data*mult_fact).astype('uint8')
+            img = (vol_img*mult_fact).astype('uint8')
             outname = os.path.splitext(os.path.join(outpath, files[fileidx]))[0] + '_slice%d.png' % slice_nr
             Image.fromarray(img).convert('RGB').save(outname)
+
 
 def vol_proc(vol_data,
              crop=None,
              resize_shape=None, # None (to not resize), or vector. If vector, third entry can be None
              interp_order=None,
              rescale=None,
+             rescale_prctle=None,
              offset=None,
              clip=None,
              permute=None):
     ''' process a volume with a series of intensity rescale, resize and crop rescale'''
+
+
+    resize_shape = [f for f in resize_shape]
+
 
     if offset is not None:
         vol_data = vol_data + offset
@@ -127,6 +140,13 @@ def vol_proc(vol_data,
     # intensity normalize data .* rescale
     if rescale is not None:
         vol_data = np.multiply(vol_data, rescale)
+
+    if rescale_prctle is not None:
+        # print("max:", np.max(vol_data.flat))
+        # print("test")
+        rescale = np.percentile(vol_data.flat, rescale_prctle)
+        # print("rescaling by 1/%f" % (rescale))
+        vol_data = np.multiply(vol_data.astype(float), 1/rescale)
 
     if clip is not None:
         vol_data = np.clip(vol_data, clip[0], clip[1])
@@ -137,7 +157,6 @@ def vol_proc(vol_data,
         if resize_shape[-1] is None:
             resize_ratio = np.divide(resize_shape[0], vol_data.shape[0])
             resize_shape[-1] = np.round(resize_ratio * vol_data.shape[-1]).astype('int')
-
         resize_ratio = np.divide(resize_shape, vol_data.shape)
         vol_data = scipy.ndimage.interpolation.zoom(vol_data, resize_ratio, order=interp_order)
 
@@ -145,6 +164,7 @@ def vol_proc(vol_data,
     if crop is not None:
         vol_data = nd.volcrop(vol_data, crop=crop)
 
+   
     return vol_data
 
 
