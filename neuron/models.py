@@ -15,7 +15,7 @@ from keras.constraints import maxnorm
 
 def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
                 feat_mult=1, pool_size=(2, 2, 2),
-                use_logp=False,
+                use_logp=False, nb_input_features=1,
                 padding='same', activation='relu', use_residuals=False,
                 nb_conv_per_level=2, add_prior_layer=False):
     """
@@ -42,7 +42,7 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
 
     # first layer: input
     name = 'input'
-    layers_dict[name] = KL.Input(shape=patch_size + (1,), name=name)
+    layers_dict[name] = KL.Input(shape=patch_size + (nb_input_features,), name=name)
     last_layer = layers_dict[name]
 
     # down arm:
@@ -152,7 +152,7 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
 
     # create the model
     model = Model(inputs=model_inputs, outputs=[layers_dict['prediction']])
-
+    
     # compile
     return model
 
