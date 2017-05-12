@@ -36,7 +36,8 @@ class CategoricalCrossentropy(object):
         model.compile(loss=loss, optimizer='adam')
     """
 
-    def __init__(self, weights=None, prior=None, use_float16=False, 
+    def __init__(self, weights=None, prior=None, use_float16=False,
+                 crop=None,
                  use_sep_prior=False, patch_size=None, patch_stride=1,
                  batch_size=1):
         self.use_float16 = use_float16
@@ -59,12 +60,15 @@ class CategoricalCrossentropy(object):
             nb_channels = prior.shape[3]
 
             prior_gen = nrn_gen.patch(loc_vol, patch_size + (nb_channels,),
-                    patch_stride=patch_stride, batch_size=batch_size, infinite=True)
+                                      patch_stride=patch_stride, batch_size=batch_size,
+                                      infinite=True)
             # prior = np.expand_dims(loc_vol, axis=0)  # reshape for keras model
 
             self.log_prior = prior_gen
         else:
             self.log_prior = None
+        
+        self.crop = crop
 
     def loss(self, y_true, y_pred):
         """ categorical crossentropy loss """

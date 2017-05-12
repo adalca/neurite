@@ -48,6 +48,8 @@ def vol(volpath,
 
     simple volume generator that loads a volume (via npy/mgz/nii/niigz), processes it,
     and prepares it for keras model formats
+
+    if a patch size is passed, breaks the volume into patches and generates those
     """
 
     # get filenames at given paths
@@ -407,7 +409,7 @@ def img_seg(volpath,
             name='img_seg', # name, optional
             ext='.png'):
     """
-    generator with (image, segmentation)
+    generator for (image, segmentation) 
     """
 
     def imggen(path, ext):

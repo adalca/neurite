@@ -44,7 +44,7 @@ def proc_mgh_vols(inpath, outpath, ext='.mgz', resize_shape=None,
         # get the data out
         vol_data = volnii.get_data().astype(float)
 
-        if volnii.header['dim'][4] > 1:
+        if ('dim' in volnii.header) and volnii.header['dim'][4] > 1:
             vol_data = vol_data[:, :, :, -1]
 
         # process volume
@@ -65,7 +65,7 @@ def proc_mgh_vols(inpath, outpath, ext='.mgz', resize_shape=None,
         print("Skipped: %s" % file, file=sys.stderr)
 
 
-def scans_to_slices(inpath, outpath, slice_nr, ext='.mgz', label_idx=None, resize_shape=None,
+def scans_to_slices(inpath, outpath, slice_nrs, ext='.mgz', label_idx=None, resize_shape=None,
                     interp_order=2, rescale=None, crop=None, offset=None, clip=None):
 
     # get files in input directory
@@ -81,7 +81,6 @@ def scans_to_slices(inpath, outpath, slice_nr, ext='.mgz', label_idx=None, resiz
         # get the data out
         vol_data = volnii.get_data().astype(float)
 
-        
         if ('dim' in volnii.header) and volnii.header['dim'][4] > 1:
             vol_data = vol_data[:, :, :, -1]
 
@@ -95,16 +94,22 @@ def scans_to_slices(inpath, outpath, slice_nr, ext='.mgz', label_idx=None, resiz
             # print("Skipping %s\nError: %s" % (files[fileidx], str(e)), file=sys.stderr)
             continue
             
+        mult_fact = 255
         if label_idx is not None:
             vol_data = (vol_data == label_idx).astype(int)
+            mult_fact = 1
 
         # extract slice
-        vol_data = np.squeeze(vol_data[:, :, slice_nr])
+        if slice_nrs is None:
+            slice_nrs = range(vol_size.shape[-1])
 
-        # save png file
-        img = (vol_data*255).astype('uint8')
-        outname = os.path.splitext(os.path.join(outpath, files[fileidx]))[0] + '.png'
-        Image.fromarray(img).convert('RGB').save(outname)
+        for slice_nr in slice_nrs:
+            vol_data = np.squeeze(vol_data[:, :, slice_nrs])
+
+            # save png file
+            img = (vol_data*mult_fact).astype('uint8')
+            outname = os.path.splitext(os.path.join(outpath, files[fileidx]))[0] + '_slice%d.png' % slice_nr
+            Image.fromarray(img).convert('RGB').save(outname)
 
 def vol_proc(vol_data,
              crop=None,
@@ -112,7 +117,8 @@ def vol_proc(vol_data,
              interp_order=None,
              rescale=None,
              offset=None,
-             clip=None):
+             clip=None,
+             permute=None):
     ''' process a volume with a series of intensity rescale, resize and crop rescale'''
 
     if offset is not None:
