@@ -168,7 +168,7 @@ def vol_proc(vol_data,
     return vol_data
 
 
-def prior_to_weights(prior_filename, nargout=1):
+def prior_to_weights(prior_filename, nargout=1, class_freq_add=0):
     ''' transform a 4D prior (3D + nb_labels) into a class weight vector '''
 
     # load prior
@@ -180,8 +180,11 @@ def prior_to_weights(prior_filename, nargout=1):
     prior_flat = np.reshape(prior, (np.prod(prior.shape[0:3]), prior.shape[-1]))
 
     # sum total class votes
-    class_count = np.sum(prior_flat, 0)
+    class_count = np.sum(prior_flat, 0) + class_freq_add
     class_prior = class_count / np.sum(class_count)
+    if np.any(class_prior == 0):
+        print("Warning, found a label with 0 support. Setting its weight to 0!", file=sys.stderr)
+        class_prior[class_prior == 0] = np.inf
 
     # compute weights from class frequencies
     weights = 1/class_prior
