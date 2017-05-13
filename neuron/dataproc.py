@@ -65,8 +65,9 @@ def proc_mgh_vols(inpath, outpath, ext='.mgz', resize_shape=None,
         print("Skipped: %s" % file, file=sys.stderr)
 
 
-def scans_to_slices(inpath, outpath, slice_nrs, ext='.mgz', label_idx=None, resize_shape=None, rescale_prctle=None,
-                    interp_order=2, rescale=None, crop=None, offset=None, clip=None, dim_idx=2):
+def scans_to_slices(inpath, outpath, slice_nrs, ext='.mgz', 
+                    label_idx=None, dim_idx=2, 
+                    **kwargs):  # vol_proc args
 
     # get files in input directory
     files = [f for f in os.listdir(inpath) if f.endswith(ext)]
@@ -86,9 +87,7 @@ def scans_to_slices(inpath, outpath, slice_nrs, ext='.mgz', label_idx=None, resi
 
         # process volume
         try:
-            vol_data = vol_proc(vol_data, crop=crop, resize_shape=resize_shape,
-                                interp_order=interp_order, rescale=rescale, rescale_prctle=rescale_prctle, 
-                                offset=offset, clip=clip)
+            vol_data = vol_proc(vol_data, **kwargs)
         except Exception as e:
             list_skipped_files += (files[fileidx], )
             print("Skipping %s\nError: %s" % (files[fileidx], str(e)), file=sys.stderr)
@@ -125,14 +124,12 @@ def vol_proc(vol_data,
              interp_order=None,
              rescale=None,
              rescale_prctle=None,
+             resize_slices=None,
+             resize_slices_dim=None,
              offset=None,
              clip=None,
              permute=None):
     ''' process a volume with a series of intensity rescale, resize and crop rescale'''
-
-
-    resize_shape = [f for f in resize_shape]
-
 
     if offset is not None:
         vol_data = vol_data + offset
@@ -148,11 +145,19 @@ def vol_proc(vol_data,
         # print("rescaling by 1/%f" % (rescale))
         vol_data = np.multiply(vol_data.astype(float), 1/rescale)
 
-    if clip is not None:
-        vol_data = np.clip(vol_data, clip[0], clip[1])
+    if resize_slices is not None:
+        resize_slices = [*resize_slices]
+        assert resize_shape is None, "if resize_slices is given, resize_shape has to be None"
+        resize_shape = resize_slices
+        if resize_slices_dim is None:
+            resize_slices_dim = np.where([f is None for f in resize_slices])[0]
+            assert len(resize_slices_dim) == 1, "Could not find dimension or slice resize"
+            resize_slices_dim = resize_slices_dim[0]
+        resize_shape[resize_slices_dim] = vol_data.shape[resize_slices_dim]
 
     # resize (downsample) matrices
     if resize_shape is not None and resize_shape != vol_data.shape:
+        resize_shape = [*resize_shape]
         # allow for the last entry to be None
         if resize_shape[-1] is None:
             resize_ratio = np.divide(resize_shape[0], vol_data.shape[0])
@@ -164,7 +169,15 @@ def vol_proc(vol_data,
     if crop is not None:
         vol_data = nd.volcrop(vol_data, crop=crop)
 
+    # needs to be last to guarantee clip limits. 
+    # For e.g., resize might screw this up due to bicubic interpolation if it was done after.
+    if clip is not None:
+        vol_data = np.clip(vol_data, clip[0], clip[1])
    
+    # return with checks
+    if clip is not None:
+        assert np.max(vol_data) <= clip[1], "clip failed"
+        assert np.min(vol_data) >= clip[0], "clip failed"
     return vol_data
 
 
