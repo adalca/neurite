@@ -453,21 +453,24 @@ def img_seg(volpath,
             segpath,
             batch_size=1,
             verbose=False,
+            nb_restart_cycle=None,
             name='img_seg', # name, optional
             ext='.png'):
     """
     generator for (image, segmentation) 
     """
 
-    def imggen(path, ext):
+    def imggen(path, ext, nb_restart_cycle=None):
         files = _get_file_list(path, ext)
+        if nb_restart_cycle is None:
+            nb_restart_cycle = len(files)
         idx = -1
         while 1:
-            idx = np.mod(idx+1, len(files))
+            idx = np.mod(idx+1, nb_restart_cycle)
             im = scipy.misc.imread(os.path.join(path, files[idx]))[:, :, 0]
             yield im.reshape((1,) + im.shape)
 
-    img_gen = imggen(volpath, ext)
+    img_gen = imggen(volpath, ext, nb_restart_cycle)
     seg_gen = imggen(segpath, ext)
 
     # on next (while):
