@@ -116,9 +116,11 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     last_layer = layers_dict[name]
 
     if add_prior_layer:
+
         # likelihood layer
         name = 'likelihood'
-        layers_dict[name] = KL.Conv1D(nb_labels, 1, activation='softmax', name=name)(last_layer)
+        act = None if use_logp else 'softmax'
+        layers_dict[name] = KL.Conv1D(nb_labels, 1, activation=act, name=name)(last_layer)
         last_layer = layers_dict[name]
 
         # prior input layer
@@ -129,11 +131,19 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
 
         # final prediction
         if use_logp:
-            assert False, 'UNFINISHED'
+            # log of prior
+            name = 'prior-log'
+            layers_dict[name] = KL.Lambda(_log_layer, name=name)(layers_dict['prior-input-reshape'])
+            last_layer = layers_dict[name]
+
+            # compute log prediction
             name = 'log-prediction'
-            layers_dict[name] = KL.add([layers_dict['prior-input-reshape'], layers_dict['likelihood']])
+            layers_dict[name] = KL.add([layers_dict['prior-log'], layers_dict['likelihood']])
+            last_layer = layers_dict[name]
+
             name = 'prediction'
-            # layers_dict[name] = ...
+            layers_dict[name] = KL.Conv1D(nb_labels, 1, activation='softmax', name=name)(last_layer)
+            last_layer = layers_dict[name]
 
         else:
             name = 'prediction'
@@ -263,9 +273,7 @@ def copy_weights(src_model, dst_model):
 
     for idx in range(len(dst_model.layers)):
         layer = dst_model.layers[idx]
-        print("dst layer", layer)
         wts = src_model.layers[idx].get_weights()
-        print("src layer", src_model.layers[idx])
         layer.set_weights(wts)
 
     # for layer in dst_model.layers:
@@ -297,7 +305,7 @@ def _global_max_nd(x):
 
 
 def _log_layer(x):
-    return K.log(x + K.epsilon)
+    return K.log(x + K.epsilon())
 
 def _global_max_nd(x):
     return K.exp(x)
