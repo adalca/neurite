@@ -110,6 +110,7 @@ class ModelCheckpoint(keras.callbacks.Callback):
         self.current_epoch = epoch
 
     def on_model_save(self, epoch, iter, logs=None):
+        print("save callback")
         logs = logs or {}
         self.steps_since_last_save += 1
         if self.steps_since_last_save >= self.period:
@@ -172,16 +173,17 @@ class PlotTestSlices(keras.callbacks.Callback):
             loc_vol = data['prior']
             self.prior = np.expand_dims(loc_vol, axis=0) # reshape for model
 
-    def on_batch_end(self, batch, logs=None):
+    def on_batch_end(self, batch, logs={}):
         if self.at_batch_end is not None and np.mod(batch + 1, self.at_batch_end) == 0:
             self.on_plot_save(self.current_epoch, batch + 1, logs=logs)
 
-    def on_epoch_end(self, epoch, logs=None):
+    def on_epoch_end(self, epoch, logs={}):
         if self.at_epoch_end:
             self.on_plot_save(epoch, 0, logs=logs)
         self.current_epoch = epoch
 
-    def on_plot_save(self, epoch, iter, logs=None):
+    def on_plot_save(self, epoch, iter, logs={}):
+        print("plot callback")
         vol_size = self.vol_size
 
         # get the next sample
@@ -193,6 +195,7 @@ class PlotTestSlices(keras.callbacks.Callback):
         # if sample_input is a tuple, we assume it's (vol, prior)
         do_explicit_prior = isinstance(sample_inputs, list)
         if do_explicit_prior:
+            print(sample_inputs[0].shape)
             sample_vol = np.squeeze(sample_inputs[0])
             sample_prior = np.squeeze(sample_inputs[1])
         else:
@@ -213,14 +216,14 @@ class PlotTestSlices(keras.callbacks.Callback):
         if sample_prior is not None:
             idxes = np.arange(np.prod(vol_size))
             arr = np.array([idxes, seg_pred_label.flatten()])
-            locs = np.ravel_multi_index(arr, seg_pred_prob_all.shape[1:-1], order='C')
+            locs = np.ravel_multi_index(arr, seg_pred_prob_all.shape[1:], order='C')
             seg_pred_label_prior = (sample_prior.flat[locs]).reshape(vol_size)
         else:
             seg_pred_label_prior = np.zeros(vol_size)
 
         # display
         vols = [sample_vol, seg_true, seg_pred_label,
-                seg_true == seg_pred_label, seg_pred_prob, seg_pred_label_prior]
+                (seg_true == seg_pred_label).astype(float), seg_pred_prob, seg_pred_label_prior]
         titles = ['sample slice', 'true seg', 'pred seg',
                   'true vs pred', 'pred seg prob', 'prior @ pred seg']
         cmaps = ['gray', 'Set3', 'Set3', 'gray', 'gray', 'gray']
@@ -243,7 +246,7 @@ class PlotTestSlices(keras.callbacks.Callback):
             slices = list(map(lambda x: x[slice_nrs[0], :, :], vols))
             _print_and_save_slice(slices, epoch, 'saggital', slice_nrs[0], filename, nb_classes, **kwargs)
         else:
-            slices = vols
+            slices = [np.squeeze(f).astype(float) for f in vols]
             _print_and_save_slice(slices, epoch, 'slice', 0, filename, nb_classes, **kwargs)
 
 
@@ -295,6 +298,7 @@ class PredictMetrics(keras.callbacks.Callback):
         self.current_epoch = epoch
 
     def on_metric_call(self, epoch, iter, logs={}):
+        print("dice callback")
         # prepare metric
         met = np.zeros((self.nb_validation, self.nb_labels, len(self.metrics)))
 
@@ -395,12 +399,12 @@ def _print_and_save_slice(slices, epoch, axis, slice_nr, savefilepath, nb_labels
 
     # slices
     f, _ = nrn_plt.slices(slices, **kwargs)
-    f.savefig(savefilepath.format(epoch=epoch, axis='axial', slice_nr=slice_nr))
+    f.savefig(savefilepath.format(epoch=epoch, axis='axial', slice_nr=slice_nr, type='slices'))
     plt.close()
 
     # with overlap
     olap_cmap = plt.get_cmap('Set3')(np.linspace(0, 1, nb_labels))[:,0:3]
-    qslices = [su.seg_overlap(slices[0], f.astype('int'), cmap=olap_cmap) for f in slices[1:-1]]
+    qslices = [su.seg_overlap(slices[0], f.astype('int'), cmap=olap_cmap) for f in slices[1:]]
     f, _ = nrn_plt.slices([slices[0], *qslices], **kwargs)
-    f.savefig(savefilepath.format(epoch=epoch, axis='axial', slice_nr=slice_nr))
+    f.savefig(savefilepath.format(epoch=epoch, axis='axial', slice_nr=slice_nr, type='overlaps'))
     plt.close()
