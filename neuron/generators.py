@@ -42,6 +42,9 @@ def vol(volpath,
         patch_size=None,     # split the volume in patches? if so, get patch_size
         patch_stride=1,  # split the volume in patches? if so, get patch_stride
         collapse_2d=None,
+        extract_slice=None,
+        force_binary=False,
+        nb_feats=1,
         verbose=False):
     """
     generator for single volume (or volume patches) from a list of files
@@ -78,6 +81,7 @@ def vol(volpath,
     # iterate through files
     fileidx = -1
     batch_idx = -1
+    feat_idx = 0
     while 1:
         fileidx = np.mod(fileidx + 1, nb_restart_cycle)
 
@@ -87,6 +91,21 @@ def vol(volpath,
         # process volume
         if data_proc_fn is not None:
             vol_data = data_proc_fn(vol_data)
+
+        if extract_slice is not None:
+            if isinstance(extract_slice, int):
+                if nb_feats == 1:
+                    vol_data = vol_data[:, :, extract_slice, np.newaxis]
+                else:
+                    assert nb_feats > 1
+                    start = (nb_feats - 1) // 2
+                    es = list(range(extract_slice-start, extract_slice-start+nb_feats))
+                    vol_data = vol_data[:, :, es]
+            else:
+                vol_data = vol_data[:, :, extract_slice]
+
+        if force_binary:
+            vol_data = (vol_data > 0).astype(float)
 
         # the original segmentation files have non-sequential relabel (i.e. some relabel are
         # missing to avoid exploding our model, we only care about the relabel that exist.
@@ -113,19 +132,29 @@ def vol(volpath,
         for lpatch in patch_gen:
             if collapse_2d is not None:
                 lpatch = np.squeeze(lpatch, collapse_2d + 1)
-            
-            empty_gen = False
-            # add to batch of volume data, unless the batch is currently empty
-            if batch_idx == -1:
-                vol_data_batch = lpatch
-            else:
-                vol_data_batch = np.vstack([vol_data_batch, lpatch])
 
-            # yield patch
-            batch_idx += 1
-            if batch_idx == batch_size - 1:
-                batch_idx = -1
-                yield vol_data_batch
+            empty_gen = False
+
+            # add to feature
+            if np.mod(feat_idx, nb_feats) == 0:
+                vol_data_feats = lpatch
+            else:
+                vol_data_feats = np.concatenate([vol_data_feats, lpatch], np.ndim(lpatch)-1)
+            feat_idx += 1
+
+            if np.mod(feat_idx, nb_feats) == 0:
+
+                # add to batch of volume data, unless the batch is currently empty
+                if batch_idx == -1:
+                    vol_data_batch = vol_data_feats
+                else:
+                    vol_data_batch = np.vstack([vol_data_batch, vol_data_feats])
+
+                # yield patch
+                batch_idx += 1
+                if batch_idx == batch_size - 1:
+                    batch_idx = -1
+                    yield vol_data_batch
 
         if empty_gen:
             raise ValueError('Patch generator was empty for file %s', volfiles[fileidx])
@@ -199,6 +228,8 @@ def vol_seg(volpath,
             nb_restart_cycle=None,  # number of files to restart after
             nb_labels_reshape=-1,
             collapse_2d=None,
+            force_binary=False,
+            nb_input_feats=1,
             **kwargs): # named arguments for vol(...), except verbose, data_proc_fn, ext, nb_labels_reshape and name (which this function will control when calling vol()) 
     """
     generator with (volume, segmentation)
@@ -213,13 +244,14 @@ def vol_seg(volpath,
                                               interp_order=0, rescale=rescale)
 
     # get vol generator
-    vol_gen = vol(volpath, **kwargs, ext=ext, nb_restart_cycle=nb_restart_cycle, collapse_2d=collapse_2d,
-                  data_proc_fn=proc_vol_fn, nb_labels_reshape=1, name=name+' vol', verbose=verbose)
+    vol_gen = vol(volpath, **kwargs, ext=ext, nb_restart_cycle=nb_restart_cycle, collapse_2d=collapse_2d, force_binary=False,
+                  data_proc_fn=proc_vol_fn, nb_labels_reshape=1, name=name+' vol', verbose=verbose, nb_feats=nb_input_feats)
 
     # get seg generator, matching nb_files
     vol_files = [f.replace('norm', 'aseg') for f in _get_file_list(volpath, ext)]
     nb_files = len(vol_files)
     seg_gen = vol(segpath, **kwargs, ext=ext, nb_restart_cycle=nb_restart_cycle,
+                  force_binary=force_binary,
                   data_proc_fn=proc_seg_fn, nb_labels_reshape=nb_labels_reshape,
                   expected_files=vol_files, name=name+' seg', verbose=False)
 
@@ -296,6 +328,9 @@ def vol_seg_prior(*args,
                   patch_size=None,
                   batch_size=1,
                   collapse_2d=None,
+                  extract_slice=None,
+                  force_binary=False,
+                  nb_input_feats=1,
                   **kwargs):
     """
     generator that appends prior to (volume, segmentation) depending on input
@@ -305,8 +340,8 @@ def vol_seg_prior(*args,
     nb_patch_elems = np.prod(batch_size)
 
     # prepare the vol_seg
-    gen = vol_seg(*args, **kwargs, collapse_2d=collapse_2d,
-                  patch_size=patch_size, patch_stride=patch_stride, batch_size=batch_size)
+    gen = vol_seg(*args, **kwargs, collapse_2d=collapse_2d, extract_slice=extract_slice, force_binary=force_binary,
+                  patch_size=patch_size, patch_stride=patch_stride, batch_size=batch_size, nb_input_feats=nb_input_feats)
 
     # get prior
     if prior_type == 'location':
@@ -317,7 +352,19 @@ def vol_seg_prior(*args,
     else: # assumes a npz filename passed in prior_file
         data = np.load(prior_file)
         prior_vol = data['prior'].astype('float16')
+
+    if force_binary:
+        nb_labels = prior_vol.shape[-1]
+        prior_vol[:,:,:,1] = np.sum(prior_vol[:,:,:,1:nb_labels], 3)
+        prior_vol = np.delete(prior_vol, range(2,nb_labels), 3)
+
     nb_channels = prior_vol.shape[-1]
+
+    if extract_slice is not None:
+        if isinstance(extract_slice, int):
+            prior_vol = prior_vol[:,:,extract_slice,np.newaxis,:]
+        else:  # assume slices
+            prior_vol = prior_vol[:,:,extract_slice,:]
 
     # get the prior to have the right volume [x, y, z, nb_channels]
     assert np.ndim(prior_vol) == 4, "prior is the wrong size"
