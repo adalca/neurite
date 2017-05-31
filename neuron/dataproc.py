@@ -23,13 +23,13 @@ def proc_mgh_vols(inpath, outpath, ext='.mgz', resize_shape=None,
                   interp_order=2, rescale=None, crop=None, offset=None, clip=None):
     ''' process mgh data from mgz format and save to numpy format
 
-        1. load file
-        2. normalize intensity
-        3. resize
-        4. save as python block
+    1. load file
+    2. normalize intensity
+    3. resize
+    4. save as python block
 
-        TODO: check header info and such.?
-        '''
+    TODO: check header info and such.?
+    '''
 
     # get files in input directory
     files = [f for f in os.listdir(inpath) if f.endswith(ext)]
@@ -187,10 +187,12 @@ def prior_to_weights(prior_filename, nargout=1, min_freq=0, force_binary=False):
     # load prior
     if isinstance(prior_filename, six.string_types):
         prior = np.load(prior_filename)['prior']
+    else:
+        prior = prior_filename
 
     # assumes prior is 4D.
-    assert np.ndim(prior) == 4, "prior is the wrong number of dimensions"
-    prior_flat = np.reshape(prior, (np.prod(prior.shape[0:3]), prior.shape[-1]))
+    assert np.ndim(prior) == 4 or np.ndim(prior) == 3, "prior is the wrong number of dimensions"
+    prior_flat = np.reshape(prior, (np.prod(prior.shape[0:(np.ndim(prior)-1)]), prior.shape[-1]))
 
     if force_binary:
         nb_labels = prior_flat.shape[-1]
