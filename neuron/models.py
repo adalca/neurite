@@ -14,10 +14,10 @@ from keras.constraints import maxnorm
 
 
 def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
-                feat_mult=1, pool_size=(2, 2, 2),
-                use_logp=False, nb_input_features=1,
+                feat_mult=1, pool_size=None,
+                use_logp=False, nb_input_features=1, use_skip_connections=True,
                 padding='same', activation='relu', use_residuals=False,
-                nb_conv_per_level=2, add_prior_layer=False):
+                nb_conv_per_level=2, add_prior_layer=False, nb_mid_level_dense=0):
     """
     unet-style model
 
@@ -32,8 +32,9 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     maxpool = KL.MaxPooling3D if ndims == 3 else KL.MaxPooling2D
     upsample = KL.UpSampling3D if ndims == 3 else KL.UpSampling2D
     vol_numel = np.prod(patch_size)
+    if pool_size is None:
+        pool_size = (2, 2, 2) if len(patch_size) == 3 else (2, 2)
 
-    
     # kwargs for the convolution layer
     conv_kwargs = {'padding': padding, 'activation': activation}
 
@@ -71,6 +72,29 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
             layers_dict[name] = maxpool(pool_size=pool_size)(last_layer)
             last_layer = layers_dict[name]
 
+    # if want to go through a dense layer in the middle of the U, need to:
+    # - flatten last layer
+    # - do dense encoding and decoding
+    # - unflatten (rehsape spatially)
+    if nb_mid_level_dense > 0:
+        save_shape = last_layer.get_shape().as_list()[1:]
+
+        name = 'mid_dense_down_flat'
+        layers_dict[name] = KL.Flatten(name=name)(last_layer)
+        last_layer = layers_dict[name]
+
+        name = 'mid_dense_enc'
+        layers_dict[name] = KL.Dense(nb_mid_level_dense, activation=activation, name=name)(last_layer)
+        last_layer = layers_dict[name]
+
+        name = 'mid_dense_dec_flat'
+        layers_dict[name] = KL.Dense(np.prod(save_shape), activation=activation, name=name)(last_layer)
+        last_layer = layers_dict[name]
+
+        name = 'mid_dense_dec'
+        layers_dict[name] = KL.Reshape(save_shape, name=name)(last_layer)
+        last_layer = layers_dict[name]
+
     # up arm:
     # nb_levels - 1 layers of Deconvolution3D
     #    (approx via up + conv + ReLu) + merge + conv + ReLu + conv + ReLu
@@ -88,11 +112,13 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
         last_layer = layers_dict[name]
 
         # merge layers combining previous layer
-        conv_name = 'conv_downarm_%d_%d' % (nb_levels - 2 - level, nb_conv_per_level - 1)
-        name = 'merge_%d' % (nb_levels + level)
-        layers_dict[name] = KL.concatenate([layers_dict[conv_name], last_layer], axis=ndims+1, name=name)
-        last_layer = layers_dict[name]
+        if use_skip_connections:
+            conv_name = 'conv_downarm_%d_%d' % (nb_levels - 2 - level, nb_conv_per_level - 1)
+            name = 'merge_%d' % (nb_levels + level)
+            layers_dict[name] = KL.concatenate([layers_dict[conv_name], last_layer], axis=ndims+1, name=name)
+            last_layer = layers_dict[name]
 
+        # convolution layers
         for conv in range(nb_conv_per_level):
             name = 'conv_uparm_%d_%d' % (nb_levels + level, conv)
             layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
@@ -167,7 +193,7 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
 
 
 def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
-               feat_mult=1, pool_size=(2, 2, 2),
+               feat_mult=1, pool_size=None,
                padding='same', activation='relu',
                final_layer='dense',
                conv_dropout=0,
@@ -182,6 +208,8 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     ndims = len(patch_size)
     convL = KL.Conv3D if len(patch_size) == 3 else KL.Conv2D
     maxpool = KL.MaxPooling3D if len(patch_size) == 3 else KL.MaxPooling2D
+    if pool_size is None:
+        pool_size = (2, 2, 2) if len(patch_size) == 3 else (2, 2)
 
     # kwargs for the convolution layer
     conv_kwargs = {'padding': padding, 'activation': activation}

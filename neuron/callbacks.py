@@ -29,7 +29,7 @@ import neuron.plot as nrn_plt
 
 class ModelCheckpoint(keras.callbacks.Callback):
     """
-    A modification of kera's ModelCheckpoint that allow for saving on_batch_end
+    A modification of keras' ModelCheckpoint, but allow for saving on_batch_end
     changes include:
     - optional at_batch_end, at_epoch_end arguments,
     - filename now must includes 'iter'
@@ -195,7 +195,6 @@ class PlotTestSlices(keras.callbacks.Callback):
         # if sample_input is a tuple, we assume it's (vol, prior)
         do_explicit_prior = isinstance(sample_inputs, list)
         if do_explicit_prior:
-            print(sample_inputs[0].shape)
             sample_vol = np.squeeze(sample_inputs[0])
             sample_prior = np.squeeze(sample_inputs[1])
         else:
@@ -266,7 +265,7 @@ class PredictMetrics(keras.callbacks.Callback):
                  nb_labels,             # number of labels
                  label_ids=None,
                  vol_params=None,
-                 crop=None,             # allow for cropping of volume (volume edges are troublesome)
+                 crop=None,             # allow for cropping of volume (volume edges create issues)
                  at_batch_end=None,     # None or number indicate when to execute (i.e. at_batch_end = 10 means execute every 10 batches)
                  at_epoch_end=True,     # logical, whether to execute at epoch end
                  vol_size=None):        # if cropping, need volume size
@@ -396,6 +395,9 @@ def _batch2lab(model, validation_generator, nargout=2):
 
 
 def _print_and_save_slice(slices, epoch, axis, slice_nr, savefilepath, nb_labels, **kwargs):
+
+    print('MINS:', [np.min(f) for f in slices])
+    print('MAXS:', [np.max(f) for f in slices])
 
     # slices
     f, _ = nrn_plt.slices(slices, **kwargs)

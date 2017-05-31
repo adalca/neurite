@@ -17,6 +17,7 @@ from keras.models import Model
 # local packages
 import pynd.ndutils as nd
 import pytools.patchlib as pl
+import pytools.timer as timer
 
 # reload patchlib (it's often updated right now...)
 from imp import reload
@@ -37,6 +38,7 @@ def vol(volpath,
         data_proc_fn=None,  # processing function that takes in one arg (the volume)
         relabel=None,       # relabeling array
         nb_labels_reshape=0,  # reshape to categorial format for keras, need # labels
+        keep_vol_size=False,  # whether to keep the volume size on categorical resizing
         name='single_vol',  # name, optional
         nb_restart_cycle=None,  # number of files to restart after
         patch_size=None,     # split the volume in patches? if so, get patch_size
@@ -56,9 +58,10 @@ def vol(volpath,
     """
 
     # get filenames at given paths
-    volfiles = _get_file_list(volpath, ext)
-    nb_files = len(volfiles)
-    assert nb_files > 0, "Could not find any files"
+    with timer.Timer('get file list', verbose):
+        volfiles = _get_file_list(volpath, ext)
+        nb_files = len(volfiles)
+        assert nb_files > 0, "Could not find any files"
 
     # compute subvolume split
     vol_data = _load_medical_volume(os.path.join(volpath, volfiles[0]), ext)
@@ -69,7 +72,8 @@ def vol(volpath,
         nb_restart_cycle = nb_files * nb_patches_per_vol
 
     assert nb_restart_cycle <= (nb_files * nb_patches_per_vol), \
-        '%s restart cycle (%s) too big (%s) in %s' % (name, nb_restart_cycle, nb_files * nb_patches_per_vol, volpath)
+        '%s restart cycle (%s) too big (%s) in %s' % \
+        (name, nb_restart_cycle, nb_files * nb_patches_per_vol, volpath)
 
     # check the number of files matches expected (if passed)
     if expected_nb_files >= 0:
@@ -86,7 +90,14 @@ def vol(volpath,
         fileidx = np.mod(fileidx + 1, nb_restart_cycle)
 
         # read next file (circular)
-        vol_data = _load_medical_volume(os.path.join(volpath, volfiles[fileidx]), ext)
+        try:
+            # print('opening %s' % os.path.join(volpath, volfiles[fileidx]))
+            vol_data = _load_medical_volume(os.path.join(volpath, volfiles[fileidx]), ext, verbose)
+        except:
+            debug_error_msg = "#files: %d, fileidx: %d, nb_restart_cycle: %d"
+            print(debug_error_msg % (len(volfiles), fileidx, nb_restart_cycle))
+            print("Unexpected error:", sys.exc_info()[0])
+            raise
 
         # process volume
         if data_proc_fn is not None:
@@ -118,11 +129,13 @@ def vol(volpath,
         if patch_size is not None and all(f is not None for f in patch_size):
             patch_gen = patch(vol_data, patch_size, patch_stride=patch_stride,
                               nb_labels_reshape=nb_labels_reshape, batch_size=1,
-                              infinite=False)
+                              infinite=False, keep_vol_size=keep_vol_size)
         else:
             # reshape output layer as categorical
             if nb_labels_reshape > 1:
                 lpatch = np_utils.to_categorical(vol_data, nb_labels_reshape)
+                if keep_vol_size:
+                    lpatch = np.reshape(lpatch, patch_size + (nb_labels_reshape, ))
             elif nb_labels_reshape == 1:
                 lpatch = np.expand_dims(vol_data, axis=-1)
             lpatch = np.expand_dims(lpatch, axis=0)
@@ -164,6 +177,7 @@ def patch(vol_data,             # the volume
           patch_size,           # patch size
           patch_stride=1,       # patch stride (spacing)
           nb_labels_reshape=1,  # number of labels for categorical resizing. 0 if no resizing
+          keep_vol_size=False,  # whether to keep the volume size on categorical resizing
           batch_size=1,         # batch size
           infinite=False):      # whether the generator should continue (re)-generating patches
     """
@@ -191,6 +205,8 @@ def patch(vol_data,             # the volume
             # reshape output layer as categorical
             if nb_labels_reshape > 1:
                 lpatch = np_utils.to_categorical(lpatch, nb_labels_reshape)
+                if keep_vol_size:
+                    lpatch = np.reshape(lpatch, patch_size + (nb_labels_reshape, ))
             elif nb_labels_reshape == 1:
                 lpatch = np.expand_dims(lpatch, axis=-1)
 
@@ -230,6 +246,7 @@ def vol_seg(volpath,
             collapse_2d=None,
             force_binary=False,
             nb_input_feats=1,
+            relabel=None,
             **kwargs): # named arguments for vol(...), except verbose, data_proc_fn, ext, nb_labels_reshape and name (which this function will control when calling vol()) 
     """
     generator with (volume, segmentation)
@@ -245,18 +262,17 @@ def vol_seg(volpath,
 
     # get vol generator
     vol_gen = vol(volpath, **kwargs, ext=ext, nb_restart_cycle=nb_restart_cycle, collapse_2d=collapse_2d, force_binary=False,
-                  data_proc_fn=proc_vol_fn, nb_labels_reshape=1, name=name+' vol', verbose=verbose, nb_feats=nb_input_feats)
+                  relabel=None, data_proc_fn=proc_vol_fn, nb_labels_reshape=1, name=name+' vol', verbose=verbose, nb_feats=nb_input_feats)
 
     # get seg generator, matching nb_files
     vol_files = [f.replace('norm', 'aseg') for f in _get_file_list(volpath, ext)]
-    nb_files = len(vol_files)
+    vol_files = [f.replace('orig', 'aseg') for f in vol_files]
     seg_gen = vol(segpath, **kwargs, ext=ext, nb_restart_cycle=nb_restart_cycle,
-                  force_binary=force_binary,
+                  force_binary=force_binary, relabel=relabel,
                   data_proc_fn=proc_seg_fn, nb_labels_reshape=nb_labels_reshape,
                   expected_files=vol_files, name=name+' seg', verbose=False)
 
     # on next (while):
-    idx = -kwargs['batch_size']
     while 1:
         # get input and output (seg) vols
         input_vol = next(vol_gen).astype('float16')
@@ -264,6 +280,46 @@ def vol_seg(volpath,
 
         # output input and output
         yield (input_vol, output_vol)
+
+
+def seg_seg(volpath,
+            segpath,
+            crop=None, resize_shape=None, rescale=None, # processing parameters
+            verbose=False,
+            name='seg_seg', # name, optional
+            ext='.npz',
+            nb_restart_cycle=None,  # number of files to restart after
+            nb_labels_reshape=-1,
+            collapse_2d=None,
+            force_binary=False,
+            nb_input_feats=1,
+            **kwargs): # named arguments for vol(...), except verbose, data_proc_fn, ext, nb_labels_reshape and name (which this function will control when calling vol()) 
+    """
+    generator with (volume, segmentation)
+
+    verbose is passed down to the base generators.py primitive generator (e.g. vol, here)
+    """
+
+    # compute processing function
+    proc_seg_fn = lambda x: nrn_proc.vol_proc(x, crop=crop, resize_shape=resize_shape,
+                                              interp_order=0, rescale=rescale)
+
+    # get seg generator, matching nb_files
+    seg_gen = vol(segpath, **kwargs, ext=ext, nb_restart_cycle=nb_restart_cycle,
+                  force_binary=force_binary, collapse_2d = collapse_2d,
+                  data_proc_fn=proc_seg_fn, nb_labels_reshape=nb_labels_reshape, keep_vol_size=True,
+                  name=name+' seg', verbose=False)
+
+    # on next (while):
+    while 1:
+        # get input and output (seg) vols
+        input_vol = next(seg_gen).astype('float16')
+        vol_size = np.prod(input_vol.shape[1:-1])  # get the volume size
+        output_vol = np.reshape(input_vol, (input_vol.shape[0], vol_size, input_vol.shape[-1]))
+
+        # output input and output
+        yield (input_vol, output_vol)
+
 
 
 def vol_cat(volpaths, # expect two folders in here
@@ -331,6 +387,7 @@ def vol_seg_prior(*args,
                   extract_slice=None,
                   force_binary=False,
                   nb_input_feats=1,
+                  verbose=False,
                   **kwargs):
     """
     generator that appends prior to (volume, segmentation) depending on input
@@ -340,7 +397,7 @@ def vol_seg_prior(*args,
     nb_patch_elems = np.prod(batch_size)
 
     # prepare the vol_seg
-    gen = vol_seg(*args, **kwargs, collapse_2d=collapse_2d, extract_slice=extract_slice, force_binary=force_binary,
+    gen = vol_seg(*args, **kwargs, collapse_2d=collapse_2d, extract_slice=extract_slice, force_binary=force_binary,verbose=verbose,
                   patch_size=patch_size, patch_stride=patch_stride, batch_size=batch_size, nb_input_feats=nb_input_feats)
 
     # get prior
@@ -350,8 +407,9 @@ def vol_seg_prior(*args,
         prior_vol = np.expand_dims(prior_vol, axis=0) # reshape for model
 
     else: # assumes a npz filename passed in prior_file
-        data = np.load(prior_file)
-        prior_vol = data['prior'].astype('float16')
+        with timer.Timer('loading prior', verbose):
+            data = np.load(prior_file)
+            prior_vol = data['prior'].astype('float16')
 
     if force_binary:
         nb_labels = prior_vol.shape[-1]
@@ -494,20 +552,21 @@ def _get_file_list(volpath, ext=None):
     return [f for f in sorted(os.listdir(volpath)) if ext is None or f.endswith(ext)]
 
 
-def _load_medical_volume(filename, ext):
+def _load_medical_volume(filename, ext, verbose=False):
     """
     load a medical volume from one of a number of file types
     """
-    if ext == '.npz':
-        vol_file = np.load(filename)
-        vol_data = vol_file['vol_data']
-    elif ext == 'npy':
-        vol_data = np.load(filename)
-    elif ext == '.mgz' or ext == '.nii' or ext == '.nii.gz':
-        vol_med = nib.load(filename)
-        vol_data = vol_med.get_data()
-    else:
-        raise ValueError("Unexpected extension %s" % ext)
+    with timer.Timer('load_vol', verbose):
+        if ext == '.npz':
+            vol_file = np.load(filename)
+            vol_data = vol_file['vol_data']
+        elif ext == 'npy':
+            vol_data = np.load(filename)
+        elif ext == '.mgz' or ext == '.nii' or ext == '.nii.gz':
+            vol_med = nib.load(filename)
+            vol_data = vol_med.get_data()
+        else:
+            raise ValueError("Unexpected extension %s" % ext)
 
     return vol_data
 
