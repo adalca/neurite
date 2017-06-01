@@ -11,6 +11,7 @@ import numpy as np
 import scipy.ndimage.interpolation
 from tqdm import tqdm # for verbosity for forloops
 from PIL import Image
+import matplotlib.pyplot as plt
 
 # import local ndutils
 import pynd.ndutils as nd
@@ -181,7 +182,7 @@ def vol_proc(vol_data,
     return vol_data
 
 
-def prior_to_weights(prior_filename, nargout=1, min_freq=0, force_binary=False):
+def prior_to_weights(prior_filename, nargout=1, min_freq=0, force_binary=False, verbose=False):
     ''' transform a 4D prior (3D + nb_labels) into a class weight vector '''
 
     # load prior
@@ -216,6 +217,20 @@ def prior_to_weights(prior_filename, nargout=1, min_freq=0, force_binary=False):
     weights = weights / np.sum(weights)
     # weights[0] = 0 # explicitly don't care about bg
 
+    # a bit of verbosity
+    if verbose:
+        f, (ax1, ax2, ax3) = plt.subplots(1, 3)
+        ax1.bar(range(prior.size), np.log(prior))
+        ax1.set_title('log class freq')
+        ax2.bar(range(weights.size), weights)
+        ax2.set_title('weights')
+        ax3.bar(range(weights.size), np.log((weights))-np.min(np.log((weights))))
+        ax3.set_title('log(weights)-minlog')
+        f.set_size_inches(12, 3)
+        plt.show()
+        np.set_printoptions(precision=3)
+
+    # return
     if nargout == 1:
         return weights
     else:
