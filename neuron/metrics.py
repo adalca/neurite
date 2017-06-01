@@ -183,7 +183,7 @@ class Dice(object):
         dice_type is hard or soft
         """
 
-        self.nb_labels = nb_labels
+        self.nb_labels = K.variable(nb_labels, dtype='int32')
         self.weights = None if weights is None else K.variable(weights)
         self.input_type = input_type
         self.dice_type = dice_type
@@ -210,11 +210,14 @@ class Dice(object):
             y_true_flatten = K.batch_flatten(y_true)
             y_pred_onehot = K.one_hot(y_pred_flatten, self.nb_labels)
             y_true_onehot = K.one_hot(y_true_flatten, self.nb_labels)
+        else:
+            y_pred_onehot = y_pred
+            y_true_onehot = y_true
 
         # compute dice for each entry in batch.
         # dice will now be [batch_size, nb_labels]
         top = 2 * K.sum(y_true_onehot * y_pred_onehot, 1)
-        bottom = (K.sum(y_true_onehot, 1) + K.sum(y_pred_onehot, 1))
+        bottom = K.sum(y_true_onehot, 1) + K.sum(y_pred_onehot, 1)
         bottom = K.maximum(bottom, K.epsilon())  # make sure we have no 0s on the bottom.
         return top / bottom
 
