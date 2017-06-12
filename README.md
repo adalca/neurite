@@ -11,3 +11,5 @@ Strategy for now:
 ### Requirements:
 numpy, MedPy (soon)
  
+### Contact:
+adalca@csail.mit.edu
