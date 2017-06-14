@@ -58,3 +58,6 @@ __pycache__
 
 # old code
 .old_code
+
+# nfs issues
+.nfs*
