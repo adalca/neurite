@@ -6,8 +6,10 @@ Strategy for now:
 
 - U-net style architecture modelled as likelihood probability
 - Model spatial prior information as an added input combined with the likelihood 
- 
+- Discrimnator for GAN models 
 
 ### Requirements:
 numpy, MedPy (soon)
  
+### Contact:
+adalca@csail.mit.edu
