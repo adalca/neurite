@@ -28,8 +28,6 @@ from . import dataproc as nrn_proc
 from . import models as nrn_models
 
 
-
-
 def vol(volpath,
         ext='.npz',
         batch_size=1,
@@ -47,6 +45,7 @@ def vol(volpath,
         extract_slice=None,
         force_binary=False,
         nb_feats=1,
+        yield_incomplete_final_batch=True,
         verbose=False):
     """
     generator for single volume (or volume patches) from a list of files
@@ -65,11 +64,15 @@ def vol(volpath,
 
     # compute subvolume split
     vol_data = _load_medical_volume(os.path.join(volpath, volfiles[0]), ext)
+    # process volume
+    if data_proc_fn is not None:
+        vol_data = data_proc_fn(vol_data)
+
     nb_patches_per_vol = 1
     if patch_size is not None and all(f is not None for f in patch_size):
         nb_patches_per_vol = np.prod(pl.gridsize(vol_data.shape, patch_size, patch_stride))
     if nb_restart_cycle is None:
-        nb_restart_cycle = nb_files * nb_patches_per_vol
+        nb_restart_cycle = nb_files
 
     assert nb_restart_cycle <= (nb_files * nb_patches_per_vol), \
         '%s restart cycle (%s) too big (%s) in %s' % \
@@ -88,35 +91,21 @@ def vol(volpath,
     feat_idx = 0
     while 1:
         fileidx = np.mod(fileidx + 1, nb_restart_cycle)
+        if verbose and fileidx == 0:
+            print('starting %s cycle' % name)
 
         # read next file (circular)
         try:
             # print('opening %s' % os.path.join(volpath, volfiles[fileidx]))
             vol_data = _load_medical_volume(os.path.join(volpath, volfiles[fileidx]), ext, verbose)
         except:
-            debug_error_msg = "#files: %d, fileidx: %d, nb_restart_cycle: %d"
-            print(debug_error_msg % (len(volfiles), fileidx, nb_restart_cycle))
-            print("Unexpected error:", sys.exc_info()[0])
+            debug_error_msg = "#files: %d, fileidx: %d, nb_restart_cycle: %d. error: %s"
+            print(debug_error_msg % (len(volfiles), fileidx, nb_restart_cycle, sys.exc_info()[0]))
             raise
 
         # process volume
         if data_proc_fn is not None:
             vol_data = data_proc_fn(vol_data)
-
-        if extract_slice is not None:
-            if isinstance(extract_slice, int):
-                if nb_feats == 1:
-                    vol_data = vol_data[:, :, extract_slice, np.newaxis]
-                else:
-                    assert nb_feats > 1
-                    start = (nb_feats - 1) // 2
-                    es = list(range(extract_slice-start, extract_slice-start+nb_feats))
-                    vol_data = vol_data[:, :, es]
-            else:
-                vol_data = vol_data[:, :, extract_slice]
-
-        if force_binary:
-            vol_data = (vol_data > 0).astype(float)
 
         # the original segmentation files have non-sequential relabel (i.e. some relabel are
         # missing to avoid exploding our model, we only care about the relabel that exist.
@@ -126,27 +115,22 @@ def vol(volpath,
                 vol_data[resized_seg_data_fix == val] = idx
 
         # split volume into patches if necessary and yield
-        if patch_size is not None and all(f is not None for f in patch_size):
-            patch_gen = patch(vol_data, patch_size, patch_stride=patch_stride,
-                              nb_labels_reshape=nb_labels_reshape, batch_size=1,
-                              infinite=False, keep_vol_size=keep_vol_size)
-        else:
-            # reshape output layer as categorical
-            if nb_labels_reshape > 1:
-                lpatch = np_utils.to_categorical(vol_data, nb_labels_reshape)
-                if keep_vol_size:
-                    lpatch = np.reshape(lpatch, patch_size + (nb_labels_reshape, ))
-            elif nb_labels_reshape == 1:
-                lpatch = np.expand_dims(vol_data, axis=-1)
-            lpatch = np.expand_dims(lpatch, axis=0)
-            patch_gen = (lpatch, )
+        if patch_size is None:
+            patch_size = vol_data.shape
+            patch_stride = [1 for f in patch_size]
+        patch_gen = patch(vol_data, patch_size,
+                          patch_stride=patch_stride,
+                          nb_labels_reshape=nb_labels_reshape,
+                          batch_size=1,
+                          infinite=False,
+                          collapse_2d=collapse_2d,
+                          keep_vol_size=keep_vol_size)
 
         empty_gen = True
         for lpatch in patch_gen:
-            if collapse_2d is not None:
-                lpatch = np.squeeze(lpatch, collapse_2d + 1)
-
             empty_gen = False
+            assert ~np.any(np.isnan(lpatch)), "Found a nan for %s" % volfiles[fileidx]
+            assert np.all(np.isfinite(lpatch)), "Found a inf for %s" % volfiles[fileidx]
 
             # add to feature
             if np.mod(feat_idx, nb_feats) == 0:
@@ -165,7 +149,13 @@ def vol(volpath,
 
                 # yield patch
                 batch_idx += 1
-                if batch_idx == batch_size - 1:
+                batch_done = batch_idx == batch_size - 1
+                files_done = np.mod(fileidx + 1, nb_restart_cycle) == 0
+                final_batch = (yield_incomplete_final_batch and files_done)
+                if verbose and final_batch:
+                    print('last batch in %s cycle %d' % (name, fileidx))
+
+                if batch_done or final_batch:
                     batch_idx = -1
                     yield vol_data_batch
 
@@ -179,6 +169,8 @@ def patch(vol_data,             # the volume
           nb_labels_reshape=1,  # number of labels for categorical resizing. 0 if no resizing
           keep_vol_size=False,  # whether to keep the volume size on categorical resizing
           batch_size=1,         # batch size
+          collapse_2d=None,
+          variable_batch_size=False,
           infinite=False):      # whether the generator should continue (re)-generating patches
     """
     generate patches from volume for keras package
@@ -191,6 +183,9 @@ def patch(vol_data,             # the volume
     assert batch_size >= 1, "batch_size should be at least 1"
     patch_size = vol_data.shape if patch_size is None else patch_size
     batch_idx = -1
+    if variable_batch_size:
+        batch_size = yield
+
 
     # do while. if not infinite, will break at the end
     while True:
@@ -200,18 +195,13 @@ def patch(vol_data,             # the volume
         # go through the patch generator
         empty_gen = True
         for lpatch in gen:
+
             empty_gen = False
+            if collapse_2d is not None:
+                lpatch = np.squeeze(lpatch, collapse_2d)
 
-            # reshape output layer as categorical
-            if nb_labels_reshape > 1:
-                lpatch = np_utils.to_categorical(lpatch, nb_labels_reshape)
-                if keep_vol_size:
-                    lpatch = np.reshape(lpatch, patch_size + (nb_labels_reshape, ))
-            elif nb_labels_reshape == 1:
-                lpatch = np.expand_dims(lpatch, axis=-1)
-
-            # reshape for Keras model.
-            lpatch = np.expand_dims(lpatch, axis=0)
+            # reshape output layer as categorical and prep proper size
+            lpatch = _categorical_prep(lpatch, nb_labels_reshape, keep_vol_size, patch_size)
 
             # add this patch to the stack
             if batch_idx == -1:
@@ -223,7 +213,9 @@ def patch(vol_data,             # the volume
             batch_idx += 1
             if batch_idx == batch_size - 1:
                 batch_idx = -1
-                yield patch_data_batch
+                batch_size_y = yield patch_data_batch
+                if variable_batch_size:
+                    batch_size = batch_size_y
 
         if empty_gen:
             raise Exception('generator was empty')
@@ -237,7 +229,8 @@ def patch(vol_data,             # the volume
 
 def vol_seg(volpath,
             segpath,
-            crop=None, resize_shape=None, rescale=None, # processing parameters
+            proc_vol_fn=None,
+            proc_seg_fn=None,
             verbose=False,
             name='vol_seg', # name, optional
             ext='.npz',
@@ -247,26 +240,29 @@ def vol_seg(volpath,
             force_binary=False,
             nb_input_feats=1,
             relabel=None,
-            **kwargs): # named arguments for vol(...), except verbose, data_proc_fn, ext, nb_labels_reshape and name (which this function will control when calling vol()) 
+            vol_subname='norm',  # subname of volume
+            seg_subname='aseg',  # subname of segmentation
+            **kwargs):
     """
     generator with (volume, segmentation)
 
     verbose is passed down to the base generators.py primitive generator (e.g. vol, here)
+
+    ** kwargs are any named arguments for vol(...),
+        except verbose, data_proc_fn, ext, nb_labels_reshape and name
+            (which this function will control when calling vol())
     """
 
-    # compute processing function
-    proc_vol_fn = lambda x: nrn_proc.vol_proc(x, crop=crop, resize_shape=resize_shape,
-                                              interp_order=2, rescale=rescale)
-    proc_seg_fn = lambda x: nrn_proc.vol_proc(x, crop=crop, resize_shape=resize_shape,
-                                              interp_order=0, rescale=rescale)
-
     # get vol generator
-    vol_gen = vol(volpath, **kwargs, ext=ext, nb_restart_cycle=nb_restart_cycle, collapse_2d=collapse_2d, force_binary=False,
-                  relabel=None, data_proc_fn=proc_vol_fn, nb_labels_reshape=1, name=name+' vol', verbose=verbose, nb_feats=nb_input_feats)
+    vol_gen = vol(volpath, **kwargs, ext=ext,
+                  nb_restart_cycle=nb_restart_cycle, collapse_2d=collapse_2d, force_binary=False,
+                  relabel=None, data_proc_fn=proc_vol_fn, nb_labels_reshape=1, name=name+' vol',
+                  verbose=verbose, nb_feats=nb_input_feats)
 
     # get seg generator, matching nb_files
-    vol_files = [f.replace('norm', 'aseg') for f in _get_file_list(volpath, ext)]
-    vol_files = [f.replace('orig', 'aseg') for f in vol_files]
+    # vol_files = [f.replace('norm', 'aseg') for f in _get_file_list(volpath, ext)]
+    # vol_files = [f.replace('orig', 'aseg') for f in vol_files]
+    vol_files = [f.replace(vol_subname, seg_subname) for f in _get_file_list(volpath, ext)]
     seg_gen = vol(segpath, **kwargs, ext=ext, nb_restart_cycle=nb_restart_cycle,
                   force_binary=force_binary, relabel=relabel,
                   data_proc_fn=proc_seg_fn, nb_labels_reshape=nb_labels_reshape,
@@ -293,11 +289,15 @@ def seg_seg(volpath,
             collapse_2d=None,
             force_binary=False,
             nb_input_feats=1,
-            **kwargs): # named arguments for vol(...), except verbose, data_proc_fn, ext, nb_labels_reshape and name (which this function will control when calling vol()) 
+            **kwargs):
     """
     generator with (volume, segmentation)
 
     verbose is passed down to the base generators.py primitive generator (e.g. vol, here)
+
+    ** kwargs are any named arguments for vol(...), 
+        except verbose, data_proc_fn, ext, nb_labels_reshape and name 
+            (which this function will control when calling vol())
     """
 
     # compute processing function
@@ -377,6 +377,8 @@ def vol_cat(volpaths, # expect two folders in here
 
 
 def vol_seg_prior(*args,
+                  proc_vol_fn=None,
+                  proc_seg_fn=None,
                   prior_type='location',  # file-static, file-gen, location
                   prior_file=None,  # prior filename
                   prior_feed='input',  # input or output
@@ -394,11 +396,21 @@ def vol_seg_prior(*args,
     e.g. could be ((volume, prior), segmentation)
     """
 
-    nb_patch_elems = np.prod(batch_size)
+    if verbose:
+        print('starting vol_seg_prior')
 
     # prepare the vol_seg
-    gen = vol_seg(*args, **kwargs, collapse_2d=collapse_2d, extract_slice=extract_slice, force_binary=force_binary,verbose=verbose,
-                  patch_size=patch_size, patch_stride=patch_stride, batch_size=batch_size, nb_input_feats=nb_input_feats)
+    gen = vol_seg(*args, **kwargs,
+                  proc_vol_fn=None,
+                  proc_seg_fn=None,
+                  collapse_2d=collapse_2d,
+                  extract_slice=extract_slice,
+                  force_binary=force_binary,
+                  verbose=verbose,
+                  patch_size=patch_size,
+                  patch_stride=patch_stride,
+                  batch_size=batch_size,
+                  nb_input_feats=nb_input_feats)
 
     # get prior
     if prior_type == 'location':
@@ -413,16 +425,16 @@ def vol_seg_prior(*args,
 
     if force_binary:
         nb_labels = prior_vol.shape[-1]
-        prior_vol[:,:,:,1] = np.sum(prior_vol[:,:,:,1:nb_labels], 3)
-        prior_vol = np.delete(prior_vol, range(2,nb_labels), 3)
+        prior_vol[:, :, :, 1] = np.sum(prior_vol[:, :, :, 1:nb_labels], 3)
+        prior_vol = np.delete(prior_vol, range(2, nb_labels), 3)
 
     nb_channels = prior_vol.shape[-1]
 
     if extract_slice is not None:
         if isinstance(extract_slice, int):
-            prior_vol = prior_vol[:,:,extract_slice,np.newaxis,:]
+            prior_vol = prior_vol[:, :, extract_slice, np.newaxis, :]
         else:  # assume slices
-            prior_vol = prior_vol[:,:,extract_slice,:]
+            prior_vol = prior_vol[:, :, extract_slice, :]
 
     # get the prior to have the right volume [x, y, z, nb_channels]
     assert np.ndim(prior_vol) == 4, "prior is the wrong size"
@@ -430,22 +442,26 @@ def vol_seg_prior(*args,
     # prior generator
     if patch_size is None:
         patch_size = prior_vol.shape[0:3]
-    prior_gen = patch(prior_vol, patch_size + (nb_channels,),
-                      patch_stride=patch_stride, batch_size=batch_size, infinite=True, nb_labels_reshape=0)
+    assert len(patch_size) == len(patch_stride)
+    prior_gen = patch(prior_vol, [*patch_size, nb_channels],
+                      patch_stride=[*patch_stride, nb_channels],
+                      batch_size=batch_size,
+                      collapse_2d=collapse_2d,
+                      infinite=True,
+                      variable_batch_size=True,
+                      nb_labels_reshape=0)
+    assert next(prior_gen) is None, "bad prior gen setup"
 
     # generator loop
     while 1:
 
         # generate input and output volumes
         input_vol, output_vol = next(gen)
+        if verbose and np.all(input_vol.flat == 0):
+            print("all entries are 0")
 
-        # generate patch batch
-        prior_batch = next(prior_gen)
-        if collapse_2d is not None:
-            prior_batch = np.squeeze(prior_batch, collapse_2d + 1)
-
-        # reshape for model
-        # prior_batch = np.reshape(prior_batch, (batch_size, np.prod(patch_size), nb_channels))
+        # generate prior batch
+        prior_batch = prior_gen.send(output_vol.shape[0])
 
         if prior_feed == 'input':
             yield ([input_vol, prior_batch], output_vol)
@@ -515,7 +531,7 @@ def img_seg(volpath,
             name='img_seg', # name, optional
             ext='.png'):
     """
-    generator for (image, segmentation) 
+    generator for (image, segmentation)
     """
 
     def imggen(path, ext, nb_restart_cycle=None):
@@ -571,3 +587,17 @@ def _load_medical_volume(filename, ext, verbose=False):
     return vol_data
 
 
+def _categorical_prep(vol_data, nb_labels_reshape, keep_vol_size, patch_size):
+
+    if nb_labels_reshape > 1:
+        lpatch = np_utils.to_categorical(vol_data, nb_labels_reshape)
+        if keep_vol_size:
+            lpatch = np.reshape(lpatch, [*patch_size, nb_labels_reshape])
+    elif nb_labels_reshape == 1:
+        lpatch = np.expand_dims(vol_data, axis=-1)
+    else:
+        assert nb_labels_reshape == 0
+        lpatch = vol_data
+    lpatch = np.expand_dims(lpatch, axis=0)
+
+    return lpatch

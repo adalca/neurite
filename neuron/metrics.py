@@ -1,5 +1,5 @@
 """
-custom metrics for the neuron project 
+custom metrics for the neuron project
 This module is currently very experimental...
 
 contact: adalca@csail.mit.edu
@@ -12,11 +12,6 @@ import tensorflow as tf
 
 # local packages
 import medipy.metrics
-from . import metrics as nrn_metrics
-import neuron.generators as nrn_gen
-
-from imp import reload
-reload(nrn_gen)
 
 
 class CategoricalCrossentropy(object):
@@ -28,8 +23,6 @@ class CategoricalCrossentropy(object):
 
     Variables:
         weights: numpy array of shape (C,) where C is the number of classes
-        prior: path to numpy file with variable 'prior' in it,
-            or the ready prior, reshaped for keras model
 
     Usage:
         loss = CategoricalCrossentropy().loss # or
@@ -38,46 +31,14 @@ class CategoricalCrossentropy(object):
         model.compile(loss=loss, optimizer='adam')
     """
 
-    def __init__(self, weights=None, prior=None, use_float16=False,
-                 crop=None,
-                 use_sep_prior=False, patch_size=None, patch_stride=1,
-                 batch_size=1):
-        self.use_float16 = use_float16
+    def __init__(self, weights=None, use_float16=False, vox_weights=None):
+
         self.weights = weights if (weights is not None) else None
-        self.use_sep_prior = use_sep_prior
-
-        if use_sep_prior:
-            assert prior is None, "cannot use both prior and separate prior"
-
-        # process prior
-        if prior is not None:
-            if isinstance(prior, str):  # assuming file
-                loc_vol = np.load(prior)['prior']
-                if self.use_float16:
-                    loc_vol = loc_vol.astype('float16')
-                prior=loc_vol
-
-            if patch_size is None:
-                patch_size = prior.shape[0:3]
-            nb_channels = prior.shape[3]
-
-            prior_gen = nrn_gen.patch(loc_vol, patch_size + (nb_channels,),
-                                      patch_stride=patch_stride, batch_size=batch_size,
-                                      infinite=True)
-            # prior = np.expand_dims(loc_vol, axis=0)  # reshape for keras model
-
-            self.log_prior = prior_gen
-        else:
-            self.log_prior = None
-
-        self.crop = crop
+        self.use_float16 = use_float16
+        self.vox_weights = vox_weights
 
     def loss(self, y_true, y_pred):
         """ categorical crossentropy loss """
-
-        if self.use_sep_prior:
-            self.log_prior = K.log(y_true[1])
-            y_true = y_true[0]
 
         if self.use_float16:
             y_true = K.cast(y_true, 'float16')
@@ -91,19 +52,6 @@ class CategoricalCrossentropy(object):
         # compute log probability
         log_post = K.log(y_pred)  # likelihood
 
-        # add prior to form posterior
-        if self.log_prior is not None:
-            prior = next(self.log_prior)
-            ps = prior.shape
-            prior = np.reshape(prior, (ps[0], np.prod(ps[1:4]), ps[4]))
-
-            # prior to keras
-            if self.use_float16:
-                k_prior = K.variable(prior, dtype='float16')
-            else:
-                k_prior = K.variable(prior)
-            log_post += K.log(K.clip(k_prior, K.epsilon(), 1))
-
         # loss
         loss = - y_true * log_post
 
@@ -111,14 +59,18 @@ class CategoricalCrossentropy(object):
         if self.weights is not None:
             loss *= self.weights
 
-        # take the mean loss
-        return K.mean(K.sum(K.cast(loss, 'float32'), -1))
+        if self.vox_weights is not None:
+            loss *= self.vox_weights
 
+        # take the mean loss
+        mloss = K.mean(K.sum(K.cast(loss, 'float32'), -1))
+        tf.verify_tensor_all_finite(mloss, 'Loss not finite')
+        return mloss
 
 
 class Dice(object):
-    """ UNTESTED
-    compute the Dice of two Tensors.
+    """
+    Dice of two Tensors.
 
     Tensors should either be:
     - probabilitic for each label
@@ -176,50 +128,101 @@ class Dice(object):
             print(res_same[2].eval())
     """
 
-
-    def __init__(self, nb_labels, weights=None, input_type='prob', dice_type='hard'):
+    def __init__(self, nb_labels,
+                 weights=None,
+                 input_type='prob',
+                 dice_type='soft',
+                 approx_hard_max=True,
+                 vox_weights=None,
+                 area_reg=0.1):  # regularization for bottom of Dice coeff
         """
         input_type is 'prob', or 'max_label'
         dice_type is hard or soft
+        approx_hard_max - see note below
+
+        Note: for hard dice, we grab the most likely label and then compute a
+        one-hot encoding for each voxel with respect to possible labels. To grab the most
+        likely labels, argmax() can be used, but only when Dice is used as a metric
+        For a Dice *loss*, argmax is not differentiable, and so we can't use it
+        Instead, we approximate the prob->one_hot translation when approx_hard_max is True.
         """
 
-        self.nb_labels = K.variable(nb_labels, dtype='int32')
+        self.nb_labels = nb_labels
         self.weights = None if weights is None else K.variable(weights)
+        self.vox_weights = None if vox_weights is None else K.variable(vox_weights)
         self.input_type = input_type
         self.dice_type = dice_type
+        self.approx_hard_max = approx_hard_max
+        self.area_reg = area_reg
 
     def dice(self, y_true, y_pred):
-        """ compute dice for given Tensors """
+        """
+        compute dice for given Tensors
 
-        # if given predicted probability and we're doing hard Dice, compute max_label
-        get_max_label = self.input_type == 'prob' and self.dice_type == 'hard'
-        if get_max_label:
-            y_pred /= K.sum(y_pred, axis=-1, keepdims=True)
-            y_pred = K.clip(y_pred, K.epsilon(), 1)
+        """
+
+        if self.input_type == 'prob':
             # We assume that y_true is probabilistic, but just in case:
             y_true /= K.sum(y_true, axis=-1, keepdims=True)
             y_true = K.clip(y_true, K.epsilon(), 1)
 
-            y_pred = K.argmax(y_pred, axis=-1)
-            y_true = K.argmax(y_true, axis=-1)
+            # make sure pred is a probability
+            y_pred /= K.sum(y_pred, axis=-1, keepdims=True)
+            y_pred = K.clip(y_pred, K.epsilon(), 1)
 
-        # if computed or given max label, apply one-hot expansion of batch_flattened data
-        # y_true and y_pred will now be [batch_size, nb_voxels, nb_labels]
-        if get_max_label or self.input_type == 'max_label':
-            y_pred_flatten = K.batch_flatten(y_pred)
-            y_true_flatten = K.batch_flatten(y_true)
-            y_pred_onehot = K.one_hot(y_pred_flatten, self.nb_labels)
-            y_true_onehot = K.one_hot(y_true_flatten, self.nb_labels)
+        # Prepare the volumes to operate on
+        # If we're doing 'hard' Dice, then we will prepare one-hot-based matrices of size
+        # [batch_size, nb_voxels, nb_labels], where for each voxel in each batch entry,
+        # the entries are either 0 or 1
+        if self.dice_type == 'hard':
+
+            # if given predicted probability, transform to "hard max""
+            if self.input_type == 'prob':
+                if self.approx_hard_max:
+                    y_pred_op = _hard_max(y_pred, axis=-1)
+                    y_true_op = _hard_max(y_true, axis=-1)
+                else:
+                    y_pred_op = _label_to_one_hot(K.argmax(y_pred, axis=-1), self.nb_labels)
+                    y_true_op = _label_to_one_hot(K.argmax(y_true, axis=-1), self.nb_labels)
+
+            # if given predicted label, transform to one hot notation
+            else:
+                assert self.input_type == 'max_label'
+                y_pred_op = _label_to_one_hot(y_pred, self.nb_labels)
+                y_true_op = _label_to_one_hot(y_true, self.nb_labels)
+
+        # If we're doing soft Dice, require prob output, and the data already is as we need it
+        # [batch_size, nb_voxels, nb_labels]
         else:
-            y_pred_onehot = y_pred
-            y_true_onehot = y_true
+            assert self.input_type == 'prob', "cannot do soft dice with max_label input"
+            y_pred_op = y_pred
+            y_true_op = y_true
 
         # compute dice for each entry in batch.
         # dice will now be [batch_size, nb_labels]
-        top = 2 * K.sum(y_true_onehot * y_pred_onehot, 1)
-        bottom = K.sum(y_true_onehot, 1) + K.sum(y_pred_onehot, 1)
-        bottom = K.maximum(bottom, K.epsilon())  # make sure we have no 0s on the bottom.
+        sum_dim = 1
+        top = 2 * K.sum(y_true_op * y_pred_op, sum_dim)
+        bottom = K.sum(y_true_op, sum_dim) + K.sum(y_pred_op, sum_dim)
+        # make sure we have no 0s on the bottom. K.epsilon()
+        bottom = K.maximum(bottom, self.area_reg)
         return top / bottom
+
+    def mean_dice(self, y_true, y_pred):
+        """ weighted mean dice across all patches and labels """
+
+        # compute dice, which will now be [batch_size, nb_labels]
+        dice_metric = self.dice(y_true, y_pred)
+
+        # weigh the entries in the dice matrix:
+        if self.weights is not None:
+            dice_metric *= self.weights
+        if self.vox_weights is not None:
+            dice_metric *= self.vox_weights
+
+        # return one minus mean dice as loss
+        mean_dice_metric = K.mean(dice_metric)
+        tf.verify_tensor_all_finite(mean_dice_metric, 'metric not finite')
+        return mean_dice_metric
 
 
     def loss(self, y_true, y_pred):
@@ -228,12 +231,33 @@ class Dice(object):
         # compute dice, which will now be [batch_size, nb_labels]
         dice_metric = self.dice(y_true, y_pred)
 
+        # loss
+        dice_loss = 1 - dice_metric
+
         # weigh the entries in the dice matrix:
         if self.weights is not None:
-            dice_metric *= self.weights
+            dice_loss *= self.weights
 
         # return one minus mean dice as loss
-        return 1 - K.mean(dice_metric)
+        mean_dice_loss = K.mean(dice_loss)
+        tf.verify_tensor_all_finite(mean_dice_loss, 'Loss not finite')
+        return mean_dice_loss
+
+
+class Mix():
+    """ a mix of several losses """
+
+    def __init__(self, losses, loss_wts=None):
+        self.losses = losses
+        self.loss_wts = loss_wts
+        if loss_wts is None:
+            self.loss_wts = np.ones(len(loss_wts))
+
+    def loss(self, y_true, y_pred):
+        total_loss = K.variable(0)
+        for idx, loss in enumerate(self.losses):
+            total_loss += self.loss_wts[idx] * loss(y_true, y_pred)
+        return total_loss
 
 
 class WGAN_GP(object):
@@ -241,18 +265,23 @@ class WGAN_GP(object):
     based on https://github.com/rarilurelo/keras_improved_wgan/blob/master/wgan_gp.py
     """
 
-    def __init__(self, disc, lambda_gp=10):
+    def __init__(self, disc, batch_size=1, lambda_gp=10):
         self.disc = disc
         self.lambda_gp = lambda_gp
+        self.batch_size = batch_size
 
     def loss(self, y_true, y_pred):
+
         # get the value for the true and fake images
         disc_true = self.disc(y_true)
         disc_pred = self.disc(y_pred)
 
         # sample a x_hat by sampling along the line between true and pred
         # z = tf.placeholder(tf.float32, shape=[None, 1])
-        alpha = K.random_uniform(shape=[None, 1, 1, 1])
+        # shp = y_true.get_shape()[0]
+        # WARNING: SHOULD REALLY BE shape=[batch_size, 1] !!!
+        # self.batch_size does not work, since it's not None!!!
+        alpha = K.random_uniform(shape=[K.shape(y_pred)[0], 1, 1, 1])
         diff = y_pred - y_true
         interp = y_true + alpha * diff
 
@@ -268,9 +297,11 @@ class WGAN_GP(object):
 
 
 def l1(y_true, y_pred):
+    """ L1 metric (MAE) """
     return losses.mean_absolute_error(y_true, y_pred)
 
 def l2(y_true, y_pred):
+    """ L2 metric (MSE) """
     return losses.mean_squared_error(y_true, y_pred)
 
 
@@ -296,3 +327,28 @@ class Nonbg(object):
         y_true_fix = K.variable(yt.flat(ytbg))
         y_pred_fix = K.variable(y_pred.flat(ytbg))
         return self.metric(y_true_fix, y_pred_fix)
+
+###############################################################################
+# Helper Functions
+###############################################################################
+
+def _label_to_one_hot(tens, nb_labels):
+    """
+    Transform a label nD Tensor to a one-hot 3D Tensor. The input tensor is first
+    batch-flattened, and then each batch and each voxel gets a one-hot representation
+    """
+    y = K.batch_flatten(tens)
+    return K.one_hot(y, nb_labels)
+
+
+def _hard_max(tens, axis):
+    """
+    we can't use the argmax function, as it's not differentiable
+    We can use it in a metric, but not in a loss function
+    therefore, we replace the 'hard max' operation (i.e. argmax + onehot)
+    with this approximation
+    """
+    tensmax = K.max(tens, axis=axis, keepdims=True)
+    eps_hot = K.maximum(tens - tensmax + K.epsilon(), 0)
+    one_hot = eps_hot / K.epsilon()
+    return one_hot

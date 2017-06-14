@@ -13,10 +13,17 @@ from keras.constraints import maxnorm
 
 
 
-def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
+def design_unet(nb_features,
+                patch_size,
+                nb_levels,
+                conv_size,
+                nb_labels,
+                name=None,
+                prefix=None,
                 feat_mult=1, pool_size=None,
                 use_logp=False, nb_input_features=1, use_skip_connections=True,
                 padding='same', activation='relu', use_residuals=False,
+                final_pred_activation='softmax',
                 nb_conv_per_level=2, add_prior_layer=False, nb_mid_level_dense=0):
     """
     unet-style model
@@ -27,7 +34,14 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     TODO: Need to check that UpSampling3D actually does NN-upsampling!
     """
 
+    model_name = name
+    if model_name is None:
+        model_name = 'model_1'
+    if prefix is None:
+        prefix = model_name
+
     ndims = len(patch_size)
+    patch_size = tuple(patch_size)
     convL = KL.Conv3D if ndims == 3 else KL.Conv2D
     maxpool = KL.MaxPooling3D if ndims == 3 else KL.MaxPooling2D
     upsample = KL.UpSampling3D if ndims == 3 else KL.UpSampling2D
@@ -42,7 +56,8 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     layers_dict = {}
 
     # first layer: input
-    name = 'input'
+    name = '%s_input' % prefix
+    input_name = name
     layers_dict[name] = KL.Input(shape=patch_size + (nb_input_features,), name=name)
     last_layer = layers_dict[name]
 
@@ -53,22 +68,22 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
         nb_local_features = nb_features*(feat_mult**level)
 
         for conv in range(nb_conv_per_level):
-            name = 'conv_downarm_%d_%d' % (level, conv)
+            name = '%s_conv_downarm_%d_%d' % (prefix, level, conv)
             layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
             last_layer = layers_dict[name]
 
         if use_residuals:
             convarm_layer = last_layer
-            name = 'expand_down_merge_%d' % (level)
+            name = '%s_expand_down_merge_%d' % (prefix, level)
             layers_dict[name] = convL(nb_local_features, [1, 1, 1], **conv_kwargs, name=name)(level_init_layer)
             last_layer = layers_dict[name]
-            name = 'res_down_merge_%d' % (level)
+            name = '%s_res_down_merge_%d' % (prefix, level)
             layers_dict[name] = KL.add([last_layer, convarm_layer], name=name)
             last_layer = layers_dict[name]
 
         # max pool if we're not at the last level
         if level < (nb_levels - 1):
-            name = 'maxpool_%d' % level
+            name = '%s_maxpool_%d' % (prefix, level)
             layers_dict[name] = maxpool(pool_size=pool_size)(last_layer)
             last_layer = layers_dict[name]
 
@@ -79,19 +94,19 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     if nb_mid_level_dense > 0:
         save_shape = last_layer.get_shape().as_list()[1:]
 
-        name = 'mid_dense_down_flat'
+        name = '%s_mid_dense_down_flat' % prefix
         layers_dict[name] = KL.Flatten(name=name)(last_layer)
         last_layer = layers_dict[name]
 
-        name = 'mid_dense_enc'
+        name = '%s_mid_dense_enc' % prefix
         layers_dict[name] = KL.Dense(nb_mid_level_dense, activation=activation, name=name)(last_layer)
         last_layer = layers_dict[name]
 
-        name = 'mid_dense_dec_flat'
+        name = '%s_mid_dense_dec_flat' % prefix
         layers_dict[name] = KL.Dense(np.prod(save_shape), activation=activation, name=name)(last_layer)
         last_layer = layers_dict[name]
 
-        name = 'mid_dense_dec'
+        name = '%s_mid_dense_dec' % prefix
         layers_dict[name] = KL.Reshape(save_shape, name=name)(last_layer)
         last_layer = layers_dict[name]
 
@@ -101,103 +116,110 @@ def design_unet(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     for level in range(nb_levels - 1):
 
         # upsample matching the max pooling layers
-        name = 'up_%d' % (nb_levels + level)
+        name = '%s_up_%d' % (prefix, nb_levels + level)
         layers_dict[name] = upsample(size=pool_size, name=name)(last_layer)
         last_layer = layers_dict[name]
 
         # upsample matching the max pooling layers
-        name = 'upconv_%d' % (nb_levels + level)
+        name = '%s_upconv_%d' % (prefix, nb_levels + level)
         nb_local_features = nb_features*(feat_mult**(nb_levels-2-level))
         layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
         last_layer = layers_dict[name]
 
         # merge layers combining previous layer
         if use_skip_connections:
-            conv_name = 'conv_downarm_%d_%d' % (nb_levels - 2 - level, nb_conv_per_level - 1)
-            name = 'merge_%d' % (nb_levels + level)
+            conv_name = '%s_conv_downarm_%d_%d' % (prefix, nb_levels - 2 - level, nb_conv_per_level - 1)
+            name = '%s_merge_%d' % (prefix, nb_levels + level)
             layers_dict[name] = KL.concatenate([layers_dict[conv_name], last_layer], axis=ndims+1, name=name)
             last_layer = layers_dict[name]
 
         # convolution layers
         for conv in range(nb_conv_per_level):
-            name = 'conv_uparm_%d_%d' % (nb_levels + level, conv)
+            name = '%s_conv_uparm_%d_%d' % (prefix, nb_levels + level, conv)
             layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
             last_layer = layers_dict[name]
 
         if use_residuals:
-            conv_name = 'upconv_%d' % (nb_levels + level)
+            conv_name = '%s_upconv_%d' % (prefix, nb_levels + level)
             convarm_layer = last_layer
 
-            name = 'expand_up_merge_%d' % (level)
+            name = '%s_expand_up_merge_%d' % (prefix, level)
             layers_dict[name] = convL(nb_local_features, [1, 1, 1], **conv_kwargs, name=name)(layers_dict[conv_name])
             last_layer = layers_dict[name]
 
-            name = 'res_up_merge_%d' % (level)
+            name = '%s_res_up_merge_%d' % (prefix, level)
             layers_dict[name] = KL.add([convarm_layer,last_layer ], name=name)
             last_layer = layers_dict[name]
 
     # reshape last layer for prediction
-    name = 'conv_uparm_%d_%d_reshape' % (2 * nb_levels - 2, nb_conv_per_level - 1)
+    name = '%s_conv_uparm_%d_%d_reshape' % (prefix, 2 * nb_levels - 2, nb_conv_per_level - 1)
     layers_dict[name] = KL.Reshape((vol_numel, nb_features), name=name)(last_layer)
     last_layer = layers_dict[name]
 
     if add_prior_layer:
 
         # likelihood layer
-        name = 'likelihood'
-        act = None if use_logp else 'softmax'
+        name = '%s_likelihood' % prefix
+        act = None if use_logp else final_pred_activation
         layers_dict[name] = KL.Conv1D(nb_labels, 1, activation=act, name=name)(last_layer)
         last_layer = layers_dict[name]
 
         # prior input layer
-        name = 'prior-input'
+        name = '%s_prior-input' % prefix
+        prior_input_name = name
         layers_dict[name] = KL.Input(shape=patch_size + (nb_labels,), name=name)
-        name = 'prior-input-reshape'
-        layers_dict[name] = KL.Reshape((vol_numel, nb_labels), name=name)(layers_dict['prior-input'])
+        name = '%s_prior-input-reshape' % prefix
+        layers_dict[name] = KL.Reshape((vol_numel, nb_labels), name=name)(layers_dict[prior_input_name])
 
         # final prediction
         if use_logp:
             # log of prior
-            name = 'prior-log'
-            layers_dict[name] = KL.Lambda(_log_layer, name=name)(layers_dict['prior-input-reshape'])
+            name = '%s_prior-log' % prefix
+            layers_dict[name] = KL.Lambda(_log_layer, name=name)(layers_dict['%s_prior-input-reshape' % prefix])
             last_layer = layers_dict[name]
 
             # compute log prediction
-            name = 'log-prediction'
+            name = '%s_log-prediction' % prefix
             layers_dict[name] = KL.add([layers_dict['prior-log'], layers_dict['likelihood']])
             last_layer = layers_dict[name]
 
-            name = 'prediction'
-            layers_dict[name] = KL.Conv1D(nb_labels, 1, activation='softmax', name=name)(last_layer)
+            name = '%s_prediction' % prefix
+            layers_dict[name] = KL.Conv1D(nb_labels, 1, activation=final_pred_activation, name=name)(last_layer)
             last_layer = layers_dict[name]
 
         else:
-            name = 'prediction'
-            layers_dict[name] = KL.multiply([layers_dict['prior-input-reshape'], layers_dict['likelihood']])
+            name = '%s_prediction' % prefix
+            layers_dict[name] = KL.multiply([layers_dict['%s_prior-input-reshape' % prefix], layers_dict['%s_likelihood' % prefix]])
 
-        model_inputs = [layers_dict['input'], layers_dict['prior-input']]
+        model_inputs = [layers_dict[input_name], layers_dict[prior_input_name]]
 
     else:
 
         # output (liklihood) prediction layer
-        name = 'prediction'
-        layers_dict[name] = KL.Conv1D(nb_labels, 1, activation='softmax', name=name)(last_layer)
+        name = '%s_prediction' % prefix
+        layers_dict[name] = KL.Conv1D(nb_labels, 1, activation=final_pred_activation, name=name)(last_layer)
 
-        model_inputs = [layers_dict['input']]
+        model_inputs = [layers_dict[input_name]]
 
     # create the model
-    model = Model(inputs=model_inputs, outputs=[layers_dict['prediction']])
+    model = Model(inputs=model_inputs, outputs=[layers_dict['%s_prediction' % prefix]], name=model_name)
     
     # compile
     return model
 
 
 def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
-               feat_mult=1, pool_size=None,
-               padding='same', activation='relu',
-               final_layer='dense',
+               feat_mult=1,
+               pool_size=None,
+               padding='same',
+               activation='relu',
+               final_layer='dense-sigmoid',
                conv_dropout=0,
                conv_maxnorm=0,
+               nb_input_features=1,
+               name=None,
+               prefix=None,
+               use_strided_convolution_maxpool=True,
                nb_conv_per_level=2):
     """
     "deep" cnn with dense or global max pooling layer @ end...
@@ -205,7 +227,15 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     Could use sequential...
     """
 
+    model_name = name
+    if model_name is None:
+        model_name = 'model_1'
+    if prefix is None:
+        prefix = model_name
+
     ndims = len(patch_size)
+    patch_size = tuple(patch_size)
+
     convL = KL.Conv3D if len(patch_size) == 3 else KL.Conv2D
     maxpool = KL.MaxPooling3D if len(patch_size) == 3 else KL.MaxPooling2D
     if pool_size is None:
@@ -220,77 +250,110 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
     layers_dict = {}
 
     # first layer: input
-    name = 'input'
-    layers_dict[name] = KL.Input(shape=patch_size + (1,), name=name)
+    name = '%s_input' % prefix
+    layers_dict[name] = KL.Input(shape=patch_size + (nb_input_features,), name=name)
     last_layer = layers_dict[name]
 
     # down arm:
     # add nb_levels of conv + ReLu + conv + ReLu. Pool after each of first nb_levels - 1 layers
     for level in range(nb_levels):
         for conv in range(nb_conv_per_level):
-            
             if conv_dropout > 0:
-                name = 'dropout_%d_%d' % (level, conv)
+                name = '%s_dropout_%d_%d' % (prefix, level, conv)
                 layers_dict[name] = KL.Dropout(conv_dropout)
                 last_layer = layers_dict[name]
 
-            name = 'conv_%d_%d' % (level, conv)
+            name = '%s_conv_%d_%d' % (prefix, level, conv)
             nb_local_features = nb_features*(feat_mult**level)
             layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
             last_layer = layers_dict[name]
 
         # max pool
-        name = 'maxpool_%d' % level
-        layers_dict[name] = maxpool(pool_size=pool_size)(last_layer)
-        last_layer = layers_dict[name]
+        if use_strided_convolution_maxpool:
+            name = '%s_strided_conv_%d' % (prefix, level)
+            layers_dict[name] = convL(nb_local_features, pool_size, **conv_kwargs, name=name)(last_layer)
+            last_layer = layers_dict[name]
+        else:
+            name = '%s_maxpool_%d' % (prefix, level)
+            layers_dict[name] = maxpool(pool_size=pool_size)(last_layer)
+            last_layer = layers_dict[name]
 
     # dense layer
-    if final_layer == 'dense':
+    if final_layer == 'dense-sigmoid':
 
-        name = "flatten"
+        name = "%s_flatten" % prefix
         layers_dict[name] = KL.Flatten(name=name)(last_layer)
         last_layer = layers_dict[name]
 
-        name = 'dense'
-        layers_dict[name] = KL.Dense(nb_labels, name=name)(last_layer)
+        name = '%s_dense' % prefix
+        layers_dict[name] = KL.Dense(1, name=name, activation="sigmoid")(last_layer)
+
+    elif final_layer == 'dense-tanh':
+
+        name = "%s_flatten" % prefix
+        layers_dict[name] = KL.Flatten(name=name)(last_layer)
+        last_layer = layers_dict[name]
+
+        name = '%s_dense' % prefix
+        layers_dict[name] = KL.Dense(1, name=name)(last_layer)
+        last_layer = layers_dict[name]
+
+        # Omittting BatchNorm for now, it seems to have a cpu vs gpu problem
+        # https://github.com/tensorflow/tensorflow/pull/8906
+        # https://github.com/fchollet/keras/issues/5802
+        # name = '%s_dense_bn' % prefix
+        # layers_dict[name] = KL.BatchNormalization(name=name)(last_layer)
+        # last_layer = layers_dict[name]
+
+        name = '%s_dense_tanh' % prefix
+        layers_dict[name] = KL.Activation(activation="tanh", name=name)(last_layer)
+
+    elif final_layer == 'dense-softmax':
+
+        name = "%s_flatten" % prefix
+        layers_dict[name] = KL.Flatten(name=name)(last_layer)
+        last_layer = layers_dict[name]
+
+        name = '%s_dense' % prefix
+        layers_dict[name] = KL.Dense(nb_labels, name=name, activation="softmax")(last_layer)
 
     # global max pooling layer
     elif final_layer == 'myglobalmaxpooling':
 
-        name = 'batch_norm'
+        name = '%s_batch_norm' % prefix
         layers_dict[name] = KL.BatchNormalization(name=name)(last_layer)
         last_layer = layers_dict[name]
 
-        name = 'global_max_pool'
+        name = '%s_global_max_pool' % prefix
         layers_dict[name] = KL.Lambda(_global_max_nd, name=name)(last_layer)
         last_layer = layers_dict[name]
 
-        name = 'global_max_pool_reshape'
+        name = '%s_global_max_pool_reshape' % prefix
         layers_dict[name] = KL.Reshape((1, 1), name=name)(last_layer)
         last_layer = layers_dict[name]
 
         # cannot do activation in lambda layer. Could code inside, but will do extra lyaer
-        name = 'global_max_pool_sigmoid'
+        name = '%s_global_max_pool_sigmoid' % prefix
         layers_dict[name] = KL.Conv1D(1, 1, name=name, activation="sigmoid", use_bias=True)(last_layer)
 
     elif final_layer == 'globalmaxpooling':
 
-        name = 'conv_to_featmaps'
+        name = '%s_conv_to_featmaps' % prefix
         layers_dict[name] = KL.Conv3D(2, 1, name=name, activation="relu")(last_layer)
         last_layer = layers_dict[name]
 
-        name = 'global_max_pool'
+        name = '%s_global_max_pool' % prefix
         layers_dict[name] = KL.GlobalMaxPooling3D(name=name)(last_layer)
         last_layer = layers_dict[name]
 
         # cannot do activation in lambda layer. Could code inside, but will do extra lyaer
-        name = 'global_max_pool_softmax'
+        name = '%s_global_max_pool_softmax' % prefix
         layers_dict[name] = KL.Activation('softmax', name=name)(last_layer)
 
     last_layer = layers_dict[name]
 
     # create the model
-    model = Model(inputs=[layers_dict['input']], outputs=[last_layer])
+    model = Model(inputs=[layers_dict['%s_input' % prefix]], outputs=[last_layer], name=model_name)
     return model
 
 
@@ -302,6 +365,7 @@ def copy_weights(src_model, dst_model):
     for idx in range(len(dst_model.layers)):
         layer = dst_model.layers[idx]
         wts = src_model.layers[idx].get_weights()
+        print(len(wts), len(layer.get_weights()))
         layer.set_weights(wts)
 
     # for layer in dst_model.layers:
@@ -330,7 +394,6 @@ def copy_weights(src_model, dst_model):
 def _global_max_nd(x):
     y = K.batch_flatten(x)
     return K.max(y, 1, keepdims=True)
-
 
 def _log_layer(x):
     return K.log(x + K.epsilon())

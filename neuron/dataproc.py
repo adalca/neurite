@@ -129,6 +129,8 @@ def vol_proc(vol_data,
              resize_slices_dim=None,
              offset=None,
              clip=None,
+             extract_nd=None,  # extracts a particular section
+             force_binary=None,  # forces anything > 0 to be 1
              permute=None):
     ''' process a volume with a series of intensity rescale, resize and crop rescale'''
 
@@ -170,12 +172,18 @@ def vol_proc(vol_data,
     if crop is not None:
         vol_data = nd.volcrop(vol_data, crop=crop)
 
-    # needs to be last to guarantee clip limits. 
+    # needs to be last to guarantee clip limits.
     # For e.g., resize might screw this up due to bicubic interpolation if it was done after.
     if clip is not None:
         vol_data = np.clip(vol_data, clip[0], clip[1])
-   
-    # return with checks
+
+    if extract_nd is not None:
+        vol_data = vol_data[np.ix_(*extract_nd)]
+
+    if force_binary:
+        vol_data = (vol_data > 0).astype(float)
+
+    # return with checks. this check should be right at the end before rturn
     if clip is not None:
         assert np.max(vol_data) <= clip[1], "clip failed"
         assert np.min(vol_data) >= clip[0], "clip failed"
@@ -197,13 +205,13 @@ def prior_to_weights(prior_filename, nargout=1, min_freq=0, force_binary=False, 
 
     if force_binary:
         nb_labels = prior_flat.shape[-1]
-        prior_flat[:,1] = np.sum(prior_flat[:,1:nb_labels], 1)
-        prior_flat = np.delete(prior_flat, range(2,nb_labels), 1)
+        prior_flat[:, 1] = np.sum(prior_flat[:, 1:nb_labels], 1)
+        prior_flat = np.delete(prior_flat, range(2, nb_labels), 1)
 
     # sum total class votes
     class_count = np.sum(prior_flat, 0)
     class_prior = class_count / np.sum(class_count)
-    
+
     # adding minimum frequency
     class_prior[class_prior < min_freq] = min_freq
     class_prior = class_prior / np.sum(class_prior)
