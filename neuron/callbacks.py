@@ -160,7 +160,7 @@ class PlotTestSlices(keras.callbacks.Callback):
             for idx, fig in enumerate(figs):
                 dirn = "dirn_%d" % idx
                 slice_nr = 0
-                filename = self.savefilepath.format(epoch=epoch, axis=dirn, slice_nr=slice_nr)
+                filename = self.savefilepath.format(epoch=epoch, iter=iter, axis=dirn, slice_nr=slice_nr)
                 fig.savefig(filename)
             plt.close()
 
