@@ -13,6 +13,7 @@ import keras
 from keras_tqdm import TQDMNotebookCallback
 import keras.callbacks as keras_callbacks
 import matplotlib.pylab as plt
+import matplotlib
 
 # personal import
 import medipy
@@ -141,6 +142,7 @@ def prepare_run_params(setup_file, model_file, data_file, run_file,
 
     return (paths, model, data, run)
 
+
 def prep_run_output_dir(model_folder, increment_run, existing_run_id=None):
     """
     prepare the output dirs for this run
@@ -193,7 +195,7 @@ def seg_callbacks(run_dir,
     hdf_dir = os.path.join(run_dir, 'hdf5')
     if not os.path.isdir(hdf_dir):
         os.mkdir(hdf_dir)
-    filename = os.path.join(hdf_dir, 'model.{epoch:02d}.hdf5')
+    filename = os.path.join(hdf_dir, 'model.{epoch:02d}-{iter:02d}.hdf5')
     callbacks['save'] = nrn_callbacks.ModelCheckpoint(filename,
                                                       monitor='val_loss',  # is this needed?
                                                       verbose=seg_verbose,
@@ -207,7 +209,7 @@ def seg_callbacks(run_dir,
     png_dir = os.path.join(run_dir, 'png-test')
     if not os.path.isdir(png_dir):
         os.mkdir(png_dir)
-    filename = os.path.join(png_dir, 'test.{epoch:02d}-{axis:s}-{slice_nr:d}.png')
+    filename = os.path.join(png_dir, 'test.{epoch:02d}-{iter:02d}-{axis:s}-{slice_nr:d}.png')
     callbacks['print'] = nrn_callbacks.PlotTestSlices(filename,
                                                       generators['print'],
                                                       run.patch_size,
@@ -279,6 +281,8 @@ def seg_generators(paths, model, data, run, batch_size,
                    nb_train_files=None,  # if None, will be estimated below
                    nb_validate_files=None,  # if None, will be estimated below
                    nb_test_files=None,  # if None, will be estimated below
+                   rand_seed_vol=None,
+                   label_blur_sigma=None,
                    gen_verbose=False):
     """
     usual generators for segmentation
@@ -302,6 +306,9 @@ def seg_generators(paths, model, data, run, batch_size,
             extract_ix[run.collapse_2d] = run.extract_slices
             vol_proc = lambda x: nrn_dataproc.vol_proc(x, extract_nd=extract_ix)
 
+    if rand_seed_vol is None:
+        rand_seed_vol = np.random.randint(0, 1000)
+
     # prepare arguments for generators
     gen_args = {'ext' : data.ext,
                 'relabel': data.labels,
@@ -312,10 +319,13 @@ def seg_generators(paths, model, data, run, batch_size,
                 'proc_vol_fn':vol_proc,
                 'proc_seg_fn':vol_proc,
                 'collapse_2d':collapse_2d,
+                'rand_seed_vol':rand_seed_vol,
                 'verbose':gen_verbose}
 
     # prepare the generator function depending on whether a prior is used
     genfcn = nrn_gen.vol_seg
+    genfcn_vol = nrn_gen.vol_count
+    genfcn_ext = nrn_gen.vol_ext_data
     if model.include_prior:
         if verbose:
             print('Using prior')
@@ -323,6 +333,10 @@ def seg_generators(paths, model, data, run, batch_size,
         gen_args['prior_file'] = paths.prior
         gen_args['prior_feed'] = 'input'
         genfcn = nrn_gen.vol_seg_prior
+        genfcn_vol = nrn_gen.vol_count_prior
+        genfcn_ext = nrn_gen.vol_ext_data_prior
+    if data.ext == '.png':
+        genfcn = nrn_gen.img_seg
 
     # get generators
     generators = {}
@@ -337,6 +351,15 @@ def seg_generators(paths, model, data, run, batch_size,
                                  paths.datalink('train', 'asegs'),
                                  name='training_gen',
                                  **gen_args)
+    generators['train-vol'] = genfcn_vol(paths.datalink('train', 'vols'),
+                                 paths.datalink('train', 'asegs'),
+                                 name='training_gen',
+                                 label_blur_sigma=label_blur_sigma,
+                                 **gen_args)
+    generators['train-ext'] = genfcn_ext(paths.datalink('train', 'vols'),
+                                 paths.datalink('train', 'external'),
+                                 name='training_gen',
+                                 **gen_args)
 
     # main validation generator
     if nb_validate_files is None:
@@ -346,6 +369,15 @@ def seg_generators(paths, model, data, run, batch_size,
     gen_args['nb_restart_cycle'] = nb_validate_files  # sample the same validation files
     generators['validate'] = genfcn(paths.datalink('validate', 'vols'),
                                     paths.datalink('validate', 'asegs'),
+                                    name='validation_gen',
+                                    **gen_args)
+    generators['validate-vol'] = genfcn_vol(paths.datalink('validate', 'vols'),
+                                    paths.datalink('validate', 'asegs'),
+                                    name='validation_gen',
+                                    label_blur_sigma=label_blur_sigma,
+                                    **gen_args)
+    generators['validate-ext'] = genfcn_ext(paths.datalink('validate', 'vols'),
+                                    paths.datalink('validate', 'external'),
                                     name='validation_gen',
                                     **gen_args)
 
@@ -391,7 +423,12 @@ def seg_generators(paths, model, data, run, batch_size,
     return generators
 
 
-def seg_losses(nb_labels, prior_filename=None, weights=None, patch_size=None, disc=None):
+def seg_losses(nb_labels,
+               prior_filename=None,
+               weights=None,
+               patch_size=None,
+               disc=None,
+               dice_mix_weights=[0.01,1]):
     """
     usual losses for segmentation models
     """
@@ -436,8 +473,10 @@ def seg_losses(nb_labels, prior_filename=None, weights=None, patch_size=None, di
     loss = dice(nb_labels, weights=weights0bg, dice_type='soft').loss
     losses['dice_wt0bg_soft'] = _loss_with_name(loss, 'dice_wt0bg_soft_loss')
 
+    # TODO: we can do this automatically when setting up the models by having 
+    # two losses and specifying the weight!
     mix_losses = (losses['dice_wt_soft'], losses['cc_wt'])
-    mix_weights = (0.01, 1)
+    mix_weights = dice_mix_weights
     loss = nrn_metrics.Mix(mix_losses, mix_weights).loss
     losses['mix_dice_wt_soft_cc_wt'] = _loss_with_name(loss, 'mix_dice_wt_soft_cc_wt_loss')
 
@@ -472,21 +511,24 @@ def seg_losses(nb_labels, prior_filename=None, weights=None, patch_size=None, di
 
     return losses
 
-def _loss_with_name(loss, name):
-    x = lambda x, y: loss(x, y)
-    x.__name__ = name
-    return loss
+
+
 
 def seg_models(model, run, data, load_loss, seed=0):
     """
-    prepare models
+    prepare models for segmentation tasks
+
+    related: how to load a model
+    load_file = '/path/to/model.99-0.00.hdf5'
+    loss = losses['dice']
+    models['seg'] = keras.models.load_model(load_file,  custom_objects={'loss': loss})
     """
 
-    # load_file = '/data/vision/polina/projects/ADNI/work/neuron/output/unet-prior-v4___noresize-nocrop-64feat-2lvls-3x3-reg/hdf5/run_1/model.99-0.00.hdf5'
-    # models['seg'] = keras.models.load_model(load_file,  custom_objects={'loss': wcce})
+    # 
     if seed is not None:
         np.random.seed(seed)
 
+    # a template for create a u-net model (since we create several unet models here)
     unet_template = lambda nb_labels, dict: nrn_models.design_unet(model.nb_features,
                                                                    run.patch_size,
                                                                    model.nb_levels,
@@ -499,7 +541,7 @@ def seg_models(model, run, data, load_loss, seed=0):
                                                                    **dict)
 
     models = {}
-    if run.load_path is not None:
+    if hasattr(run, 'load_path') and run.load_path is not None:
         print('loading model %s' % run.load_path)
         models['seg'] = keras.models.load_model(run.load_path,
                                                 custom_objects={'loss': load_loss})
@@ -515,16 +557,29 @@ def seg_models(model, run, data, load_loss, seed=0):
         models['cg-gen'] = unet_template(1, {'name':'cg-gen', 'nb_input_features':data.nb_labels, 'add_prior_layer':False, 'final_pred_activation':None})
         # get D = discriminator 
         models['cg-disc'] = nrn_models.design_dnn(model.nb_features,
-                                                run.patch_size,
-                                                model.nb_levels,
-                                                model.conv_size,
-                                                data.nb_labels,
-                                                final_layer='dense-tanh',
-                                                feat_mult=model.feat_mult,
-                                                pool_size=model.pool_size,
-                                                nb_input_features=data.nb_labels,
-                                                name='cg-disc')
+                                                  run.patch_size,
+                                                  model.nb_levels,
+                                                  model.conv_size,
+                                                  data.nb_labels,
+                                                  final_layer='dense-tanh',
+                                                  feat_mult=model.feat_mult,
+                                                  pool_size=model.pool_size,
+                                                  nb_input_features=data.nb_labels,
+                                                  name='cg-disc')
+        models['cg-cdisc'] = nrn_models.design_dnn(model.nb_features,
+                                                  run.patch_size,
+                                                  model.nb_levels,
+                                                  model.conv_size,
+                                                  data.nb_labels,
+                                                  final_layer='dense-tanh',
+                                                  feat_mult=model.feat_mult,
+                                                  pool_size=model.pool_size,
+                                                  nb_input_features=data.nb_labels+1,
+                                                  name='cg-disc')
 
+    if hasattr(run, 'load_weights') and run.load_weights is not None:
+        print('loading weights %s' % run.load_weights)
+        models['seg'].load_weights(run.load_weights, by_name=True)
 
     return models
 
@@ -547,7 +602,9 @@ def show_example_prediction_result(test_models,
         test_models = [test_models]
 
     if ccmap is None:
-        ccmap = plotting.jitter(data.nb_labels)
+        [ccmap, scrambled_cmap] = plotting.jitter(data.nb_labels, nargout=2)
+        scrambled_cmap[0,:] = np.array([0,0,0,1])
+        ccmap = matplotlib.colors.ListedColormap(scrambled_cmap)
     if test_model_names is None:
         test_model_names = [f.name for f in test_models]
 
@@ -583,17 +640,20 @@ def show_example_prediction_result(test_models,
     outline_cmap = plt.get_cmap(ccmap)(rcmap)[:, 0:3]
 
     # Warning: this is slow in 3D!. Should really only compute the overlap for the slices...
-    outline_fn = lambda x: su.seg_overlap(vols[0][2], x, cmap=outline_cmap)
+    outline_fn = lambda x: su.seg_overlap(vols[0][2], x, cmap=scrambled_cmap)
 
     # extract specific volumes
     # empty_vol = np.zeros((vols[0][2].shape))  # empty canvas
     plt_titles = ["vol", "true_seg", "true_seg_outlines"]
     plt_vols = [vols[0][2], vols[0][0], outline_fn(vols[0][0])]
     cmaps = ["gray", ccmap, None]
+    ia = lambda x: {'vmin':0, 'vmax':x}
+    imshow_args = [ia(1), ia(data.nb_labels), {}]
     if do_prior:  # not doing prior since it seems it wasn't in there.
         plt_titles = [*plt_titles, "prior_prob_of_true", "prior_seg", "prior_seg_outlines"]
         plt_vols = [*plt_vols, vols[0][5], vols[0][3], outline_fn(vols[0][3])]
         cmaps = [*cmaps, "gray", ccmap, None]
+        imshow_args += [ia(1), ia(data.nb_labels), {}]
 
     for midx, _ in enumerate(test_models):
         vm = vols[midx]
@@ -602,6 +662,7 @@ def show_example_prediction_result(test_models,
         plt_vols = [*plt_vols, vm[pred_prov_idx], vm[1], outline_fn(vm[1])]
         plt_titles = [*plt_titles, "%s_pred_prob_of_true" % mname, "%s_pred_seg" % mname, "%s_pred_seg_outlines" % mname]
         cmaps = [*cmaps, "gray", ccmap, None]
+        imshow_args += [ia(1), ia(data.nb_labels), {}]
 
     # go through dimensions to plot
     if not isinstance(collapse_2d, (list, tuple)):
@@ -627,12 +688,14 @@ def show_example_prediction_result(test_models,
             plt_vols_s = [vol_proc(f) for f in plt_vols]
 
         # plot
+        # imshow_args={'vmin':0, 'vmax':1} #data.nb_labels}
         f = nrn_plt.slices(plt_vols_s,
                            titles=plt_titles,
                            width=plt_width,
                            cmaps=cmaps,
                            do_colorbars=True,
-                           grid=grid)
+                           grid=grid,
+                           imshow_args=imshow_args)
         ret += (f[0], )
 
     return ret
@@ -660,6 +723,31 @@ def _sample_to_disc_data(sample, seg_model, patch_size):
     # return
     return (data[idx,:], z[idx], pred, true)
 
+
+def _loss_with_name(loss, name):
+    x = lambda x, y: loss(x, y)
+    x.__name__ = name
+    return loss
+
+# some code to compute dice on volumes...
+# nb_volumes = 3
+# import medipy
+
+# test_patch_size = [*run.patch_size, 1]
+# test_patch_stride = [*run.patch_stride, 1]
+# dice_scores = np.empty((0, data.nb_labels))
+# for _ in range(nb_volumes):
+#     vols = nrn_utils.predict_volumes([models['seg']],
+#                                     generators['test'],
+#                                     batch_size=8,
+#                                     patch_size=test_patch_size,
+#                                     patch_stride=test_patch_stride,
+#                                     grid_size=run.grid_size,
+#                                     do_extra_vol=False,
+#                                     do_prob_of_true=False,
+#                                     verbose=False)
+#     dsc = medipy.metrics.dice(vols[0], vols[1], labels=np.arange(data.nb_labels))
+#     dice_scores = np.vstack((dice_scores, dsc))
 
 
 
