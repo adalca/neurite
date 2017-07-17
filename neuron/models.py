@@ -20,13 +20,20 @@ def design_unet(nb_features,
                 nb_labels,
                 name=None,
                 prefix=None,
-                feat_mult=1, pool_size=None,
-                use_logp=False, nb_input_features=1, use_skip_connections=True,
-                padding='same', activation='relu', use_residuals=False,
+                feat_mult=1,
+                pool_size=None,
+                use_logp=False,
+                nb_input_features=1,
+                use_skip_connections=True,
+                padding='same',
+                activation='relu',
+                use_residuals=False,
                 final_pred_activation='softmax',
-                nb_conv_per_level=2, add_prior_layer=False, nb_mid_level_dense=0):
+                nb_conv_per_level=2,
+                add_prior_layer=False,
+                nb_mid_level_dense=0):
     """
-    unet-style model
+    unet-style model with lots of parametrization
 
     for U-net like architecture, we need to use Deconvolution3D.
     However, this is not yet available (maybe soon, it's on a dev branch in github I believe)
@@ -160,7 +167,7 @@ def design_unet(nb_features,
 
         # likelihood layer
         name = '%s_likelihood' % prefix
-        act = None if use_logp else final_pred_activation
+        act = activation if use_logp else final_pred_activation
         layers_dict[name] = KL.Conv1D(nb_labels, 1, activation=act, name=name)(last_layer)
         last_layer = layers_dict[name]
 
@@ -180,11 +187,11 @@ def design_unet(nb_features,
 
             # compute log prediction
             name = '%s_log-prediction' % prefix
-            layers_dict[name] = KL.add([layers_dict['prior-log'], layers_dict['likelihood']])
+            layers_dict[name] = KL.add([layers_dict['%s_prior-log' % prefix], layers_dict['%s_likelihood' % prefix]])
             last_layer = layers_dict[name]
 
             name = '%s_prediction' % prefix
-            layers_dict[name] = KL.Conv1D(nb_labels, 1, activation=final_pred_activation, name=name)(last_layer)
+            layers_dict[name] = KL.Activation(final_pred_activation, name=name)(last_layer)
             last_layer = layers_dict[name]
 
         else:
