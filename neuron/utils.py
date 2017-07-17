@@ -37,10 +37,10 @@ def predict_volumes(models,
     Returns:
     if models isa list of more than one model:
         a tuple of model entried, each entry is a tuple of:
-        true_label, pred_label, vol, <prior_label>, <pred_prob_of_true>, <prior_prob_of_true>
+        true_label, pred_label, <vol>, <prior_label>, <pred_prob_of_true>, <prior_prob_of_true>
     if models is just one model:
         a tuple of
-        (true_label, pred_label, vol, <prior_label>, <pred_prob_of_true>, <prior_prob_of_true>)
+        (true_label, pred_label, <vol>, <prior_label>, <pred_prob_of_true>, <prior_prob_of_true>)
 
     TODO: could add prior
     """
@@ -169,7 +169,8 @@ def predict_volume_stack(models,
         for idx, model in enumerate(models):
             # with timer.Timer('prediction', verbose):
             pred = model.predict(sample[0])
-            assert pred.shape[0] == batch_size, "batch size mismatch"
+            assert pred.shape[0] == batch_size, \
+                "batch size mismatch. sample has batch size %d, given batch size is %d" %(pred.shape[0], batch_size)
             input_batch = sample[0] if not do_prior else sample[0][0]
 
             # compute batch range
