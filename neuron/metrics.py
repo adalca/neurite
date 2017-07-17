@@ -202,7 +202,7 @@ class Dice(object):
         # dice will now be [batch_size, nb_labels]
         sum_dim = 1
         top = 2 * K.sum(y_true_op * y_pred_op, sum_dim)
-        bottom = K.sum(y_true_op, sum_dim) + K.sum(y_pred_op, sum_dim)
+        bottom = K.sum(K.square(y_true_op), sum_dim) + K.sum(K.square(y_pred_op), sum_dim)
         # make sure we have no 0s on the bottom. K.epsilon()
         bottom = K.maximum(bottom, self.area_reg)
         return top / bottom
