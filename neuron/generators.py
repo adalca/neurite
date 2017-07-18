@@ -475,6 +475,60 @@ def vol_seg_prior(*args,
             yield (input_vol, [output_vol, prior_batch])
 
 
+def vol_sr_slices(volpath,
+                  nr_input_slices,
+                  nr_slice_spacing,
+                  ext='.npz',
+                  rand_seed_vol=None,
+                  nb_restart_cycle=None,
+                  name='vol_sr_slices',
+                  verbose=False
+                  ):
+
+    print('vol_sr_slices: SHOULD PROPERLY RANDOMIZE', file=sys.stderr)
+    
+    volfiles = _get_file_list(volpath, ext, rand_seed_vol)
+    nb_files = len(volfiles)
+
+    if nb_restart_cycle is None:
+        nb_restart_cycle = nb_files
+
+    # compute the number of slices we'll need in a subvolume
+    nb_slices_in_subvol = (nr_input_slices-1)*(nr_slice_spacing+1)+1
+
+    # iterate through files
+    fileidx = -1
+    while 1:
+        fileidx = np.mod(fileidx + 1, nb_restart_cycle)
+        if verbose and fileidx == 0:
+            print('starting %s cycle' % name)
+
+        try:
+            vol_data = _load_medical_volume(os.path.join(volpath, volfiles[fileidx]), ext, verbose)
+        except:
+            debug_error_msg = "#files: %d, fileidx: %d, nb_restart_cycle: %d. error: %s"
+            print(debug_error_msg % (len(volfiles), fileidx, nb_restart_cycle, sys.exc_info()[0]))
+            raise
+
+        # compute some random slice
+        nb_slices = vol_data.shape[2]
+        nb_start_slices = nb_slices - nb_slices_in_subvol + 1
+        start_indices = np.random.choice(range(nb_start_slices), size=batch_size, replace=False)
+
+        idx = start_indices[0]
+        output_batch = vol_data[:,:,idx:idx+nb_slices_in_subvol]
+        input_batch = vol_data[:,:,idx:(idx+nb_slices_in_subvol):(nr_slice_spacing+1)]
+        for idx in start_indices[1:]:
+            out_sel = vol_data[:,:,idx:idx+nb_slices_in_subvol]
+            output_batch = np.vstack([output_batch, out_sel])
+            input_batch = np.vstack([input_batch, vol_data[:,:,idx:(idx+nb_slices_in_subvol):(nr_slice_spacing+1)]])
+
+        yield (input_batch, output_batch)
+
+    
+
+
+
 def vol_count(*args, label_blur_sigma=None, **kwargs):
     vol_seg_gen = vol_seg(*args, **kwargs)
 
