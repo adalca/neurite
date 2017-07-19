@@ -478,6 +478,7 @@ def vol_seg_prior(*args,
 def vol_sr_slices(volpath,
                   nr_input_slices,
                   nr_slice_spacing,
+                  batch_size=1,
                   ext='.npz',
                   rand_seed_vol=None,
                   nb_restart_cycle=None,
@@ -516,12 +517,13 @@ def vol_sr_slices(volpath,
         start_indices = np.random.choice(range(nb_start_slices), size=batch_size, replace=False)
 
         idx = start_indices[0]
-        output_batch = vol_data[:,:,idx:idx+nb_slices_in_subvol]
-        input_batch = vol_data[:,:,idx:(idx+nb_slices_in_subvol):(nr_slice_spacing+1)]
+        output_batch = np.expand_dims(vol_data[:,:,idx:idx+nb_slices_in_subvol], 0)
+        input_batch = np.expand_dims(vol_data[:,:,idx:(idx+nb_slices_in_subvol):(nr_slice_spacing+1)], 0)
         for idx in start_indices[1:]:
-            out_sel = vol_data[:,:,idx:idx+nb_slices_in_subvol]
+            out_sel = np.expand_dims(vol_data[:,:,idx:idx+nb_slices_in_subvol], 0)
             output_batch = np.vstack([output_batch, out_sel])
-            input_batch = np.vstack([input_batch, vol_data[:,:,idx:(idx+nb_slices_in_subvol):(nr_slice_spacing+1)]])
+            input_batch = np.vstack([input_batch, np.expand_dims(vol_data[:,:,idx:(idx+nb_slices_in_subvol):(nr_slice_spacing+1)], 0)])
+        output_batch = np.reshape(output_batch, [batch_size, -1, output_batch.shape[-1]])    
 
         yield (input_batch, output_batch)
 
