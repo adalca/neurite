@@ -476,17 +476,36 @@ def vol_seg_prior(*args,
 
 
 def vol_sr_slices(volpath,
-                  nr_input_slices,
-                  nr_slice_spacing,
+                  nb_input_slices,
+                  nb_slice_spacing,
                   batch_size=1,
                   ext='.npz',
                   rand_seed_vol=None,
                   nb_restart_cycle=None,
                   name='vol_sr_slices',
+                  rand_slices=True,  # randomize init slice order (i.e. across entries per batch) given a volume
+                  simulate_whole_sparse_vol=False,
                   verbose=False
                   ):
+    """
+    default generator for slice-wise super resolution
+    """
 
-    print('vol_sr_slices: SHOULD PROPERLY RANDOMIZE', file=sys.stderr)
+    def indices_to_batch(vol_data, start_indices, nb_slices_in_subvol, nb_slice_spacing):
+        idx = start_indices[0]
+        output_batch = np.expand_dims(vol_data[:,:,idx:idx+nb_slices_in_subvol], 0)
+        input_batch = np.expand_dims(vol_data[:,:,idx:(idx+nb_slices_in_subvol):(nb_slice_spacing+1)], 0)
+        
+        for idx in start_indices[1:]:
+            out_sel = np.expand_dims(vol_data[:,:,idx:idx+nb_slices_in_subvol], 0)
+            output_batch = np.vstack([output_batch, out_sel])
+            input_batch = np.vstack([input_batch, np.expand_dims(vol_data[:,:,idx:(idx+nb_slices_in_subvol):(nb_slice_spacing+1)], 0)])
+        output_batch = np.reshape(output_batch, [batch_size, -1, output_batch.shape[-1]])
+        
+        return (input_batch, output_batch)
+
+
+    print('vol_sr_slices: SHOULD PROPERLY RANDOMIZE accross different subjects', file=sys.stderr)
     
     volfiles = _get_file_list(volpath, ext, rand_seed_vol)
     nb_files = len(volfiles)
@@ -495,7 +514,7 @@ def vol_sr_slices(volpath,
         nb_restart_cycle = nb_files
 
     # compute the number of slices we'll need in a subvolume
-    nb_slices_in_subvol = (nr_input_slices-1)*(nr_slice_spacing+1)+1
+    nb_slices_in_subvol = (nb_input_slices - 1) * (nb_slice_spacing + 1) + 1
 
     # iterate through files
     fileidx = -1
@@ -514,18 +533,36 @@ def vol_sr_slices(volpath,
         # compute some random slice
         nb_slices = vol_data.shape[2]
         nb_start_slices = nb_slices - nb_slices_in_subvol + 1
-        start_indices = np.random.choice(range(nb_start_slices), size=batch_size, replace=False)
 
-        idx = start_indices[0]
-        output_batch = np.expand_dims(vol_data[:,:,idx:idx+nb_slices_in_subvol], 0)
-        input_batch = np.expand_dims(vol_data[:,:,idx:(idx+nb_slices_in_subvol):(nr_slice_spacing+1)], 0)
-        for idx in start_indices[1:]:
-            out_sel = np.expand_dims(vol_data[:,:,idx:idx+nb_slices_in_subvol], 0)
-            output_batch = np.vstack([output_batch, out_sel])
-            input_batch = np.vstack([input_batch, np.expand_dims(vol_data[:,:,idx:(idx+nb_slices_in_subvol):(nr_slice_spacing+1)], 0)])
-        output_batch = np.reshape(output_batch, [batch_size, -1, output_batch.shape[-1]])    
+        # prepare batches
+        if simulate_whole_sparse_vol:  # if essentially simulate a whole sparse volume for consistent inputs, and yield slices like that:
+            init_slice = 0
+            if rand_slices:
+                init_slice = np.random.randint(0, high=nb_start_slices-1)
 
-        yield (input_batch, output_batch)
+            all_start_indices = list(range(init_slice, nb_start_slices, nb_slice_spacing))
+            for batch_start in range(0, len(all_start_indices), batch_size):
+                start_indices = [all_start_indices[s] for s in range(batch_start, batch_start + batch_size)]
+                indices_to_batch(vol_data, start_indices, nb_slices_in_subvol, nb_slice_spacing)
+                yield (input_batch, output_batch)
+        
+        # if just random slices, get a batch of random starts from this volume and that's it.
+        elif rand_slices:
+            assert not simulate_whole_sparse_vol
+            start_indices = np.random.choice(range(nb_start_slices), size=batch_size, replace=False)
+            indices_to_batch(vol_data, start_indices, nb_slices_in_subvol, nb_slice_spacing)
+            yield (input_batch, output_batch)
+
+        # go slice by slice (overlapping regions)
+        else:
+            for batch_start in range(0, nb_start_slices, batch_size):
+                start_indices = list(range(batch_start, batch_start + batch_size))
+                indices_to_batch(vol_data, start_indices, nb_slices_in_subvol, nb_slice_spacing)
+                yield (input_batch, output_batch)
+
+
+
+        
 
     
 
