@@ -966,3 +966,5 @@ def _categorical_prep(vol_data, nb_labels_reshape, keep_vol_size, patch_size):
     lpatch = np.expand_dims(lpatch, axis=0)
 
     return lpatch
+
+
