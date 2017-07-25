@@ -4,18 +4,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable # plotting
 
-def slices(slices,              # the 2D slices
+def slices(slices_in,              # the 2D slices
            titles=None,         # list of titles
            cmaps=None,          # list of colormaps
            norms=None,          # list of normalizations
            do_colorbars=False,  # option to show colorbars on each slice
-           do_grid=False,       # option to plot the images in a grid or a single row
+           grid=False,          # option to plot the images in a grid or a single row
            width=15,            # width in in
-           show=True):          # option to actually show the plot (plt.show())
+           show=True,           # option to actually show the plot (plt.show())
+           imshow_args=None):
     ''' plot a grid of slices (2d images) '''
 
     # input processing
-    nb_plots = len(slices)
+    nb_plots = len(slices_in)
 
     def input_check(inputs, nb_plots, name):
         ''' change input from None/single-link '''
@@ -30,11 +31,19 @@ def slices(slices,              # the 2D slices
     titles = input_check(titles, nb_plots, 'titles')
     cmaps = input_check(cmaps, nb_plots, 'cmaps')
     norms = input_check(norms, nb_plots, 'norms')
+    imshow_args = input_check(imshow_args, nb_plots, 'imshow_args')
+    for idx, ia in enumerate(imshow_args):
+        imshow_args[idx] = {} if ia is None else ia
 
     # figure out the number of rows and columns
-    if do_grid:
-        rows = np.floor(np.sqrt(nb_plots)).astype(int)
-        cols = np.ceil(nb_plots/rows).astype(int)
+    if grid:
+        if isinstance(grid, bool):
+            rows = np.floor(np.sqrt(nb_plots)).astype(int)
+            cols = np.ceil(nb_plots/rows).astype(int)
+        else:
+            assert isinstance(grid, (list, tuple)), \
+                "grid should either be bool or [rows,cols]"
+            rows, cols = grid
     else:
         rows = 1
         cols = nb_plots
@@ -56,20 +65,23 @@ def slices(slices,              # the 2D slices
         ax.axis('off')
 
         # some cleanup
-        if titles is not None: ax.title.set_text(titles[i])
+        if titles is not None:
+            ax.title.set_text(titles[i])
 
         # show figure
-        im_ax = ax.imshow(slices[i], cmap=cmaps[i], interpolation="nearest", norm=norms[i])
+        im_ax = ax.imshow(slices_in[i], cmap=cmaps[i], interpolation="nearest", norm=norms[i], **imshow_args[i])
 
         # colorbars
         # http://stackoverflow.com/questions/18195758/set-matplotlib-colorbar-size-to-match-graph
-        if do_colorbars:
+        if do_colorbars and cmaps[i] is not None:
             divider = make_axes_locatable(ax)
             cax = divider.append_axes("right", size="5%", pad=0.05)
             fig.colorbar(im_ax, cax=cax)
 
     # show the plots
     fig.set_size_inches(width, rows/cols*width)
+    plt.tight_layout()
+
     if show:
         plt.show()
 
