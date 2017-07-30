@@ -523,6 +523,7 @@ def vol_sr_slices(volpath,
         if verbose and fileidx == 0:
             print('starting %s cycle' % name)
 
+
         try:
             vol_data = _load_medical_volume(os.path.join(volpath, volfiles[fileidx]), ext, verbose)
         except:
@@ -540,24 +541,25 @@ def vol_sr_slices(volpath,
             if rand_slices:
                 init_slice = np.random.randint(0, high=nb_start_slices-1)
 
-            all_start_indices = list(range(init_slice, nb_start_slices, nb_slice_spacing))
-            for batch_start in range(0, len(all_start_indices), batch_size):
+            all_start_indices = list(range(init_slice, nb_start_slices, nb_slice_spacing+1))
+
+            for batch_start in range(0, len(all_start_indices), batch_size*(nb_input_slices-1)):
                 start_indices = [all_start_indices[s] for s in range(batch_start, batch_start + batch_size)]
-                indices_to_batch(vol_data, start_indices, nb_slices_in_subvol, nb_slice_spacing)
+                input_batch, output_batch = indices_to_batch(vol_data, start_indices, nb_slices_in_subvol, nb_slice_spacing)
                 yield (input_batch, output_batch)
         
         # if just random slices, get a batch of random starts from this volume and that's it.
         elif rand_slices:
             assert not simulate_whole_sparse_vol
             start_indices = np.random.choice(range(nb_start_slices), size=batch_size, replace=False)
-            indices_to_batch(vol_data, start_indices, nb_slices_in_subvol, nb_slice_spacing)
+            input_batch, output_batch = indices_to_batch(vol_data, start_indices, nb_slices_in_subvol, nb_slice_spacing)
             yield (input_batch, output_batch)
 
         # go slice by slice (overlapping regions)
         else:
             for batch_start in range(0, nb_start_slices, batch_size):
                 start_indices = list(range(batch_start, batch_start + batch_size))
-                indices_to_batch(vol_data, start_indices, nb_slices_in_subvol, nb_slice_spacing)
+                input_batch, output_batch = indices_to_batch(vol_data, start_indices, nb_slices_in_subvol, nb_slice_spacing)
                 yield (input_batch, output_batch)
 
 
