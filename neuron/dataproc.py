@@ -9,7 +9,7 @@ import six
 import nibabel as nib
 import numpy as np
 import scipy.ndimage.interpolation
-from tqdm import tqdm # for verbosity for forloops
+from tqdm import tqdm_notebook as tqdm # for verbosity for forloops
 from PIL import Image
 import matplotlib.pyplot as plt
 
@@ -20,8 +20,11 @@ import pynd.ndutils as nd
 # reload(nd)
 
 
-def proc_mgh_vols(inpath, outpath, ext='.mgz', resize_shape=None,
-                  interp_order=2, rescale=None, crop=None, offset=None, clip=None):
+def proc_mgh_vols(inpath,
+                  outpath,
+                  ext='.mgz',
+                  label_idx=None,
+                  **kwargs): 
     ''' process mgh data from mgz format and save to numpy format
 
     1. load file
@@ -50,13 +53,14 @@ def proc_mgh_vols(inpath, outpath, ext='.mgz', resize_shape=None,
 
         # process volume
         try:
-            vol_data = vol_proc(vol_data, crop=crop, resize_shape=resize_shape,
-                                interp_order=interp_order, rescale=rescale,
-                                offset=offset, clip=clip)
+            vol_data = vol_proc(vol_data, **kwargs)
         except Exception as e:
             list_skipped_files += (files[fileidx], )
-            # print("Skipping %s\nError: %s" % (files[fileidx], str(e)), file=sys.stderr)
+            print("Skipping %s\nError: %s" % (files[fileidx], str(e)), file=sys.stderr)
             continue
+
+        if label_idx is not None:
+            vol_data = (vol_data == label_idx).astype(int)
 
         # save numpy file
         outname = os.path.splitext(os.path.join(outpath, files[fileidx]))[0] + '.npz'
@@ -67,7 +71,8 @@ def proc_mgh_vols(inpath, outpath, ext='.mgz', resize_shape=None,
 
 
 def scans_to_slices(inpath, outpath, slice_nrs, ext='.mgz', 
-                    label_idx=None, dim_idx=2, 
+                    label_idx=None, dim_idx=2, out_ext='.png',
+                    slice_pad=0, vol_inner_pad_for_slice_nrs=0,
                     **kwargs):  # vol_proc args
 
     # get files in input directory
@@ -86,6 +91,9 @@ def scans_to_slices(inpath, outpath, slice_nrs, ext='.mgz',
         if ('dim' in volnii.header) and volnii.header['dim'][4] > 1:
             vol_data = vol_data[:, :, :, -1]
 
+        if slice_pad > 0:
+            assert not (out_ext == '.png'), "slice pad can only be used with volumes"
+
         # process volume
         try:
             vol_data = vol_proc(vol_data, **kwargs)
@@ -101,22 +109,33 @@ def scans_to_slices(inpath, outpath, slice_nrs, ext='.mgz',
 
         # extract slice
         if slice_nrs is None:
-            slice_nrs_sel = range(vol_data.shape[dim_idx])
+            slice_nrs_sel = range(vol_inner_pad_for_slice_nrs+slice_pad, vol_data.shape[dim_idx]-slice_pad-vol_inner_pad_for_slice_nrs)
         else:
             slice_nrs_sel = slice_nrs
 
         for slice_nr in slice_nrs_sel:
+            slice_nr_out = range(slice_nr - slice_pad, slice_nr + slice_pad + 1)
             if dim_idx == 2:  # TODO: fix in one line
-                vol_img = np.squeeze(vol_data[:, :, slice_nr])
+                vol_img = np.squeeze(vol_data[:, :, slice_nr_out])
             elif dim_idx == 1:
-                vol_img = np.squeeze(vol_data[:, slice_nr, :])
+                vol_img = np.squeeze(vol_data[:, slice_nr_out, :])
             else:
-                vol_img = np.squeeze(vol_data[slice_nr, :, :])
+                vol_img = np.squeeze(vol_data[slice_nr_out, :, :])
            
-            # save png file
-            img = (vol_img*mult_fact).astype('uint8')
-            outname = os.path.splitext(os.path.join(outpath, files[fileidx]))[0] + '_slice%d.png' % slice_nr
-            Image.fromarray(img).convert('RGB').save(outname)
+            # save file
+            if out_ext == '.png':
+                # save png file
+                img = (vol_img*mult_fact).astype('uint8')
+                outname = os.path.splitext(os.path.join(outpath, files[fileidx]))[0] + '_slice%d.png' % slice_nr
+                Image.fromarray(img).convert('RGB').save(outname)
+            else:
+                if slice_pad == 0:  # dimenion has collapsed
+                    assert vol_img.ndim == 2
+                    vol_img = np.expand_dims(vol_img, dim_idx)
+                # assuming nibabel saving image
+                nii = nib.Nifti1Image(vol_img, np.diag([1,1,1,1]))
+                outname = os.path.splitext(os.path.join(outpath, files[fileidx]))[0] + '_slice%d.nii.gz' % slice_nr
+                nib.save(nii, outname)
 
 
 def vol_proc(vol_data,
