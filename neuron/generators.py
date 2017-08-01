@@ -90,6 +90,7 @@ def vol(volpath,
     fileidx = -1
     batch_idx = -1
     feat_idx = 0
+    batch_shape = None
     while 1:
         fileidx = np.mod(fileidx + 1, nb_restart_cycle)
         if verbose and fileidx == 0:
@@ -117,9 +118,17 @@ def vol(volpath,
 
         # split volume into patches if necessary and yield
         if patch_size is None:
-            patch_size = vol_data.shape
-            patch_stride = [1 for f in patch_size]
-        patch_gen = patch(vol_data, patch_size,
+            this_patch_size = vol_data.shape
+            patch_stride = [1 for f in this_patch_size]
+        
+        else:
+            this_patch_size = [f for f in patch_size]
+            for pi, p in enumerate(this_patch_size):
+                if p is None:
+                    this_patch_size[pi] = vol_data.shape[pi]
+                    patch_stride[pi] = 1
+
+        patch_gen = patch(vol_data, this_patch_size,
                           patch_stride=patch_stride,
                           nb_labels_reshape=nb_labels_reshape,
                           batch_size=1,
@@ -136,15 +145,24 @@ def vol(volpath,
             # add to feature
             if np.mod(feat_idx, nb_feats) == 0:
                 vol_data_feats = lpatch
+                
             else:
                 vol_data_feats = np.concatenate([vol_data_feats, lpatch], np.ndim(lpatch)-1)
             feat_idx += 1
 
             if np.mod(feat_idx, nb_feats) == 0:
+                feats_shape = vol_data_feats[1:]
+
+                # yield previous batch if the new volume has different patch sizes
+                if batch_shape is not None and (feats_shape != batch_shape):
+                    batch_idx = -1
+                    batch_shape = None
+                    yield vol_data_batch
 
                 # add to batch of volume data, unless the batch is currently empty
                 if batch_idx == -1:
                     vol_data_batch = vol_data_feats
+                    batch_shape = vol_data_feats[1:]
                 else:
                     vol_data_batch = np.vstack([vol_data_batch, vol_data_feats])
 
@@ -182,7 +200,11 @@ def patch(vol_data,             # the volume
 
     # some parameter setup
     assert batch_size >= 1, "batch_size should be at least 1"
-    patch_size = vol_data.shape if patch_size is None else patch_size
+    if patch_size is None:
+        patch_size = vol_data.shape
+    for pi,p in enumerate(patch_size):
+        if p is None:
+            patch_size[pi] = vol_data.shape[pi]
     batch_idx = -1
     if variable_batch_size:
         batch_size = yield
@@ -198,11 +220,11 @@ def patch(vol_data,             # the volume
         for lpatch in gen:
 
             empty_gen = False
-            if collapse_2d is not None:
-                lpatch = np.squeeze(lpatch, collapse_2d)
-
             # reshape output layer as categorical and prep proper size
             lpatch = _categorical_prep(lpatch, nb_labels_reshape, keep_vol_size, patch_size)
+            
+            if collapse_2d is not None:
+                lpatch = np.squeeze(lpatch, collapse_2d + 1)  # +1 due to batch in first dim
 
             # add this patch to the stack
             if batch_idx == -1:
@@ -265,9 +287,9 @@ def vol_seg(volpath,
     # vol_files = [f.replace('norm', 'aseg') for f in _get_file_list(volpath, ext)]
     # vol_files = [f.replace('orig', 'aseg') for f in vol_files]
     vol_files = [f.replace(vol_subname, seg_subname) for f in _get_file_list(volpath, ext, rand_seed_vol)]
-    seg_gen = vol(segpath, **kwargs, ext=ext, nb_restart_cycle=nb_restart_cycle,
+    seg_gen = vol(segpath, **kwargs, ext=ext, nb_restart_cycle=nb_restart_cycle, collapse_2d=collapse_2d,
                   force_binary=force_binary, relabel=relabel, rand_seed_vol=rand_seed_vol,
-                  data_proc_fn=proc_seg_fn, nb_labels_reshape=nb_labels_reshape,
+                  data_proc_fn=proc_seg_fn, nb_labels_reshape=nb_labels_reshape, keep_vol_size=True,
                   expected_files=vol_files, name=name+' seg', verbose=False)
 
     # on next (while):
@@ -452,6 +474,7 @@ def vol_seg_prior(*args,
                       patch_stride=[*patch_stride, nb_channels],
                       batch_size=batch_size,
                       collapse_2d=collapse_2d,
+                      keep_vol_size=True,
                       infinite=True,
                       variable_batch_size=True,
                       nb_labels_reshape=0)
@@ -523,6 +546,7 @@ def vol_sr_slices(volpath,
         if verbose and fileidx == 0:
             print('starting %s cycle' % name)
 
+
         try:
             vol_data = _load_medical_volume(os.path.join(volpath, volfiles[fileidx]), ext, verbose)
         except:
@@ -540,24 +564,25 @@ def vol_sr_slices(volpath,
             if rand_slices:
                 init_slice = np.random.randint(0, high=nb_start_slices-1)
 
-            all_start_indices = list(range(init_slice, nb_start_slices, nb_slice_spacing))
-            for batch_start in range(0, len(all_start_indices), batch_size):
+            all_start_indices = list(range(init_slice, nb_start_slices, nb_slice_spacing+1))
+
+            for batch_start in range(0, len(all_start_indices), batch_size*(nb_input_slices-1)):
                 start_indices = [all_start_indices[s] for s in range(batch_start, batch_start + batch_size)]
-                indices_to_batch(vol_data, start_indices, nb_slices_in_subvol, nb_slice_spacing)
+                input_batch, output_batch = indices_to_batch(vol_data, start_indices, nb_slices_in_subvol, nb_slice_spacing)
                 yield (input_batch, output_batch)
         
         # if just random slices, get a batch of random starts from this volume and that's it.
         elif rand_slices:
             assert not simulate_whole_sparse_vol
             start_indices = np.random.choice(range(nb_start_slices), size=batch_size, replace=False)
-            indices_to_batch(vol_data, start_indices, nb_slices_in_subvol, nb_slice_spacing)
+            input_batch, output_batch = indices_to_batch(vol_data, start_indices, nb_slices_in_subvol, nb_slice_spacing)
             yield (input_batch, output_batch)
 
         # go slice by slice (overlapping regions)
         else:
             for batch_start in range(0, nb_start_slices, batch_size):
                 start_indices = list(range(batch_start, batch_start + batch_size))
-                indices_to_batch(vol_data, start_indices, nb_slices_in_subvol, nb_slice_spacing)
+                input_batch, output_batch = indices_to_batch(vol_data, start_indices, nb_slices_in_subvol, nb_slice_spacing)
                 yield (input_batch, output_batch)
 
 
@@ -696,14 +721,6 @@ def ext_data(segpath,
 
             if batch_done or final_batch:
                 batch_idx = -1
-                num_classes=[3,3,3,2]
-                for idx in range(len(ext_data_batch)-2):
-                    ext_data_batch[idx] = np_utils.to_categorical(ext_data_batch[idx], num_classes=num_classes[idx])
-                    ext_data_batch[idx] = np.reshape(ext_data_batch[idx], [ext_data_batch[idx].shape[0], 1, num_classes[idx]])
-                ext_data_batch[-1] = np.reshape(ext_data_batch[-1], [ext_data_batch[idx].shape[0], 1, 1])
-                ext_data_batch[-2] = np.reshape(ext_data_batch[-2], [ext_data_batch[idx].shape[0], 1, 1])
-
-                ext_data_batch = [np.array(f) for f in ext_data_batch]
                 yield ext_data_batch
 
 
