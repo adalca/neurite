@@ -721,9 +721,11 @@ def show_example_prediction_result(test_models,
 
 
 
-
-def _sample_to_disc_data(sample, seg_model, patch_size):
-    
+import keras.utils as k_utils
+def _sample_to_disc_data(sample, seg_model, patch_size, do_categorical=False):
+    """
+    true is 1
+    """
     true = sample[1]
     pred = seg_model.predict(sample[0])
     
@@ -731,7 +733,7 @@ def _sample_to_disc_data(sample, seg_model, patch_size):
     bs = pred.shape[0]
     
     # prepare 0s and 1s and data stack
-    z = np.vstack((-np.ones((bs,1)), np.ones((bs,1))))
+    z = np.vstack((np.zeros((bs,1)), np.ones((bs,1))))
     data = np.vstack((pred, true))
     data = np.reshape(data, (bs*2, *patch_size, -1))
     
@@ -739,8 +741,13 @@ def _sample_to_disc_data(sample, seg_model, patch_size):
     idx = np.arange(0, bs*2)
     np.random.shuffle(idx)  # in-place
 
+    if do_categorical:
+        z = k_utils.to_categorical(z)
+        s = np.sum(z, 1)
+        assert s[0] == s[1], "something went wrong with categorizing output"
+
     # return
-    return (data[idx,:], z[idx], pred, true)
+    return (data[idx,:], z[idx,:], pred, true)
 
 
 def _loss_with_name(loss, name):
