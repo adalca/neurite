@@ -3,6 +3,7 @@
 # built-in
 import sys
 import os
+import shutil
 import six
 
 # third party
@@ -13,8 +14,21 @@ from tqdm import tqdm_notebook as tqdm # for verbosity for forloops
 from PIL import Image
 import matplotlib.pyplot as plt
 
+
+
+# note sure if tqdm_notebook reverts back to 
+try:
+    get_ipython
+    from tqdm import tqdm_notebook as tqdm
+except:
+    from tqdm import tqdm as tqdm
+
+from subprocess import call
+
+
 # import local ndutils
 import pynd.ndutils as nd
+import re
 
 # from imp import reload # for re-loading modules, since some of the modules are still in development
 # reload(nd)
@@ -70,9 +84,13 @@ def proc_mgh_vols(inpath,
         print("Skipped: %s" % file, file=sys.stderr)
 
 
-def scans_to_slices(inpath, outpath, slice_nrs, ext='.mgz', 
-                    label_idx=None, dim_idx=2, out_ext='.png',
-                    slice_pad=0, vol_inner_pad_for_slice_nrs=0,
+def scans_to_slices(inpath, outpath, slice_nrs,
+                    ext='.mgz',
+                    label_idx=None,
+                    dim_idx=2,
+                    out_ext='.png',
+                    slice_pad=0,
+                    vol_inner_pad_for_slice_nrs=0,
                     **kwargs):  # vol_proc args
 
     # get files in input directory
@@ -92,7 +110,7 @@ def scans_to_slices(inpath, outpath, slice_nrs, ext='.mgz',
             vol_data = vol_data[:, :, :, -1]
 
         if slice_pad > 0:
-            assert not (out_ext == '.png'), "slice pad can only be used with volumes"
+            assert (out_ext != '.png'), "slice pad can only be used with volumes"
 
         # process volume
         try:
@@ -210,6 +228,7 @@ def vol_proc(vol_data,
 
 
 def prior_to_weights(prior_filename, nargout=1, min_freq=0, force_binary=False, verbose=False):
+    
     ''' transform a 4D prior (3D + nb_labels) into a class weight vector '''
 
     # load prior
@@ -262,3 +281,126 @@ def prior_to_weights(prior_filename, nargout=1, min_freq=0, force_binary=False, 
         return weights
     else:
         return (weights, prior)
+
+
+
+
+def filestruct_change(in_path, out_path, re_map,
+                      mode='subj_to_type',
+                      use_symlinks=False):
+    """
+    change from independent subjects in a folder to breakdown structure 
+
+    example: filestruct_change('/../in_path', '/../out_path', {'asegs.nii.gz':'asegs', 'norm.nii.gz':'vols'})
+
+
+    input structure: 
+        /.../in_path/subj_1 --> with files that match regular repressions defined in re_map.keys()
+        /.../in_path/subj_2 --> with files that match regular repressions defined in re_map.keys()
+        ...
+    output structure:
+        /.../out_path/asegs/subj_1.nii.gz, subj_2.nii.gz
+        /.../out_path/asegvols/subj_1.nii.gz, subj_2.nii.gz
+
+    Parameters:
+        in_path (string): input path
+        out_path (string): output path
+        re_map (dictionary): keys are reg-exs that match files in the input folders. 
+            values are the folders to put those files in the new structure. 
+            values can also be tuples, in which case values[0] is the dst folder, 
+            and values[1] is the extension of the output file
+        mode (optional)
+        use_symlinks (bool): whether to just use symlinks rather than copy files
+            default:True
+    """
+
+    
+    if not os.path.isdir(out_path):
+        os.mkdir(out_path)
+
+    # go through folders
+    for subj in tqdm(os.listdir(in_path)):
+
+        # go through files in a folder
+        files = os.listdir(os.path.join(in_path, subj))
+        for file in files:
+
+            # see which key matches. Make sure only one does.
+            matches = [re.match(k, file) for k in re_map.keys()]
+            nb_matches = sum([f is not None for f in matches])
+            assert nb_matches == 1, "Found %d matches for file %s/%s" %(nb_matches, file, subj)
+
+            # get the matches key
+            match_idx = [i for i,f in enumerate(matches) if f is not None][0]
+            matched_dst = re_map[list(re_map.keys())[match_idx]]
+            _, ext = os.path.splitext(file)
+            if isinstance(matched_dst, tuple):
+                ext = matched_dst[1]
+                matched_dst = matched_dst[0]
+
+            # prepare source and destination file
+            src_file = os.path.join(in_path, subj, file)
+            dst_path = os.path.join(out_path, matched_dst)
+            if not os.path.isdir(dst_path):
+                os.mkdir(dst_path)
+            dst_file = os.path.join(dst_path, subj + ext)
+
+            if use_symlinks:
+                # on windows there are permission problems. 
+                # Can try : call(['mklink', 'LINK', 'TARGET'], shell=True)
+                # or note https://stackoverflow.com/questions/6260149/os-symlink-support-in-windows
+                os.symlink(src_file, dst_file)
+
+            else:
+                shutil.copyfile(src_file, dst_file)
+
+
+def ml_split(in_path, out_path, cat_titles=['train', 'validate', 'test'], cat_prop=[0.5, 0.3, 0.2], use_symlinks=False):
+    """
+    split dataset 
+    """
+
+    # get subjects and randomize their order
+    subjs = os.listdir(in_path)
+    nb_subj = len(subjs)
+    subj_order = np.random.permutation(nb_subj)
+
+    # prepare split
+    cat_tot = np.cumsum(cat_prop)
+    if not cat_tot[-1] == 1:
+        print("split_prop sums to %f, re-normalizing" % cat_tot)
+    cat_tot = np.array(cat_tot) / sum(cat_tot)
+    nb_cat_subj = np.round(cat_tot * nb_subj).astype(int)
+    cat_subj_start = [0, *nb_cat_subj[:-1]]
+
+    # go through each category
+    for cat_idx, cat in enumerate(cat_titles):
+        cat_subj_idx = subj_order[cat_subj_start[cat_idx]:nb_cat_subj[cat_idx]]
+        for subj_idx in tqdm(cat_subj_idx, desc=cat):
+            src_folder = os.path.join(in_path, subjs[subj_idx])
+            dst_folder = os.path.join(out_path, cat, subjs[subj_idx])
+
+            if use_symlinks:
+                # on windows there are permission problems. 
+                # Can try : call(['mklink', 'LINK', 'TARGET'], shell=True)
+                # or note https://stackoverflow.com/questions/6260149/os-symlink-support-in-windows
+                os.symlink(src_folder, dst_folder)
+
+            else:
+                shutil.copytree(src_folder, dst_folder)
+        
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -107,14 +107,17 @@ def prepare_run_params(setup_file, model_file, data_file, run_file,
     data.vol_size = list(data.vol_size)
 
     # patch size and stride checks
-    run.patch_size = list(run.patch_size)
+    if run.patch_size is not None and run.patch_size[0] is not None:
+        run.patch_size = list(run.patch_size)
     if not isinstance(run.patch_stride, list):
         run.patch_stride = (run.patch_stride,)
-    if len(run.patch_stride) == 1 and len(run.patch_size) > 1:
+    if run.patch_size is not None and len(run.patch_stride) == 1 and len(run.patch_size) > 1:
         run.patch_stride = [run.patch_stride[0] for f in run.patch_size]
 
     # compute the grid size
-    if len(run.patch_size) == 2 and len(data.vol_size) == 3:
+    if run.patch_size is None or run.patch_size[0] is None:
+        run.grid_size = [1] * len(data.vol_size)
+    elif len(run.patch_size) == 2 and len(data.vol_size) == 3:
         run.grid_size = pl.gridsize(data.vol_size,
                                     [*run.patch_size, 1],
                                     patch_stride=[*run.patch_stride, 1])
@@ -283,7 +286,9 @@ def seg_generators(paths, model, data, run, batch_size,
                    nb_test_files=None,  # if None, will be estimated below
                    rand_seed_vol=None,
                    label_blur_sigma=None,
-                   gen_verbose=False):
+                   nb_input_feats=1,
+                   gen_verbose=False,
+                   extra_gens={}):
     """
     usual generators for segmentation
     """
@@ -320,6 +325,7 @@ def seg_generators(paths, model, data, run, batch_size,
                 'proc_seg_fn':vol_proc,
                 'collapse_2d':collapse_2d,
                 'rand_seed_vol':rand_seed_vol,
+                'nb_input_feats':nb_input_feats,
                 'verbose':gen_verbose}
 
     # prepare the generator function depending on whether a prior is used
@@ -395,6 +401,17 @@ def seg_generators(paths, model, data, run, batch_size,
     generators['test-2'] = genfcn(paths.datalink('test', 'vols'),
                                   paths.datalink('test', 'asegs'),
                                   name='test_gen',
+                                  
+                                  **gen_args)
+    for k,v in extra_gens.items():
+        gen_args['rand_seed_vol'] = None
+        _, nb_test_files_extra = nb_steps_and_files(paths.datalink(v, 'vols'),
+                                              run.nb_patches_per_volume,
+                                              batch_size)
+        gen_args['nb_restart_cycle'] = nb_test_files_extra
+        generators[k] = genfcn(paths.datalink(v, 'vols'),
+                                  paths.datalink(v, 'asegs'),
+                                  name='%s_gen'%v,
                                   **gen_args)
 
     # generators for metrics
@@ -514,7 +531,7 @@ def seg_losses(nb_labels,
 
 
 
-def seg_models(model, run, data, load_loss, seed=0):
+def seg_models(model, run, data, load_loss, seed=0, nb_input_features=1):
     """
     prepare models for segmentation tasks
 
@@ -547,35 +564,37 @@ def seg_models(model, run, data, load_loss, seed=0):
                                                 custom_objects={'loss': load_loss})
 
     else:
-        models['seg'] = unet_template(data.nb_labels, {'name':'seg', 'add_prior_layer':model.include_prior})
+        dct = {'name':'seg', 'add_prior_layer':model.include_prior, 'nb_input_features':nb_input_features}
+        models['seg'] = unet_template(data.nb_labels, dct)
 
 
         # cycleGAN:
-        # get S = segmentor Unet
-        models['cg-seg'] = unet_template(data.nb_labels, {'name':'cg-seg', 'add_prior_layer':model.include_prior})
-        # get G = generator (S->I)
-        models['cg-gen'] = unet_template(1, {'name':'cg-gen', 'nb_input_features':data.nb_labels, 'add_prior_layer':False, 'final_pred_activation':None})
-        # get D = discriminator 
-        models['cg-disc'] = nrn_models.design_dnn(model.nb_features,
-                                                  run.patch_size,
-                                                  model.nb_levels,
-                                                  model.conv_size,
-                                                  data.nb_labels,
-                                                  final_layer='dense-tanh',
-                                                  feat_mult=model.feat_mult,
-                                                  pool_size=model.pool_size,
-                                                  nb_input_features=data.nb_labels,
-                                                  name='cg-disc')
-        models['cg-cdisc'] = nrn_models.design_dnn(model.nb_features,
-                                                  run.patch_size,
-                                                  model.nb_levels,
-                                                  model.conv_size,
-                                                  data.nb_labels,
-                                                  final_layer='dense-tanh',
-                                                  feat_mult=model.feat_mult,
-                                                  pool_size=model.pool_size,
-                                                  nb_input_features=data.nb_labels+1,
-                                                  name='cg-disc')
+        if run.patch_size is not None and run.patch_size[0] is not None:
+            # get S = segmentor Unet
+            models['cg-seg'] = unet_template(data.nb_labels, {'name':'cg-seg', 'add_prior_layer':model.include_prior})
+            # get G = generator (S->I)
+            models['cg-gen'] = unet_template(1, {'name':'cg-gen', 'nb_input_features':data.nb_labels, 'add_prior_layer':False, 'final_pred_activation':None})
+            # get D = discriminator 
+            models['cg-disc'] = nrn_models.design_dnn(model.nb_features,
+                                                    run.patch_size,
+                                                    model.nb_levels,
+                                                    model.conv_size,
+                                                    data.nb_labels,
+                                                    final_layer='dense-tanh',
+                                                    feat_mult=model.feat_mult,
+                                                    pool_size=model.pool_size,
+                                                    nb_input_features=data.nb_labels,
+                                                    name='cg-disc')
+            models['cg-cdisc'] = nrn_models.design_dnn(model.nb_features,
+                                                    run.patch_size,
+                                                    model.nb_levels,
+                                                    model.conv_size,
+                                                    data.nb_labels,
+                                                    final_layer='dense-tanh',
+                                                    feat_mult=model.feat_mult,
+                                                    pool_size=model.pool_size,
+                                                    nb_input_features=data.nb_labels+1,
+                                                    name='cg-disc')
 
     if hasattr(run, 'load_weights') and run.load_weights is not None:
         print('loading weights %s' % run.load_weights)
