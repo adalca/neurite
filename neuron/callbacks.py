@@ -60,8 +60,8 @@ class ModelWeightCheck(keras.callbacks.Callback):
     def on_model_check(self, epoch, iter, logs=None):
         for layer in self.model.layers:
             for wt in layer.get_weights():
-                assert ~np.any(np.isnan(wt)), 'Found nan weights in model'
-                assert np.all(np.isfinite(wt)), 'Found infinite weights in model'
+                assert ~np.any(np.isnan(wt)), 'Found nan weights in model layer %s' % layer.name
+                assert np.all(np.isfinite(wt)), 'Found infinite weights in model layer %s' % layer.name
 
 
 
