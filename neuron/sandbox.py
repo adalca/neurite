@@ -352,6 +352,7 @@ def seg_generators(paths, model, data, run, batch_size,
         _, nb_train_files = nb_steps_and_files(paths.datalink('train', 'vols'),
                                                run.nb_patches_per_volume,
                                                batch_size)
+    
     gen_args['nb_restart_cycle'] = nb_train_files  # sample the same training files
     generators['train'] = genfcn(paths.datalink('train', 'vols'),
                                  paths.datalink('train', 'asegs'),
@@ -400,9 +401,14 @@ def seg_generators(paths, model, data, run, batch_size,
                                 **gen_args)
     generators['test-2'] = genfcn(paths.datalink('test', 'vols'),
                                   paths.datalink('test', 'asegs'),
-                                  name='test_gen',
-                                  
+                                  name='test_gen',                                 
                                   **gen_args)
+    generators['test-ext'] = genfcn_ext(paths.datalink('test', 'vols'),
+                                 paths.datalink('test', 'external'),
+                                 name='test_gen',
+                                 **gen_args)
+
+
     for k,v in extra_gens.items():
         gen_args['rand_seed_vol'] = None
         _, nb_test_files_extra = nb_steps_and_files(paths.datalink(v, 'vols'),
@@ -545,6 +551,8 @@ def seg_models(model, run, data, load_loss, seed=0, nb_input_features=1):
     if seed is not None:
         np.random.seed(seed)
 
+
+
     # a template for create a u-net model (since we create several unet models here)
     unet_template = lambda nb_labels, dict: nrn_models.design_unet(model.nb_features,
                                                                    run.patch_size,
@@ -599,6 +607,23 @@ def seg_models(model, run, data, load_loss, seed=0, nb_input_features=1):
     if hasattr(run, 'load_weights') and run.load_weights is not None:
         print('loading weights %s' % run.load_weights)
         models['seg'].load_weights(run.load_weights, by_name=True)
+
+
+    # some defaults
+    if not hasattr(model, 'conv_dropout'):
+        model.conv_dropout = 0
+    models['disc'] = nrn_models.design_dnn(model.nb_features,
+                                            run.patch_size,
+                                            model.nb_levels,
+                                            model.conv_size,
+                                            data.nb_labels,
+                                            conv_dropout=model.conv_dropout,
+                                            final_layer='dense-softmax',
+                                            feat_mult=model.feat_mult,
+                                            pool_size=model.pool_size,
+                                            nb_input_features=nb_input_features,
+                                            use_strided_convolution_maxpool=False,
+                                            name='disc')
 
     return models
 
