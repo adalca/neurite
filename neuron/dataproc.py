@@ -287,7 +287,7 @@ def prior_to_weights(prior_filename, nargout=1, min_freq=0, force_binary=False, 
 
 def filestruct_change(in_path, out_path, re_map,
                       mode='subj_to_type',
-                      use_symlinks=False):
+                      use_symlinks=False, name=""):
     """
     change from independent subjects in a folder to breakdown structure 
 
@@ -319,7 +319,7 @@ def filestruct_change(in_path, out_path, re_map,
         os.mkdir(out_path)
 
     # go through folders
-    for subj in tqdm(os.listdir(in_path)):
+    for subj in tqdm(os.listdir(in_path), desc=name):
 
         # go through files in a folder
         files = os.listdir(os.path.join(in_path, subj))
