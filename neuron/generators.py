@@ -99,7 +99,9 @@ def vol(volpath,
         # read next file (circular)
         try:
             # print('opening %s' % os.path.join(volpath, volfiles[fileidx]))
-            vol_data = _load_medical_volume(os.path.join(volpath, volfiles[fileidx]), ext, verbose)
+            file_name = os.path.join(volpath, volfiles[fileidx])
+            vol_data = _load_medical_volume(file_name, ext, verbose)
+            # print(file_name, " was loaded", vol_data.shape)
         except:
             debug_error_msg = "#files: %d, fileidx: %d, nb_restart_cycle: %d. error: %s"
             print(debug_error_msg % (len(volfiles), fileidx, nb_restart_cycle, sys.exc_info()[0]))
@@ -241,7 +243,7 @@ def patch(vol_data,             # the volume
                     batch_size = batch_size_y
 
         if empty_gen:
-            raise Exception('generator was empty')
+            raise Exception('generator was empty. vol size was ', vol_data.shape)
 
         # if not infinite generation, yield the last batch and break the while
         if not infinite:
@@ -665,7 +667,7 @@ def ext_data(segpath,
              patch_size=None,
              expected_nb_files = -1,
              ):
-   # get filenames at given paths
+    # get filenames at given paths
     volfiles = _get_file_list(segpath, ext, rand_seed_vol)
     nb_files = len(volfiles)
     assert nb_files > 0, "Could not find any files at %s with extension %s" % (segpath, ext)
@@ -676,15 +678,15 @@ def ext_data(segpath,
     if data_proc_fn is not None:
         vol_data = data_proc_fn(vol_data)
 
-    nb_patches_per_vol = 1
-    if patch_size is not None and all(f is not None for f in patch_size):
-        nb_patches_per_vol = np.prod(pl.gridsize(vol_data.shape, patch_size, patch_stride))
+    # nb_patches_per_vol = 1
+    # if patch_size is not None and all(f is not None for f in patch_size):
+        # nb_patches_per_vol = np.prod(pl.gridsize(vol_data.shape, patch_size, patch_stride))
     if nb_restart_cycle is None:
         nb_restart_cycle = nb_files
 
-    assert nb_restart_cycle <= (nb_files * nb_patches_per_vol), \
-        '%s restart cycle (%s) too big (%s) in %s' % \
-        (name, nb_restart_cycle, nb_files * nb_patches_per_vol, volpath)
+    # assert nb_restart_cycle <= (nb_files * nb_patches_per_vol), \
+        # '%s restart cycle (%s) too big (%s) in %s' % \
+        # (name, nb_restart_cycle, nb_files * nb_patches_per_vol, volpath)
 
     # check the number of files matches expected (if passed)
     if expected_nb_files >= 0:
@@ -704,24 +706,28 @@ def ext_data(segpath,
             print('starting %s cycle' % name)
 
         this_ext_data = np.load(os.path.join(segpath, volfiles[fileidx]))
+        # print(os.path.join(segpath, volfiles[fileidx]), " was loaded")
 
-        for _ in range(nb_patches_per_vol):
-            if batch_idx == -1:
-                ext_data_batch = [[f] for f in this_ext_data]
-            else:
-                ext_data_batch = [[*ext_data_batch[f], this_ext_data[f]] for f in range(len(this_ext_data))]
-            
-            # yield patch
-            batch_idx += 1
-            batch_done = batch_idx == batch_size - 1
-            files_done = np.mod(fileidx + 1, nb_restart_cycle) == 0
-            final_batch = (yield_incomplete_final_batch and files_done)
-            if verbose and final_batch:
-                print('last batch in %s cycle %d' % (name, fileidx))
+        if batch_idx == -1:
+            ext_data_batch = [[f] for f in this_ext_data]
+        else:
+            ext_data_batch = [[*ext_data_batch[f], this_ext_data[f]] for f in range(len(this_ext_data))]
+        
+        # yield patch
+        batch_idx += 1
+        batch_done = batch_idx == batch_size - 1
+        files_done = np.mod(fileidx + 1, nb_restart_cycle) == 0
+        
+        final_batch = (yield_incomplete_final_batch and files_done)
+        if verbose and final_batch:
+            print('last batch in %s cycle %d' % (name, fileidx))
 
-            if batch_done or final_batch:
-                batch_idx = -1
-                yield ext_data_batch
+        if batch_done or final_batch:
+            for fi,f in enumerate(ext_data_batch):
+                ext_data_batch[fi] = np.array(f)
+
+            batch_idx = -1
+            yield ext_data_batch
 
 
 

@@ -267,7 +267,7 @@ def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
         for conv in range(nb_conv_per_level):
             if conv_dropout > 0:
                 name = '%s_dropout_%d_%d' % (prefix, level, conv)
-                layers_dict[name] = KL.Dropout(conv_dropout)
+                layers_dict[name] = KL.Dropout(conv_dropout)(last_layer)
                 last_layer = layers_dict[name]
 
             name = '%s_conv_%d_%d' % (prefix, level, conv)
