@@ -6,11 +6,101 @@ Tested on keras 2.0
 
 # third party
 import numpy as np
+import keras
 import keras.layers as KL
 from keras.models import Model, Sequential
 import keras.backend as K
 from keras.constraints import maxnorm
 
+
+
+def design_unet_prior():
+    # design unet
+    # design prior
+    pass
+
+def design_prior(input_model,
+                 patch_size,
+                 nb_labels,
+                 name=None,
+                 prefix=None,
+                 use_logp=False,
+                 final_pred_activation='softmax',
+                 add_prior_layer=False):
+    """
+    Add prior layers to existing model
+
+    # TODO: consider prior layer at beginning, and backwards model. Should do this test. Ps->S->I (can do inference backwards ?) and I -> S <- Ps
+    """
+
+    # prepare model name
+    model_name = name
+    if model_name is None:
+        model_name = 'model_1'
+    if prefix is None:
+        prefix = model_name
+
+    ndims = len(patch_size)
+    patch_size = tuple(patch_size)
+    convL = KL.Conv3D if ndims == 3 else KL.Conv2D
+
+    # get likelihood layer prediction (no activation yet)
+    layers_dict = {}
+    name = '%s_likelihood' % prefix
+    layers_dict[name] = input_model.get_layer(name).output
+    like_layer = layers_dict[name]
+    last_layer = layers_dict[name]
+
+    nb_labels = layers_dict[name].get_shape()[-1]
+
+    # add optional prior
+    model_inputs = input_model.inputs
+    if add_prior_layer:
+
+        # prior input layer
+        prior_input_name = '%s_prior-input' % prefix
+        layers_dict[prior_input_name] = KL.Input(shape=patch_size + (nb_labels,), name=prior_input_name)
+        prior_layer = layers_dict[prior_input_name]
+        
+        # operation varies depending on whether we log() prior or not.
+        merge_op = KL.multiply
+        if use_logp:
+            name = '%s_prior-log' % prefix
+            prior_input = layers_dict['%s_prior-input' % prefix]
+            layers_dict[name] = KL.Lambda(_log_layer, name=name)(prior_input)
+            prior_layer = layers_dict[name]
+
+            merge_op = KL.add
+        else:
+            # using sigmoid to get the likelihood values between 0 and 1
+            name = '%s_likelihood_sigmoid' % prefix
+            layers_dict[name] = KL.Activation('sigmoid', name=name)(like_layer)
+            like_layer = layers_dict[name]
+            
+        # merge the likelihood and prior layers into posterior layer
+        name = '%s_posterior' % prefix
+        layers_dict[name] = merge_op([prior_layer, like_layer])
+        last_layer = layers_dict[name]
+
+        # update model inputs
+        model_inputs = [input_model.inputs, layers_dict[prior_input_name]]
+
+    # output prediction layer
+    # we use a softmax to compute P(L_x|I) where x is each location. 
+    if final_pred_activation == 'softmax':
+        name = '%s_prediction' % prefix
+        softmax_lambda_fcn = lambda x: keras.activations.softmax(x, axis=ndims + 1)
+        layers_dict[name] = KL.Lambda(softmax_lambda_fcn, name=name)(like_layer)
+
+    else:
+        name = '%s_prediction' % prefix
+        layers_dict[name] = convL(nb_labels, 1, activation=None, name=name)(like_layer)
+
+    # create the model
+    model = Model(inputs=model_inputs, outputs=[layers_dict['%s_prediction' % prefix]], name=model_name)
+    
+    # compile
+    return model
 
 
 def design_unet(nb_features,
@@ -31,7 +121,8 @@ def design_unet(nb_features,
                 final_pred_activation='softmax',
                 nb_conv_per_level=2,
                 add_prior_layer=False,
-                nb_mid_level_dense=0):
+                nb_mid_level_dense=0,
+                do_vae=False):
     """
     unet-style model with lots of parametrization
 
@@ -52,7 +143,7 @@ def design_unet(nb_features,
     convL = KL.Conv3D if ndims == 3 else KL.Conv2D
     maxpool = KL.MaxPooling3D if ndims == 3 else KL.MaxPooling2D
     upsample = KL.UpSampling3D if ndims == 3 else KL.UpSampling2D
-    vol_numel = np.prod(patch_size)
+    # vol_numel = np.prod(patch_size)
     if pool_size is None:
         pool_size = (2, 2, 2) if len(patch_size) == 3 else (2, 2)
 
@@ -82,7 +173,7 @@ def design_unet(nb_features,
         if use_residuals:
             convarm_layer = last_layer
             name = '%s_expand_down_merge_%d' % (prefix, level)
-            layers_dict[name] = convL(nb_local_features, [1, 1, 1], **conv_kwargs, name=name)(level_init_layer)
+            layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(level_init_layer)
             last_layer = layers_dict[name]
             name = '%s_res_down_merge_%d' % (prefix, level)
             layers_dict[name] = KL.add([last_layer, convarm_layer], name=name)
@@ -105,13 +196,33 @@ def design_unet(nb_features,
         layers_dict[name] = KL.Flatten(name=name)(last_layer)
         last_layer = layers_dict[name]
 
-        name = '%s_mid_dense_enc' % prefix
-        layers_dict[name] = KL.Dense(nb_mid_level_dense, activation=activation, name=name)(last_layer)
-        last_layer = layers_dict[name]
+        if do_vae: # variational auto-encoder
+            name = '%s_mid_mu_enc' % prefix
+            layers_dict[name] = KL.Dense(nb_mid_level_dense, name=name)(last_layer)
 
-        name = '%s_mid_dense_dec_flat' % prefix
-        layers_dict[name] = KL.Dense(np.prod(save_shape), activation=activation, name=name)(last_layer)
-        last_layer = layers_dict[name]
+            name = '%s_mid_sigma_enc' % prefix
+            layers_dict[name] = KL.Dense(nb_mid_level_dense, name=name)(last_layer)
+            last_layer = layers_dict[name]
+
+            sampler = _VAESample(nb_mid_level_dense).sample_z
+
+            name = '%s_mid_dense_dec_sample' % prefix
+            layers_dict[name] = KL.Lambda(sampler, name=name)([layers_dict['%s_mid_mu_enc' % prefix], last_layer])
+            last_layer = layers_dict[name]
+
+            name = '%s_mid_dense_dec_flat' % prefix
+            layers_dict[name] = KL.Dense(np.prod(save_shape), name=name)(last_layer)
+            last_layer = layers_dict[name]
+
+        
+        else: # normal
+            name = '%s_mid_dense_enc' % prefix
+            layers_dict[name] = KL.Dense(nb_mid_level_dense, name=name)(last_layer)
+            last_layer = layers_dict[name]
+
+            name = '%s_mid_dense_dec_flat' % prefix
+            layers_dict[name] = KL.Dense(np.prod(save_shape), name=name)(last_layer)
+            last_layer = layers_dict[name]
 
         name = '%s_mid_dense_dec' % prefix
         layers_dict[name] = KL.Reshape(save_shape, name=name)(last_layer)
@@ -134,6 +245,7 @@ def design_unet(nb_features,
         last_layer = layers_dict[name]
 
         # merge layers combining previous layer
+        # TODO: add Cropping3D or Cropping2D if 'valid' padding
         if use_skip_connections:
             conv_name = '%s_conv_downarm_%d_%d' % (prefix, nb_levels - 2 - level, nb_conv_per_level - 1)
             name = '%s_merge_%d' % (prefix, nb_levels + level)
@@ -151,62 +263,62 @@ def design_unet(nb_features,
             convarm_layer = last_layer
 
             name = '%s_expand_up_merge_%d' % (prefix, level)
-            layers_dict[name] = convL(nb_local_features, [1, 1, 1], **conv_kwargs, name=name)(layers_dict[conv_name])
+            layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(layers_dict[conv_name])
             last_layer = layers_dict[name]
 
             name = '%s_res_up_merge_%d' % (prefix, level)
             layers_dict[name] = KL.add([convarm_layer,last_layer ], name=name)
             last_layer = layers_dict[name]
 
-    # reshape last layer for prediction
-    name = '%s_conv_uparm_%d_%d_reshape' % (prefix, 2 * nb_levels - 2, nb_conv_per_level - 1)
-    layers_dict[name] = KL.Reshape((vol_numel, nb_features), name=name)(last_layer)
+
+    # Compute likelyhood prediction (no activation yet)
+    name = '%s_likelihood' % prefix
+    layers_dict[name] = convL(nb_labels, 1, activation=None, name=name)(last_layer)
+    like_layer = layers_dict[name]
     last_layer = layers_dict[name]
 
+    # add optional prior
+    model_inputs = [layers_dict[input_name]]
     if add_prior_layer:
 
-        # likelihood layer
-        name = '%s_likelihood' % prefix
-        act = activation if use_logp else final_pred_activation
-        layers_dict[name] = KL.Conv1D(nb_labels, 1, activation=act, name=name)(last_layer)
+        # prior input layer
+        prior_input_name = '%s_prior-input' % prefix
+        layers_dict[prior_input_name] = KL.Input(shape=patch_size + (nb_labels,), name=prior_input_name)
+        prior_layer = layers_dict[prior_input_name]
+        
+        # operation varies depending on whether we log() prior or not.
+        merge_op = KL.multiply
+        if use_logp:
+            name = '%s_prior-log' % prefix
+            prior_input = layers_dict['%s_prior-input' % prefix]
+            layers_dict[name] = KL.Lambda(_log_layer, name=name)(prior_input)
+            prior_layer = layers_dict[name]
+
+            merge_op = KL.add
+        else:
+            # using sigmoid to get the likelihood values between 0 and 1
+            name = '%s_likelihood_sigmoid' % prefix
+            layers_dict[name] = KL.Activation('sigmoid', name=name)(like_layer)
+            like_layer = layers_dict[name]
+            
+        # merge the likelihood and prior layers into posterior layer
+        name = '%s_posterior' % prefix
+        layers_dict[name] = merge_op([prior_layer, like_layer])
         last_layer = layers_dict[name]
 
-        # prior input layer
-        name = '%s_prior-input' % prefix
-        prior_input_name = name
-        layers_dict[name] = KL.Input(shape=patch_size + (nb_labels,), name=name)
-        name = '%s_prior-input-reshape' % prefix
-        layers_dict[name] = KL.Reshape((vol_numel, nb_labels), name=name)(layers_dict[prior_input_name])
-
-        # final prediction
-        if use_logp:
-            # log of prior
-            name = '%s_prior-log' % prefix
-            layers_dict[name] = KL.Lambda(_log_layer, name=name)(layers_dict['%s_prior-input-reshape' % prefix])
-            last_layer = layers_dict[name]
-
-            # compute log prediction
-            name = '%s_log-prediction' % prefix
-            layers_dict[name] = KL.add([layers_dict['%s_prior-log' % prefix], layers_dict['%s_likelihood' % prefix]])
-            last_layer = layers_dict[name]
-
-            name = '%s_prediction' % prefix
-            layers_dict[name] = KL.Activation(final_pred_activation, name=name)(last_layer)
-            last_layer = layers_dict[name]
-
-        else:
-            name = '%s_prediction' % prefix
-            layers_dict[name] = KL.multiply([layers_dict['%s_prior-input-reshape' % prefix], layers_dict['%s_likelihood' % prefix]])
-
+        # update model inputs
         model_inputs = [layers_dict[input_name], layers_dict[prior_input_name]]
 
-    else:
-
-        # output (liklihood) prediction layer
+    # output prediction layer
+    # we use a softmax to compute P(L_x|I) where x is each location. 
+    if final_pred_activation == 'softmax':
         name = '%s_prediction' % prefix
-        layers_dict[name] = KL.Conv1D(nb_labels, 1, activation=final_pred_activation, name=name)(last_layer)
+        softmax_lambda_fcn = lambda x: keras.activations.softmax(x, axis=ndims + 1)
+        layers_dict[name] = KL.Lambda(softmax_lambda_fcn, name=name)(like_layer)
 
-        model_inputs = [layers_dict[input_name]]
+    else:
+        name = '%s_prediction' % prefix
+        layers_dict[name] = convL(nb_labels, 1, activation=None, name=name)(like_layer)
 
     # create the model
     model = Model(inputs=model_inputs, outputs=[layers_dict['%s_prediction' % prefix]], name=model_name)
@@ -405,5 +517,15 @@ def _global_max_nd(x):
 def _log_layer(x):
     return K.log(x + K.epsilon())
 
-def _global_max_nd(x):
-    return K.exp(x)
+# def _global_max_nd(x):
+    # return K.exp(x)
+
+
+class _VAESample():
+    def __init__(self, nb_z):
+        self.nb_z = nb_z
+
+    def sample_z(self, args):
+        mu, log_sigma = args
+        eps = K.random_normal(shape=(K.shape(mu)[0], self.nb_z), mean=0., stddev=1.)
+        return mu + K.exp(log_sigma / 2) * eps
