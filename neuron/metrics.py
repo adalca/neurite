@@ -343,7 +343,7 @@ def _label_to_one_hot(tens, nb_labels):
 
 def _hard_max(tens, axis):
     """
-    we can't use the argmax function, as it's not differentiable
+    we can't use the argmax function in a loss, as it's not differentiable
     We can use it in a metric, but not in a loss function
     therefore, we replace the 'hard max' operation (i.e. argmax + onehot)
     with this approximation
