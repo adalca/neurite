@@ -287,7 +287,7 @@ def prior_to_weights(prior_filename, nargout=1, min_freq=0, force_binary=False, 
 
 def filestruct_change(in_path, out_path, re_map,
                       mode='subj_to_type',
-                      use_symlinks=False):
+                      use_symlinks=False, name=""):
     """
     change from independent subjects in a folder to breakdown structure 
 
@@ -319,7 +319,7 @@ def filestruct_change(in_path, out_path, re_map,
         os.mkdir(out_path)
 
     # go through folders
-    for subj in tqdm(os.listdir(in_path)):
+    for subj in tqdm(os.listdir(in_path), desc=name):
 
         # go through files in a folder
         files = os.listdir(os.path.join(in_path, subj))
@@ -355,10 +355,13 @@ def filestruct_change(in_path, out_path, re_map,
                 shutil.copyfile(src_file, dst_file)
 
 
-def ml_split(in_path, out_path, cat_titles=['train', 'validate', 'test'], cat_prop=[0.5, 0.3, 0.2], use_symlinks=False):
+def ml_split(in_path, out_path, cat_titles=['train', 'validate', 'test'], cat_prop=[0.5, 0.3, 0.2], use_symlinks=False, seed=None):
     """
     split dataset 
     """
+
+    if seed is not None:
+        np.random.seed(seed)
 
     # get subjects and randomize their order
     subjs = os.listdir(in_path)
@@ -369,12 +372,14 @@ def ml_split(in_path, out_path, cat_titles=['train', 'validate', 'test'], cat_pr
     cat_tot = np.cumsum(cat_prop)
     if not cat_tot[-1] == 1:
         print("split_prop sums to %f, re-normalizing" % cat_tot)
-    cat_tot = np.array(cat_tot) / sum(cat_tot)
+        cat_tot = np.array(cat_tot) / cat_tot[-1]
     nb_cat_subj = np.round(cat_tot * nb_subj).astype(int)
     cat_subj_start = [0, *nb_cat_subj[:-1]]
 
     # go through each category
     for cat_idx, cat in enumerate(cat_titles):
+        if not os.path.isdir(os.path.join(out_path, cat)): os.mkdir(os.path.join(out_path, cat))
+
         cat_subj_idx = subj_order[cat_subj_start[cat_idx]:nb_cat_subj[cat_idx]]
         for subj_idx in tqdm(cat_subj_idx, desc=cat):
             src_folder = os.path.join(in_path, subjs[subj_idx])
@@ -387,7 +392,10 @@ def ml_split(in_path, out_path, cat_titles=['train', 'validate', 'test'], cat_pr
                 os.symlink(src_folder, dst_folder)
 
             else:
-                shutil.copytree(src_folder, dst_folder)
+                if os.path.isdir(src_folder):
+                    shutil.copytree(src_folder, dst_folder)
+                else:
+                    shutil.copyfile(src_folder, dst_folder)
         
         
 
