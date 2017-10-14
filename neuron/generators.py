@@ -70,6 +70,11 @@ def vol(volpath,
 
     nb_patches_per_vol = 1
     if patch_size is not None and all(f is not None for f in patch_size):
+        if relabel is None and len(patch_size) == (len(vol_data.shape) - 1):
+            tmp_patch_size = [f for f in patch_size]
+            patch_size = [*patch_size, vol_data.shape[-1]]
+            patch_stride = [f for f in patch_stride]
+            patch_stride = [*patch_stride, vol_data.shape[-1]]
         nb_patches_per_vol = np.prod(pl.gridsize(vol_data.shape, patch_size, patch_stride))
     if nb_restart_cycle is None:
         nb_restart_cycle = nb_files
@@ -299,7 +304,7 @@ def vol_seg(volpath,
     while 1:
         # get input and output (seg) vols
         input_vol = next(vol_gen).astype('float16')
-        output_vol = next(seg_gen).astype('int8')
+        output_vol = next(seg_gen).astype('float16')  # was int8. Why? need float possibility...
 
         # output input and output
         yield (input_vol, output_vol)
@@ -596,58 +601,6 @@ def vol_sr_slices(volpath,
 
 
 
-def vol_count(*args, label_blur_sigma=None, **kwargs):
-    vol_seg_gen = vol_seg(*args, **kwargs)
-
-    while 1:
-        # get new data
-        q = next(vol_seg_gen)
-        input_shape = q[0].shape
-        nd = q[0].ndim - 1 
-        
-        # reshape output
-        if label_blur_sigma is not None:
-            shp = q[1].shape
-            output_o = np.reshape(q[1], [*input_shape, -1]).astype('float32')
-
-            # rehsape and blur volumes
-            sigmas = [0.001, *[label_blur_sigma] * nd, 0.001]
-            output = scipy.ndimage.filters.gaussian_filter(output_o, sigmas)
-            output = np.reshape(output, shp)
-            output[:,0] = q[1][:, 0] # keep background non-blurred
-        else:
-            output = q[1]
-
-        # sum amounts
-        output_count = np.sum(output, 1)
-        yield (q[0], output_count) # output
-
-
-def vol_count_prior(*args, label_blur_sigma=None, **kwargs):
-    vol_seg_gen = vol_seg_prior(*args, **kwargs)
-
-    while 1:
-        # get new data
-        q = next(vol_seg_gen)
-        input_shape = q[0][0].shape
-        nd = q[0][0].ndim - 1 
-
-        # reshape output
-        if label_blur_sigma is not None:
-            shp = q[1].shape
-            output_o = np.reshape(q[1], [*input_shape, -1]).astype('float32')
-
-            # rehsape and blur volumes
-            sigmas = [0.001, *[label_blur_sigma] * nd, 0.001]
-            output = scipy.ndimage.filters.gaussian_filter(output_o, sigmas)
-            output = np.reshape(output, shp)
-            output[:,0] = q[1][:, 0] # keep background non-blurred
-        else:
-            output = q[1]
-
-        # sum amounts
-        output_count = np.sum(output, 1)
-        yield (q[0], output_count) # output
 
 
 

@@ -397,12 +397,6 @@ def ml_split(in_path, out_path, cat_titles=['train', 'validate', 'test'], cat_pr
                 else:
                     shutil.copyfile(src_folder, dst_folder)
         
-        
-
-
-
-
-
 
 
 

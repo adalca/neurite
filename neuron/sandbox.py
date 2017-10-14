@@ -127,6 +127,7 @@ def prepare_run_params(setup_file, model_file, data_file, run_file,
                                     run.patch_size,
                                     patch_stride=run.patch_stride)
     run.nb_patches_per_volume = np.prod(run.grid_size)
+    run.ndims = len(run.patch_size)
 
     # prepare a datalink to the folder structure
     # a lambda function that takes in split_type (train/test/validate) and io_type (vols/asegs)
@@ -142,7 +143,7 @@ def prepare_run_params(setup_file, model_file, data_file, run_file,
         name_suffix = ''
     else:
         name_suffix = '___' + name_suffix
-    name = model.name + "___" + data.folder + "___" + run.name + name_suffix
+    name = model.name + "___" + data.folder.replace("/", "_") + "___" + run.name + name_suffix
     paths.output = os.path.join(getattr(paths, outname), name)
     if verbose:
         print("Model folder name: \n%s" % paths.output)
@@ -163,7 +164,7 @@ def prep_run_output_dir(model_folder, increment_run, existing_run_id=None):
 
     # get current run id
     if existing_run_id is None:
-        existing_run_id = len(os.listdir(runs_dir))
+        existing_run_id = len(os.listdir(runs_dir)) - 1
 
     # increment the run or not
     run_id = existing_run_id + 1 if increment_run else existing_run_id
@@ -294,6 +295,7 @@ def seg_generators(paths, model, data, run, batch_size,
                    label_blur_sigma=None,
                    nb_input_feats=1,
                    gen_verbose=False,
+                   relabel='data',
                    seg_folder_name='asegs',
                    extra_gens={}):
     """
@@ -322,9 +324,12 @@ def seg_generators(paths, model, data, run, batch_size,
         rand_seed_vol = np.random.randint(0, 1000)
 
     # prepare arguments for generators
+    if relabel == 'data':
+        relabel = data.labels
+    nb_labels = 0 if relabel is None else len(relabel)
     gen_args = {'ext' : data.ext,
-                'relabel': data.labels,
-                'nb_labels_reshape': data.nb_labels,
+                'relabel': relabel,
+                'nb_labels_reshape': nb_labels,
                 'batch_size': batch_size,
                 'patch_size': patch_size,
                 'patch_stride': patch_stride,
@@ -337,7 +342,7 @@ def seg_generators(paths, model, data, run, batch_size,
 
     # prepare the generator function depending on whether a prior is used
     genfcn = nrn_gen.vol_seg
-    genfcn_vol = nrn_gen.vol_count
+    # genfcn_vol = nrn_gen.vol_count
     genfcn_ext = nrn_gen.vol_ext_data
     if model.include_prior:
         if verbose:
@@ -346,7 +351,7 @@ def seg_generators(paths, model, data, run, batch_size,
         gen_args['prior_file'] = paths.prior
         gen_args['prior_feed'] = 'input'
         genfcn = nrn_gen.vol_seg_prior
-        genfcn_vol = nrn_gen.vol_count_prior
+        # genfcn_vol = nrn_gen.vol_count_prior
         genfcn_ext = nrn_gen.vol_ext_data_prior
     if data.ext == '.png':
         genfcn = nrn_gen.img_seg
@@ -365,11 +370,11 @@ def seg_generators(paths, model, data, run, batch_size,
                                  paths.datalink('train', seg_folder_name),
                                  name='training_gen',
                                  **gen_args)
-    generators['train-vol'] = genfcn_vol(paths.datalink('train', 'vols'),
-                                 paths.datalink('train', seg_folder_name),
-                                 name='training_gen',
-                                 label_blur_sigma=label_blur_sigma,
-                                 **gen_args)
+    # generators['train-vol'] = genfcn_vol(paths.datalink('train', 'vols'),
+    #                              paths.datalink('train', seg_folder_name),
+    #                              name='training_gen',
+    #                              label_blur_sigma=label_blur_sigma,
+    #                              **gen_args)
     generators['train-ext'] = genfcn_ext(paths.datalink('train', 'vols'),
                                  paths.datalink('train', 'external'),
                                  name='training_gen',
@@ -385,11 +390,11 @@ def seg_generators(paths, model, data, run, batch_size,
                                     paths.datalink('validate', seg_folder_name),
                                     name='validation_gen',
                                     **gen_args)
-    generators['validate-vol'] = genfcn_vol(paths.datalink('validate', 'vols'),
-                                    paths.datalink('validate', seg_folder_name),
-                                    name='validation_gen',
-                                    label_blur_sigma=label_blur_sigma,
-                                    **gen_args)
+    # generators['validate-vol'] = genfcn_vol(paths.datalink('validate', 'vols'),
+    #                                 paths.datalink('validate', seg_folder_name),
+    #                                 name='validation_gen',
+    #                                 label_blur_sigma=label_blur_sigma,
+    #                                 **gen_args)
     generators['validate-ext'] = genfcn_ext(paths.datalink('validate', 'vols'),
                                     paths.datalink('validate', 'external'),
                                     name='validation_gen',
@@ -455,9 +460,12 @@ def seg_generators(paths, model, data, run, batch_size,
 
 def seg_losses(nb_labels,
                prior_filename=None,
+               prior_min_freq=0.001,
                weights=None,
                patch_size=None,
                disc=None,
+               verbose=False,
+               extract_labels=None,
                dice_mix_weights=[0.01,1]):
     """
     usual losses for segmentation models
@@ -468,9 +476,11 @@ def seg_losses(nb_labels,
         assert weights is None, "cannot provide both weights and prior"
         weights, prior = nrn_dataproc.prior_to_weights(prior_filename,
                                                        nargout=2,
-                                                       min_freq=0.001)
-        print("computed weights:", weights)
+                                                       min_freq=prior_min_freq)
+        if verbose: print('computed weights:', ['%3.3f ' %f for f in weights])
     assert weights is not None, "weights cannot be None"
+    if extract_labels is not None:
+        weights = [weights[f] for f in extract_labels]
 
     # prepare weights with 0-weighted bg (first label)
     weights0bg = list(weights)
@@ -546,7 +556,7 @@ def seg_losses(nb_labels,
 
 
 
-def seg_models(model, run, data, load_loss, seed=0, nb_input_features=1):
+def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_input_features=1):
     """
     prepare models for segmentation tasks
 
@@ -624,7 +634,7 @@ def seg_models(model, run, data, load_loss, seed=0, nb_input_features=1):
                                                     use_logp=model.use_logp,
                                                     final_pred_activation=None,
                                                     use_skip_connections=False,
-                                                    nb_mid_level_dense=100,
+                                                    nb_mid_level_dense=nb_mid_level_dense,
                                                     name='seg-seg',
                                                     add_prior_layer=model.include_prior,
                                                     nb_input_features=data.nb_labels)
@@ -639,7 +649,7 @@ def seg_models(model, run, data, load_loss, seed=0, nb_input_features=1):
                                                     use_logp=model.use_logp,
                                                     final_pred_activation=None,
                                                     use_skip_connections=False,
-                                                    nb_mid_level_dense=100,
+                                                    nb_mid_level_dense=nb_mid_level_dense,
                                                     name='seg-seg',
                                                     add_prior_layer=model.include_prior,
                                                     nb_input_features=1)
@@ -655,7 +665,7 @@ def seg_models(model, run, data, load_loss, seed=0, nb_input_features=1):
                                                     use_logp=model.use_logp,
                                                     final_pred_activation=None,
                                                     use_skip_connections=False,
-                                                    nb_mid_level_dense=100,
+                                                    nb_mid_level_dense=nb_mid_level_dense,
                                                     name='seg-seg-vae',
                                                     add_prior_layer=model.include_prior,
                                                     do_vae=True,

@@ -292,6 +292,13 @@ def next_vol_pred(model, data_generator, verbose=False):
 
     return data
 
+def softmax(x, axis):
+    """
+    softmax of a numpy array along a given dimension
+    """
+
+    return np.exp(x) / np.sum(np.exp(x), axis=axis, keepdims=True)
+
 ###############################################################################
 # helper functions
 ###############################################################################

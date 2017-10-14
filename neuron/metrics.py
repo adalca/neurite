@@ -244,6 +244,30 @@ class Dice(object):
         return mean_dice_loss
 
 
+class MeanSquaredError():
+    def __init__(self, weights=None, vox_weights=None):
+        """
+        vox_weights is either a numpy array the same size as y_true, or a string: 'y_true' or 'expy_true'
+        """
+        self.weights = weights
+        self.vox_weights = vox_weights
+        
+    def loss(self, y_true, y_pred):
+        ksq = K.square(y_pred - y_true)
+
+        if self.vox_weights is not None:
+            if self.vox_weights == 'y_true':
+                ksq *= y_true
+            elif self.vox_weights == 'expy_true':
+                ksq *= tf.exp(y_true)
+            else:
+                ksq *= self.vox_weights
+
+        if self.weights is not None:
+            ksq *= self.weights
+
+        return K.mean(ksq)
+
 class Mix():
     """ a mix of several losses """
 

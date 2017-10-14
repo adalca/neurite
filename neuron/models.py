@@ -197,17 +197,18 @@ def design_unet(nb_features,
         last_layer = layers_dict[name]
 
         if do_vae: # variational auto-encoder
-            name = '%s_mid_mu_enc' % prefix
+            name = '%s_mid_mu_enc_%d' % (prefix, nb_mid_level_dense)
             layers_dict[name] = KL.Dense(nb_mid_level_dense, name=name)(last_layer)
 
-            name = '%s_mid_sigma_enc' % prefix
+            name = '%s_mid_sigma_en_%d' % (prefix, nb_mid_level_dense)
             layers_dict[name] = KL.Dense(nb_mid_level_dense, name=name)(last_layer)
             last_layer = layers_dict[name]
 
             sampler = _VAESample(nb_mid_level_dense).sample_z
 
             name = '%s_mid_dense_dec_sample' % prefix
-            layers_dict[name] = KL.Lambda(sampler, name=name)([layers_dict['%s_mid_mu_enc' % prefix], last_layer])
+            pname = '%s_mid_mu_enc_%d' % (prefix, nb_mid_level_dense)
+            layers_dict[name] = KL.Lambda(sampler, name=name)([layers_dict[pname], last_layer])
             last_layer = layers_dict[name]
 
             name = '%s_mid_dense_dec_flat' % prefix
@@ -216,11 +217,11 @@ def design_unet(nb_features,
 
         
         else: # normal
-            name = '%s_mid_dense_enc' % prefix
+            name = '%s_mid_dense_enc_%d' % (prefix, nb_mid_level_dense)
             layers_dict[name] = KL.Dense(nb_mid_level_dense, name=name)(last_layer)
             last_layer = layers_dict[name]
 
-            name = '%s_mid_dense_dec_flat' % prefix
+            name = '%s_mid_dense_dec_flat_%d' % (prefix, nb_mid_level_dense)
             layers_dict[name] = KL.Dense(np.prod(save_shape), name=name)(last_layer)
             last_layer = layers_dict[name]
 
@@ -303,7 +304,7 @@ def design_unet(nb_features,
             
         # merge the likelihood and prior layers into posterior layer
         name = '%s_posterior' % prefix
-        layers_dict[name] = merge_op([prior_layer, like_layer])
+        layers_dict[name] = merge_op([prior_layer, like_layer], name=name)
         last_layer = layers_dict[name]
 
         # update model inputs
@@ -314,11 +315,11 @@ def design_unet(nb_features,
     if final_pred_activation == 'softmax':
         name = '%s_prediction' % prefix
         softmax_lambda_fcn = lambda x: keras.activations.softmax(x, axis=ndims + 1)
-        layers_dict[name] = KL.Lambda(softmax_lambda_fcn, name=name)(like_layer)
+        layers_dict[name] = KL.Lambda(softmax_lambda_fcn, name=name)(last_layer)
 
     else:
         name = '%s_prediction' % prefix
-        layers_dict[name] = convL(nb_labels, 1, activation=None, name=name)(like_layer)
+        layers_dict[name] = convL(nb_labels, 1, activation=None, name=name)(last_layer)
 
     # create the model
     model = Model(inputs=model_inputs, outputs=[layers_dict['%s_prediction' % prefix]], name=model_name)
