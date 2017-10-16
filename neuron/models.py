@@ -200,7 +200,7 @@ def design_unet(nb_features,
             name = '%s_mid_mu_enc_%d' % (prefix, nb_mid_level_dense)
             layers_dict[name] = KL.Dense(nb_mid_level_dense, name=name)(last_layer)
 
-            name = '%s_mid_sigma_en_%d' % (prefix, nb_mid_level_dense)
+            name = '%s_mid_sigma_enc_%d' % (prefix, nb_mid_level_dense)
             layers_dict[name] = KL.Dense(nb_mid_level_dense, name=name)(last_layer)
             last_layer = layers_dict[name]
 
