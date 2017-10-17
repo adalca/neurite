@@ -164,7 +164,7 @@ def prep_run_output_dir(model_folder, increment_run, existing_run_id=None):
 
     # get current run id
     if existing_run_id is None:
-        existing_run_id = len(os.listdir(runs_dir)) - 1
+        existing_run_id = np.maximum(len(os.listdir(runs_dir)) - 1, 0)
 
     # increment the run or not
     run_id = existing_run_id + 1 if increment_run else existing_run_id
