@@ -13,7 +13,11 @@ This toolbox is **currently in development**, with the goal providing a set of t
 Other utilities and a few `jupyter` notebooks are also provided.
 
 ### Requirements:
-numpy, python libraries from @adalca github account
+- tensorflow  
+- keras and all of it's requirements (e.g. hyp5)  
+- numpy, scipy  
+- tqdm  
+- [python libraries](https://github.com/search?q=user%3Aadalca+topic%3Apython) from @adalca github account  
  
 ### Development:
 Please contact Adrian Dalca, adalca@csail.mit.edu for question related to `neuron`
