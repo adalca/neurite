@@ -87,9 +87,13 @@ def design_prior(input_model,
 
     # output prediction layer
     # we use a softmax to compute P(L_x|I) where x is each location. 
+    print(final_pred_activation, "final_pred_activation");
     if final_pred_activation == 'softmax':
+        print('softmaxing', add_prior_layer, use_logp);
+        assert (not add_prior_layer) or use_logp
+
         name = '%s_prediction' % prefix
-        softmax_lambda_fcn = lambda x: keras.activations.softmax(x, axis=ndims + 1)
+        softmax_lambda_fcn = lambda x: keras.activations.softmax(x, axis=-1)
         layers_dict[name] = KL.Lambda(softmax_lambda_fcn, name=name)(like_layer)
 
     else:
@@ -172,11 +176,20 @@ def design_unet(nb_features,
 
         if use_residuals:
             convarm_layer = last_layer
-            name = '%s_expand_down_merge_%d' % (prefix, level)
-            layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(level_init_layer)
-            last_layer = layers_dict[name]
+            
+            # the "add" layer is the original input. However, it may not have the right number of features to be added
+            nb_feats_in = level_init_layer.get_shape()[-1]
+            nb_feats_out = convarm_layer.get_shape()[-1]
+            add_layer = level_init_layer
+            if nb_feats_in > 1 and nb_feats_out > 1 and (nb_feats_in != nb_feats_out):
+              name = '%s_expand_down_merge_%d' % (prefix, level)
+              layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(level_init_layer)
+              last_layer = layers_dict[name]
+              add_layer = last_layer
+            
             name = '%s_res_down_merge_%d' % (prefix, level)
-            layers_dict[name] = KL.add([last_layer, convarm_layer], name=name)
+            
+            layers_dict[name] = KL.add([add_layer, convarm_layer], name=name)
             last_layer = layers_dict[name]
 
         # max pool if we're not at the last level
@@ -233,6 +246,7 @@ def design_unet(nb_features,
     # nb_levels - 1 layers of Deconvolution3D
     #    (approx via up + conv + ReLu) + merge + conv + ReLu + conv + ReLu
     for level in range(nb_levels - 1):
+        nb_local_features = nb_features*(feat_mult**(nb_levels-2-level))
 
         # upsample matching the max pooling layers
         name = '%s_up_%d' % (prefix, nb_levels + level)
@@ -240,10 +254,9 @@ def design_unet(nb_features,
         last_layer = layers_dict[name]
 
         # upsample matching the max pooling layers
-        name = '%s_upconv_%d' % (prefix, nb_levels + level)
-        nb_local_features = nb_features*(feat_mult**(nb_levels-2-level))
-        layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
-        last_layer = layers_dict[name]
+        #name = '%s_upconv_%d' % (prefix, nb_levels + level)
+        #layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
+        #last_layer = layers_dict[name]
 
         # merge layers combining previous layer
         # TODO: add Cropping3D or Cropping2D if 'valid' padding
@@ -260,15 +273,15 @@ def design_unet(nb_features,
             last_layer = layers_dict[name]
 
         if use_residuals:
-            conv_name = '%s_upconv_%d' % (prefix, nb_levels + level)
+            conv_name = '%s_up_%d' % (prefix, nb_levels + level)
             convarm_layer = last_layer
 
-            name = '%s_expand_up_merge_%d' % (prefix, level)
-            layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(layers_dict[conv_name])
-            last_layer = layers_dict[name]
+            # name = '%s_expand_up_merge_%d' % (prefix, level)
+            # layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(layers_dict[conv_name])
+            # last_layer = layers_dict[name]
 
             name = '%s_res_up_merge_%d' % (prefix, level)
-            layers_dict[name] = KL.add([convarm_layer,last_layer ], name=name)
+            layers_dict[name] = KL.add([convarm_layer, layers_dict[conv_name] ], name=name)
             last_layer = layers_dict[name]
 
 
@@ -298,6 +311,7 @@ def design_unet(nb_features,
             merge_op = KL.add
         else:
             # using sigmoid to get the likelihood values between 0 and 1
+            # note: they won't add up to 1.
             name = '%s_likelihood_sigmoid' % prefix
             layers_dict[name] = KL.Activation('sigmoid', name=name)(like_layer)
             like_layer = layers_dict[name]
@@ -313,6 +327,8 @@ def design_unet(nb_features,
     # output prediction layer
     # we use a softmax to compute P(L_x|I) where x is each location. 
     if final_pred_activation == 'softmax':
+        assert (not add_prior_layer) or use_logp, 'softmaxing cannot be done when adding prior in P() form' 
+        
         name = '%s_prediction' % prefix
         softmax_lambda_fcn = lambda x: keras.activations.softmax(x, axis=ndims + 1)
         layers_dict[name] = KL.Lambda(softmax_lambda_fcn, name=name)(last_layer)

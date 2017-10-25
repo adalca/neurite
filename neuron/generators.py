@@ -472,7 +472,7 @@ def vol_seg_prior(*args,
             prior_vol = prior_vol[:, :, extract_slice, :]
 
     # get the prior to have the right volume [x, y, z, nb_channels]
-    assert np.ndim(prior_vol) == 4, "prior is the wrong size"
+    assert np.ndim(prior_vol) == 4 or np.ndim(prior_vol) == 3, "prior is the wrong size"
 
     # prior generator
     if patch_size is None:
