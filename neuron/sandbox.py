@@ -164,7 +164,7 @@ def prep_run_output_dir(model_folder, increment_run, existing_run_id=None):
 
     # get current run id
     if existing_run_id is None:
-        existing_run_id = np.maximum(len(os.listdir(runs_dir)) - 1, 0)
+        existing_run_id = len(os.listdir(runs_dir)) - 1
 
     # increment the run or not
     run_id = existing_run_id + 1 if increment_run else existing_run_id
@@ -477,10 +477,15 @@ def seg_losses(nb_labels,
         weights, prior = nrn_dataproc.prior_to_weights(prior_filename,
                                                        nargout=2,
                                                        min_freq=prior_min_freq)
-        if verbose: print('computed weights:', ['%3.3f ' %f for f in weights])
+        
     assert weights is not None, "weights cannot be None"
+    
     if extract_labels is not None:
         weights = [weights[f] for f in extract_labels]
+
+    assert len(weights) == nb_labels, "number of weights does not match the number of labels"
+
+    if verbose: print('weights:', ['%3.3f ' %f for f in weights])
 
     # prepare weights with 0-weighted bg (first label)
     weights0bg = list(weights)
