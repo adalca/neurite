@@ -335,7 +335,7 @@ def design_unet(nb_features,
 
     else:
         name = '%s_prediction' % prefix
-        layers_dict[name] = convL(nb_labels, 1, activation=None, name=name)(last_layer)
+        layers_dict[name] = KL.Activation('linear', name=name)(like_layer)
 
     # create the model
     model = Model(inputs=model_inputs, outputs=[layers_dict['%s_prediction' % prefix]], name=model_name)
