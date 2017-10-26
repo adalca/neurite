@@ -171,7 +171,11 @@ def design_unet(nb_features,
 
         for conv in range(nb_conv_per_level):
             name = '%s_conv_downarm_%d_%d' % (prefix, level, conv)
-            layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
+            if conv < (nb_conv_per_level-1) or (not use_residuals):
+              layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
+            else:  # no activation
+              layers_dict[name] = convL(nb_local_features, conv_size, padding=padding, name=name)(last_layer)
+              
             last_layer = layers_dict[name]
 
         if use_residuals:
@@ -190,6 +194,10 @@ def design_unet(nb_features,
             name = '%s_res_down_merge_%d' % (prefix, level)
             
             layers_dict[name] = KL.add([add_layer, convarm_layer], name=name)
+            last_layer = layers_dict[name]
+            
+            name = '%s_res_down_merge_act_%d' % (prefix, level)
+            layers_dict[name] = KL.Activation(activation, name=name)(last_layer)
             last_layer = layers_dict[name]
 
         # max pool if we're not at the last level
@@ -269,8 +277,12 @@ def design_unet(nb_features,
         # convolution layers
         for conv in range(nb_conv_per_level):
             name = '%s_conv_uparm_%d_%d' % (prefix, nb_levels + level, conv)
-            layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
+            if conv < (nb_conv_per_level-1) or (not use_residuals):
+              layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
+            else:
+              layers_dict[name] = convL(nb_local_features, conv_size, padding=padding, name=name)(last_layer)
             last_layer = layers_dict[name]
+
 
         if use_residuals:
             conv_name = '%s_up_%d' % (prefix, nb_levels + level)
@@ -282,6 +294,10 @@ def design_unet(nb_features,
 
             name = '%s_res_up_merge_%d' % (prefix, level)
             layers_dict[name] = KL.add([convarm_layer, layers_dict[conv_name] ], name=name)
+            last_layer = layers_dict[name]
+            
+            name = '%s_res_up_merge_act_%d' % (prefix, level)
+            layers_dict[name] = KL.Activation(activation, name=name)(last_layer)
             last_layer = layers_dict[name]
 
 
