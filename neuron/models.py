@@ -125,6 +125,7 @@ def design_unet(nb_features,
                 final_pred_activation='softmax',
                 nb_conv_per_level=2,
                 add_prior_layer=False,
+                add_prior_layer_reg=0,
                 nb_mid_level_dense=0,
                 do_vae=False):
     """
@@ -321,7 +322,7 @@ def design_unet(nb_features,
         if use_logp:
             name = '%s_prior-log' % prefix
             prior_input = layers_dict['%s_prior-input' % prefix]
-            layers_dict[name] = KL.Lambda(_log_layer, name=name)(prior_input)
+            layers_dict[name] = KL.Lambda(_log_layer_wrap(add_prior_layer_reg), name=name)(prior_input)
             prior_layer = layers_dict[name]
 
             merge_op = KL.add
@@ -547,8 +548,10 @@ def _global_max_nd(x):
     y = K.batch_flatten(x)
     return K.max(y, 1, keepdims=True)
 
-def _log_layer(x):
-    return K.log(x + K.epsilon())
+def _log_layer_wrap(reg=K.epsilon()):
+  def _log_layer(x):
+      return K.log(x + K.epsilon())
+  return _log_layer
 
 # def _global_max_nd(x):
     # return K.exp(x)
