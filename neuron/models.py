@@ -87,9 +87,7 @@ def design_prior(input_model,
 
     # output prediction layer
     # we use a softmax to compute P(L_x|I) where x is each location. 
-    print(final_pred_activation, "final_pred_activation");
     if final_pred_activation == 'softmax':
-        print('softmaxing', add_prior_layer, use_logp);
         assert (not add_prior_layer) or use_logp
 
         name = '%s_prediction' % prefix
@@ -550,7 +548,7 @@ def _global_max_nd(x):
 
 def _log_layer_wrap(reg=K.epsilon()):
   def _log_layer(x):
-      return K.log(x + K.epsilon())
+      return K.log(x + reg)
   return _log_layer
 
 # def _global_max_nd(x):
