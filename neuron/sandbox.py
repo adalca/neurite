@@ -411,6 +411,10 @@ def seg_generators(paths, model, data, run, batch_size,
                                 paths.datalink('test', seg_folder_name),
                                 name='test_gen',
                                 **gen_args)
+    generators['test-100'] = genfcn(paths.datalink('test-100', 'vols'),
+                                paths.datalink('test-100', seg_folder_name),
+                                name='test_gen',
+                                **gen_args)
     generators['test-2'] = genfcn(paths.datalink('test', 'vols'),
                                   paths.datalink('test', seg_folder_name),
                                   name='test_gen',                                 

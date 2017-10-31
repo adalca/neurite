@@ -79,6 +79,7 @@ def vol(volpath,
     if nb_restart_cycle is None:
         nb_restart_cycle = nb_files
 
+    
     assert nb_restart_cycle <= (nb_files * nb_patches_per_vol), \
         '%s restart cycle (%s) too big (%s) in %s' % \
         (name, nb_restart_cycle, nb_files * nb_patches_per_vol, volpath)
