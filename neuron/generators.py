@@ -103,6 +103,7 @@ def vol(volpath,
             print('starting %s cycle' % name)
 
         # read next file (circular)
+      
         try:
             # print('opening %s' % os.path.join(volpath, volfiles[fileidx]))
             file_name = os.path.join(volpath, volfiles[fileidx])
@@ -122,7 +123,7 @@ def vol(volpath,
         if relabel is not None:
             resized_seg_data_fix = np.copy(vol_data)
             for idx, val in np.ndenumerate(relabel):
-                vol_data[resized_seg_data_fix == val] = idx
+              vol_data[resized_seg_data_fix == val] = idx
 
         # split volume into patches if necessary and yield
         if patch_size is None:
@@ -160,19 +161,20 @@ def vol(volpath,
 
             if np.mod(feat_idx, nb_feats) == 0:
                 feats_shape = vol_data_feats[1:]
+                
 
                 # yield previous batch if the new volume has different patch sizes
                 if batch_shape is not None and (feats_shape != batch_shape):
                     batch_idx = -1
                     batch_shape = None
-                    yield vol_data_batch
+                    yield np.vstack(vol_data_batch)
 
                 # add to batch of volume data, unless the batch is currently empty
                 if batch_idx == -1:
-                    vol_data_batch = vol_data_feats
+                    vol_data_batch = [vol_data_feats]
                     batch_shape = vol_data_feats[1:]
                 else:
-                    vol_data_batch = np.vstack([vol_data_batch, vol_data_feats])
+                    vol_data_batch = [*vol_data_batch, vol_data_feats]
 
                 # yield patch
                 batch_idx += 1
@@ -184,7 +186,7 @@ def vol(volpath,
 
                 if batch_done or final_batch:
                     batch_idx = -1
-                    yield vol_data_batch
+                    yield np.vstack(vol_data_batch)
 
         if empty_gen:
             raise ValueError('Patch generator was empty for file %s', volfiles[fileidx])
