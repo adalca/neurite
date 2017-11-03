@@ -62,7 +62,8 @@ class CategoricalCrossentropy(object):
         if self.vox_weights is not None:
             loss *= self.vox_weights
 
-        # take the mean loss
+        # take the total loss
+        # loss = K.batch_flatten(loss)
         mloss = K.mean(K.sum(K.cast(loss, 'float32'), -1))
         tf.verify_tensor_all_finite(mloss, 'Loss not finite')
         return mloss
