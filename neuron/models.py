@@ -134,7 +134,7 @@ def design_unet(nb_features,
     Until then, we'll upsample and convolve.
     TODO: Need to check that UpSampling3D actually does NN-upsampling!
     """
-
+    
     model_name = name
     if model_name is None:
         model_name = 'model_1'

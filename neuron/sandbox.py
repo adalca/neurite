@@ -307,6 +307,7 @@ def seg_generators(paths, model, data, run, batch_size,
     patch_stride = run.patch_stride
     collapse_2d = None
     vol_proc = lambda x: x
+    vol_proc = None
     if len(patch_size) == 2 and len(data.vol_size) == 3:
         collapse_2d = run.collapse_2d
         assert run.collapse_2d == 2, "Some of this code assumes collapse_2d is 2"
@@ -314,7 +315,9 @@ def seg_generators(paths, model, data, run, batch_size,
         patch_stride = [*patch_stride, 1]
 
         # process volumes with a crop
+        print("not Extract Slices")
         if hasattr(run, 'extract_slices') and run.extract_slices is not None:
+            print("Extract Slices")
             assert isinstance(run.extract_slices, (list, tuple))
             extract_ix = nd.arange([0 for f in data.vol_size], data.vol_size)
             extract_ix[run.collapse_2d] = run.extract_slices
@@ -372,17 +375,16 @@ def seg_generators(paths, model, data, run, batch_size,
                                  **gen_args)
     generators['train-seg'] = nrn_gen.vol(paths.datalink('train', seg_folder_name),
                                           name='training_gen_seg',
-                                          'ext' = data.ext,
-                                          'relabel'= relabel,
-                                          'nb_labels_reshape'= nb_labels,
-                                          'batch_size'= batch_size,
-                                          'patch_size'= patch_size,
-                                          'patch_stride'= patch_stride,
-                                          'data_proc_fn':vol_proc,
-                                          'collapse_2d':collapse_2d,
-                                          'rand_seed_vol':rand_seed_vol,
-                                          'nb_input_feats':nb_input_feats,
-                                          'verbose':gen_verbose,
+                                          ext=data.ext,
+                                          relabel= relabel,
+                                          nb_labels_reshape= nb_labels,
+                                          batch_size= batch_size,
+                                          patch_size= patch_size,
+                                          patch_stride= patch_stride,
+                                          data_proc_fn=vol_proc,
+                                          collapse_2d=collapse_2d,
+                                          rand_seed_vol=rand_seed_vol,
+                                          verbose=gen_verbose,
                                           keep_vol_size=True)
     # generators['train-vol'] = genfcn_vol(paths.datalink('train', 'vols'),
     #                              paths.datalink('train', seg_folder_name),
@@ -404,6 +406,19 @@ def seg_generators(paths, model, data, run, batch_size,
                                     paths.datalink('validate', seg_folder_name),
                                     name='validation_gen',
                                     **gen_args)
+    generators['validate-seg'] = nrn_gen.vol(paths.datalink('validate', seg_folder_name),
+                                          name='validate_gen_seg',
+                                          ext=data.ext,
+                                          relabel= relabel,
+                                          nb_labels_reshape= nb_labels,
+                                          batch_size= batch_size,
+                                          patch_size= patch_size,
+                                          patch_stride= patch_stride,
+                                          data_proc_fn=vol_proc,
+                                          collapse_2d=collapse_2d,
+                                          rand_seed_vol=rand_seed_vol,
+                                          verbose=gen_verbose,
+                                          keep_vol_size=True)
     # generators['validate-vol'] = genfcn_vol(paths.datalink('validate', 'vols'),
     #                                 paths.datalink('validate', seg_folder_name),
     #                                 name='validation_gen',
@@ -425,6 +440,19 @@ def seg_generators(paths, model, data, run, batch_size,
                                 paths.datalink('test', seg_folder_name),
                                 name='test_gen',
                                 **gen_args)
+    generators['test-seg'] = nrn_gen.vol(paths.datalink('test', seg_folder_name),
+                                          name='test_gen_seg',
+                                          ext=data.ext,
+                                          relabel= relabel,
+                                          nb_labels_reshape= nb_labels,
+                                          batch_size= 1,
+                                          patch_size= patch_size,
+                                          patch_stride= patch_stride,
+                                          data_proc_fn=vol_proc,
+                                          collapse_2d=collapse_2d,
+                                          rand_seed_vol=rand_seed_vol,
+                                          verbose=gen_verbose,
+                                          keep_vol_size=True)
     generators['test-100'] = genfcn(paths.datalink('test-100', 'vols'),
                                 paths.datalink('test-100', seg_folder_name),
                                 name='test_gen',
@@ -579,7 +607,7 @@ def seg_losses(nb_labels,
 
 
 
-def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_input_features=1):
+def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_input_features=1, activation='relu'):
     """
     prepare models for segmentation tasks
 
@@ -601,6 +629,7 @@ def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_i
                                                                    model.nb_levels,
                                                                    model.conv_size,
                                                                    nb_labels,
+                                                                   activation=activation,
                                                                    feat_mult=model.feat_mult,
                                                                    pool_size=model.pool_size,
                                                                    use_residuals=model.use_residuals,
@@ -629,6 +658,7 @@ def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_i
                                                     use_residuals=model.use_residuals,
                                                     use_logp=model.use_logp,
                                                     final_pred_activation=None,
+                                                    activation=activation,
                                                     name='seg-gen',
                                                     add_prior_layer=model.include_prior,
                                                     nb_input_features=data.nb_labels)
@@ -642,6 +672,7 @@ def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_i
                                                     use_residuals=model.use_residuals,
                                                     use_logp=model.use_logp,
                                                     final_pred_activation=None,
+                                                    activation=activation,
                                                     name='logseg-gen',
                                                     add_prior_layer=model.include_prior,
                                                     nb_input_features=data.nb_labels)
@@ -656,6 +687,7 @@ def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_i
                                                    use_residuals=model.use_residuals,
                                                    use_logp=model.use_logp,
                                                    final_pred_activation=None,
+                                                   activation=activation,
                                                    use_skip_connections=False,
                                                    nb_mid_level_dense=nb_mid_level_dense,
                                                    name='seg-seg',
@@ -671,6 +703,7 @@ def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_i
                                                       use_residuals=model.use_residuals,
                                                       use_logp=model.use_logp,
                                                       final_pred_activation=None,
+                                                      activation=activation,
                                                       use_skip_connections=False,
                                                       nb_mid_level_dense=nb_mid_level_dense,
                                                       name='seg-seg',
@@ -686,6 +719,7 @@ def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_i
                                                        pool_size=model.pool_size,
                                                        use_residuals=model.use_residuals,
                                                        use_logp=model.use_logp,
+                                                       activation=activation,
                                                        final_pred_activation=None,
                                                        use_skip_connections=False,
                                                        nb_mid_level_dense=nb_mid_level_dense,
