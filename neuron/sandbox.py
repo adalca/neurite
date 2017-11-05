@@ -33,6 +33,8 @@ import pynd.segutils as su; reload(su)
 import pytools.timer as timer
 
 
+from tensorboard.backend.event_processing import event_accumulator
+
 
 def nb_steps_and_files(nb_files, nb_patches_per_volume, batch_size):
     """
@@ -783,8 +785,6 @@ def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_i
 
 def predict_from_saved_models():
     pass
-
-
 
 
 
