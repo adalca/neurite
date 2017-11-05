@@ -788,11 +788,6 @@ def predict_from_saved_models():
 
 
 
-
-
-
-
-
 def show_example_prediction_result(test_models,
                                    test_generator,
                                    run,
