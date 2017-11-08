@@ -216,6 +216,14 @@ def seg_callbacks(run_dir,
                                                       at_batch_end=at_batch_end,
                                                       mode='auto',
                                                       period=1)
+    callbacks['save-parallel'] = nrn_callbacks.ModelCheckpointParallel(filename,
+                                                      monitor='val_loss',  # is this needed?
+                                                      verbose=seg_verbose,
+                                                      save_best_only=False,
+                                                      save_weights_only=False,
+                                                      at_batch_end=at_batch_end,
+                                                      mode='auto',
+                                                      period=1)
 
     # png on test data
     png_dir = os.path.join(run_dir, 'png-test')

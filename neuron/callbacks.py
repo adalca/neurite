@@ -485,7 +485,7 @@ class ModelCheckpointParallel(keras.callbacks.Callback):
             self.epochs_since_last_save += 1
             if self.epochs_since_last_save >= self.period:
                 self.epochs_since_last_save = 0
-                filepath = self.filepath.format(epoch=epoch, **logs)
+                filepath = self.filepath.format(epoch=epoch, iter=iter, **logs)
                 if self.save_best_only:
                     current = logs.get(self.monitor)
                     if current is None:
