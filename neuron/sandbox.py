@@ -299,6 +299,7 @@ def seg_generators(paths, model, data, run, batch_size,
                    gen_verbose=False,
                    relabel='data',
                    seg_folder_name='asegs',
+                   seg_binary=False,
                    extra_gens={}):
     """
     usual generators for segmentation
@@ -343,6 +344,7 @@ def seg_generators(paths, model, data, run, batch_size,
                 'collapse_2d':collapse_2d,
                 'rand_seed_vol':rand_seed_vol,
                 'nb_input_feats':nb_input_feats,
+                'seg_binary':seg_binary,
                 'verbose':gen_verbose}
 
     # prepare the generator function depending on whether a prior is used
@@ -375,6 +377,7 @@ def seg_generators(paths, model, data, run, batch_size,
                                  paths.datalink('train', seg_folder_name),
                                  name='training_gen',
                                  **gen_args)
+
     generators['train-seg'] = nrn_gen.vol(paths.datalink('train', seg_folder_name),
                                           name='training_gen_seg',
                                           ext=data.ext,
@@ -387,7 +390,23 @@ def seg_generators(paths, model, data, run, batch_size,
                                           collapse_2d=collapse_2d,
                                           rand_seed_vol=rand_seed_vol,
                                           verbose=gen_verbose,
+                                          seg_binary=seg_binary,
                                           keep_vol_size=True)
+
+    generators['train-img'] = nrn_gen.vol(paths.datalink('train', 'vols'),
+                                          name='training_gen_img',
+                                          ext=data.ext,
+                                          relabel= None,
+                                          nb_labels_reshape= 1,
+                                          batch_size= batch_size,
+                                          patch_size= patch_size,
+                                          patch_stride= patch_stride,
+                                          data_proc_fn=vol_proc,
+                                          collapse_2d=collapse_2d,
+                                          rand_seed_vol=rand_seed_vol,
+                                          verbose=gen_verbose,
+                                          keep_vol_size=None    )
+
     # generators['train-vol'] = genfcn_vol(paths.datalink('train', 'vols'),
     #                              paths.datalink('train', seg_folder_name),
     #                              name='training_gen',
@@ -420,7 +439,22 @@ def seg_generators(paths, model, data, run, batch_size,
                                           collapse_2d=collapse_2d,
                                           rand_seed_vol=rand_seed_vol,
                                           verbose=gen_verbose,
+                                          seg_binary=seg_binary,
                                           keep_vol_size=True)
+    generators['validate-img'] = nrn_gen.vol(paths.datalink('validate', 'vols'),
+                                          name='validate_gen_img',
+                                          ext=data.ext,
+                                          relabel= None,
+                                          nb_labels_reshape= 1,
+                                          batch_size= batch_size,
+                                          patch_size= patch_size,
+                                          patch_stride= patch_stride,
+                                          data_proc_fn=vol_proc,
+                                          collapse_2d=collapse_2d,
+                                          rand_seed_vol=rand_seed_vol,
+                                          verbose=gen_verbose,
+                                          keep_vol_size=None)
+
     # generators['validate-vol'] = genfcn_vol(paths.datalink('validate', 'vols'),
     #                                 paths.datalink('validate', seg_folder_name),
     #                                 name='validation_gen',
@@ -454,7 +488,21 @@ def seg_generators(paths, model, data, run, batch_size,
                                           collapse_2d=collapse_2d,
                                           rand_seed_vol=rand_seed_vol,
                                           verbose=gen_verbose,
+                                          seg_binary=seg_binary,
                                           keep_vol_size=True)
+    generators['test-img'] = nrn_gen.vol(paths.datalink('test', 'vols'),
+                                          name='test_gen_img',
+                                          ext=data.ext,
+                                          relabel= None,
+                                          nb_labels_reshape= 1,
+                                          batch_size= batch_size,
+                                          patch_size= patch_size,
+                                          patch_stride= patch_stride,
+                                          data_proc_fn=vol_proc,
+                                          collapse_2d=collapse_2d,
+                                          rand_seed_vol=rand_seed_vol,
+                                          verbose=gen_verbose,
+                                          keep_vol_size=None)
     generators['test-100'] = genfcn(paths.datalink('test-100', 'vols'),
                                 paths.datalink('test-100', seg_folder_name),
                                 name='test_gen',
@@ -695,22 +743,7 @@ def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_i
                                                    name='seg-seg',
                                                    add_prior_layer=model.include_prior,
                                                    nb_input_features=data.nb_labels)
-        models['img-img-ae'] = nrn_models.design_unet(model.nb_features,
-                                                      run.patch_size,
-                                                      model.nb_levels,
-                                                      model.conv_size,
-                                                      1,
-                                                      feat_mult=model.feat_mult,
-                                                      pool_size=model.pool_size,
-                                                      use_residuals=model.use_residuals,
-                                                      use_logp=model.use_logp,
-                                                      final_pred_activation=None,
-                                                      activation=activation,
-                                                      use_skip_connections=False,
-                                                      nb_mid_level_dense=nb_mid_level_dense,
-                                                      name='seg-seg',
-                                                      add_prior_layer=model.include_prior,
-                                                      nb_input_features=1)
+
 
         models['seg-seg-vae'] = nrn_models.design_unet(model.nb_features,
                                                        run.patch_size,
@@ -729,6 +762,43 @@ def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_i
                                                        add_prior_layer=model.include_prior,
                                                        do_vae=True,
                                                        nb_input_features=data.nb_labels)
+
+
+        models['img-img-ae'] = nrn_models.design_unet(model.nb_features,
+                                                      run.patch_size,
+                                                      model.nb_levels,
+                                                      model.conv_size,
+                                                      1,
+                                                      feat_mult=model.feat_mult,
+                                                      pool_size=model.pool_size,
+                                                      use_residuals=model.use_residuals,
+                                                      use_logp=model.use_logp,
+                                                      final_pred_activation=None,
+                                                      activation=activation,
+                                                      use_skip_connections=False,
+                                                      nb_mid_level_dense=nb_mid_level_dense,
+                                                      name='img-img-ae',
+                                                      add_prior_layer=False,
+                                                      nb_input_features=1)
+
+        models['img-img-vae'] = nrn_models.design_unet(model.nb_features,
+                                                      run.patch_size,
+                                                      model.nb_levels,
+                                                      model.conv_size,
+                                                      1,
+                                                      feat_mult=model.feat_mult,
+                                                      pool_size=model.pool_size,
+                                                      use_residuals=model.use_residuals,
+                                                      use_logp=model.use_logp,
+                                                      final_pred_activation=None,
+                                                      activation=activation,
+                                                      use_skip_connections=False,
+                                                      nb_mid_level_dense=nb_mid_level_dense,
+                                                      name='img-img-vae',
+                                                      add_prior_layer=False,
+                                                      do_vae=True,
+                                                      nb_input_features=1)
+
 
         # cycleGAN:
         if run.patch_size is not None and run.patch_size[0] is not None:

@@ -35,6 +35,7 @@ def vol(volpath,
         expected_files=None,
         data_proc_fn=None,  # processing function that takes in one arg (the volume)
         relabel=None,       # relabeling array
+        extract_labels=None,
         nb_labels_reshape=0,  # reshape to categorial format for keras, need # labels
         keep_vol_size=False,  # whether to keep the volume size on categorical resizing
         name='single_vol',  # name, optional
@@ -46,6 +47,7 @@ def vol(volpath,
         force_binary=False,
         nb_feats=1,
         rand_seed_vol=None,
+        binary=False,
         yield_incomplete_final_batch=True,
         verbose=False):
     """
@@ -124,6 +126,10 @@ def vol(volpath,
             resized_seg_data_fix = np.copy(vol_data)
             for idx, val in np.ndenumerate(relabel):
               vol_data[resized_seg_data_fix == val] = idx
+        
+        if extract_labels is not None:
+            vol_data = np.take(vol_data, -1, extract_labels)
+            assert False, "Need to normalize, Unfinished!"
 
         # split volume into patches if necessary and yield
         if patch_size is None:
@@ -137,6 +143,9 @@ def vol(volpath,
                     this_patch_size[pi] = vol_data.shape[pi]
                     patch_stride[pi] = 1
 
+        assert ~np.any(np.isnan(vol_data)), "Found a nan for %s" % volfiles[fileidx]
+        assert np.all(np.isfinite(vol_data)), "Found a inf for %s" % volfiles[fileidx]
+
         patch_gen = patch(vol_data, this_patch_size,
                           patch_stride=patch_stride,
                           nb_labels_reshape=nb_labels_reshape,
@@ -148,8 +157,7 @@ def vol(volpath,
         empty_gen = True
         for lpatch in patch_gen:
             empty_gen = False
-            assert ~np.any(np.isnan(lpatch)), "Found a nan for %s" % volfiles[fileidx]
-            assert np.all(np.isfinite(lpatch)), "Found a inf for %s" % volfiles[fileidx]
+
 
             # add to feature
             if np.mod(feat_idx, nb_feats) == 0:
@@ -158,6 +166,9 @@ def vol(volpath,
             else:
                 vol_data_feats = np.concatenate([vol_data_feats, lpatch], np.ndim(lpatch)-1)
             feat_idx += 1
+
+            if binary:
+                vol_data_feats = vol_data_feats.astype(bool)
 
             if np.mod(feat_idx, nb_feats) == 0:
                 feats_shape = vol_data_feats[1:]
@@ -186,7 +197,8 @@ def vol(volpath,
 
                 if batch_done or final_batch:
                     batch_idx = -1
-                    yield np.vstack(vol_data_batch)
+                    q = np.vstack(vol_data_batch)
+                    yield q
 
         if empty_gen:
             raise ValueError('Patch generator was empty for file %s', volfiles[fileidx])
@@ -275,6 +287,7 @@ def vol_seg(volpath,
             nb_input_feats=1,
             relabel=None,
             rand_seed_vol=None,
+            seg_binary=False,
             vol_subname='norm',  # subname of volume
             seg_subname='aseg',  # subname of segmentation
             **kwargs):
@@ -301,7 +314,7 @@ def vol_seg(volpath,
     seg_gen = vol(segpath, **kwargs, ext=ext, nb_restart_cycle=nb_restart_cycle, collapse_2d=collapse_2d,
                   force_binary=force_binary, relabel=relabel, rand_seed_vol=rand_seed_vol,
                   data_proc_fn=proc_seg_fn, nb_labels_reshape=nb_labels_reshape, keep_vol_size=True,
-                  expected_files=vol_files, name=name+' seg', verbose=False)
+                  expected_files=vol_files, name=name+' seg', binary=seg_binary, verbose=False)
 
     # on next (while):
     while 1:
