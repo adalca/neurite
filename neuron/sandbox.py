@@ -2,7 +2,7 @@
 sandbox (often changing and very specific) functions for neuron project 
 """
 
-import os
+import os, sys
 from imp import reload
 import six
 
@@ -503,7 +503,7 @@ def seg_generators(paths, model, data, run, batch_size,
                                           ext=data.ext,
                                           relabel= None,
                                           nb_labels_reshape= 1,
-                                          batch_size= batch_size,
+                                          batch_size= 1,
                                           patch_size= patch_size,
                                           patch_stride= patch_stride,
                                           data_proc_fn=vol_proc,
@@ -706,6 +706,7 @@ def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_i
         # dct_valid = {'name':'seg', 'add_prior_layer':model.include_prior, 'nb_input_features':nb_input_features, 'padding':'valid'}
         # models['seg-valid'] = unet_template(data.nb_labels, dct_valid)
         
+    try:
         models['seg-gen'] = nrn_models.design_unet(model.nb_features,
                                                     run.patch_size,
                                                     model.nb_levels,
@@ -806,8 +807,6 @@ def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_i
                                                       add_prior_layer=False,
                                                       do_vae=True,
                                                       nb_input_features=1)
-
-
         # cycleGAN:
         if run.patch_size is not None and run.patch_size[0] is not None:
             # get S = segmentor Unet
@@ -836,26 +835,34 @@ def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_i
                                                     nb_input_features=data.nb_labels+1,
                                                     name='cg-disc')
 
+
+        # some defaults
+        if not hasattr(model, 'conv_dropout'):
+            model.conv_dropout = 0
+        models['disc'] = nrn_models.design_dnn(model.nb_features,
+                                                run.patch_size,
+                                                model.nb_levels,
+                                                model.conv_size,
+                                                data.nb_labels,
+                                                conv_dropout=model.conv_dropout,
+                                                final_layer='dense-softmax',
+                                                feat_mult=model.feat_mult,
+                                                pool_size=model.pool_size,
+                                                nb_input_features=nb_input_features,
+                                                use_strided_convolution_maxpool=False,
+                                                name='disc')
+
+
+    except:
+        print("Something happened while pre-loading fancier models. skipping...", file=sys.stderr)
+
+
+   
+
     if hasattr(run, 'load_weights') and run.load_weights is not None:
         print('loading weights %s' % run.load_weights)
         models['seg'].load_weights(run.load_weights, by_name=True)
 
-
-    # some defaults
-    if not hasattr(model, 'conv_dropout'):
-        model.conv_dropout = 0
-    models['disc'] = nrn_models.design_dnn(model.nb_features,
-                                            run.patch_size,
-                                            model.nb_levels,
-                                            model.conv_size,
-                                            data.nb_labels,
-                                            conv_dropout=model.conv_dropout,
-                                            final_layer='dense-softmax',
-                                            feat_mult=model.feat_mult,
-                                            pool_size=model.pool_size,
-                                            nb_input_features=nb_input_features,
-                                            use_strided_convolution_maxpool=False,
-                                            name='disc')
 
     return models
 

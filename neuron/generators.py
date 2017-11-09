@@ -107,7 +107,8 @@ def vol(volpath,
         # read next file (circular)
       
         try:
-            # print('opening %s' % os.path.join(volpath, volfiles[fileidx]))
+            if verbose:
+                print('opening %s' % os.path.join(volpath, volfiles[fileidx]))
             file_name = os.path.join(volpath, volfiles[fileidx])
             vol_data = _load_medical_volume(file_name, ext, verbose)
             # print(file_name, " was loaded", vol_data.shape)
@@ -972,7 +973,7 @@ def _load_medical_volume(filename, ext, verbose=False):
     """
     load a medical volume from one of a number of file types
     """
-    with timer.Timer('load_vol', verbose):
+    with timer.Timer('load_vol', verbose >= 2):
         if ext == '.npz':
             vol_file = np.load(filename)
             vol_data = vol_file['vol_data']
