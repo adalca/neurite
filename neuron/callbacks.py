@@ -304,6 +304,7 @@ class ModelCheckpoint(keras.callbacks.Callback):
                  save_weights_only=False,
                  at_batch_end=None,
                  at_epoch_end=True,
+                 init_epoch=0,
                  mode='auto', period=1,
                  verbose=False):
         """
@@ -344,7 +345,7 @@ class ModelCheckpoint(keras.callbacks.Callback):
 
         self.at_batch_end = at_batch_end
         self.at_epoch_end = at_epoch_end
-        self.current_epoch = 0
+        self.current_epoch = init_epoch
 
     def on_batch_end(self, batch, logs=None):
         if self.at_batch_end is not None and np.mod(batch + 1, self.at_batch_end) == 0:
@@ -354,7 +355,7 @@ class ModelCheckpoint(keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         if self.at_epoch_end:
             self.on_model_save(epoch, 0, logs=logs)
-        self.current_epoch = epoch
+        self.current_epoch = epoch + 1
 
     def on_model_save(self, epoch, iter, logs=None):
         """ save the model to hdf5. Code mostly from keras core """
@@ -431,6 +432,7 @@ class ModelCheckpointParallel(keras.callbacks.Callback):
                  save_best_only=False, save_weights_only=False,
                  at_batch_end=None,
                  at_epoch_end=True,
+                 init_epoch=0,
                  mode='auto', period=1):
         super(ModelCheckpointParallel, self).__init__()
         self.monitor = monitor
@@ -463,7 +465,7 @@ class ModelCheckpointParallel(keras.callbacks.Callback):
 
         self.at_batch_end = at_batch_end
         self.at_epoch_end = at_epoch_end
-        self.current_epoch = 0
+        self.current_epoch = init_epoch
 
 
     def on_batch_end(self, batch, logs=None):
@@ -474,7 +476,7 @@ class ModelCheckpointParallel(keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         if self.at_epoch_end:
             self.on_model_save(epoch, 0, logs=logs)
-        self.current_epoch = epoch
+        self.current_epoch = epoch + 1
 
     def on_model_save(self, epoch, iter, logs=None):
         """ save the model to hdf5. Code mostly from keras core """
