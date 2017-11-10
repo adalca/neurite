@@ -304,7 +304,6 @@ class ModelCheckpoint(keras.callbacks.Callback):
                  save_weights_only=False,
                  at_batch_end=None,
                  at_epoch_end=True,
-                 init_epoch=0,
                  mode='auto', period=1,
                  verbose=False):
         """
@@ -345,7 +344,10 @@ class ModelCheckpoint(keras.callbacks.Callback):
 
         self.at_batch_end = at_batch_end
         self.at_epoch_end = at_epoch_end
-        self.current_epoch = init_epoch
+        self.current_epoch = 0
+
+    def on_epoch_begin(self, epoch, logs=None):
+        self.current_epoch = epoch
 
     def on_batch_end(self, batch, logs=None):
         if self.at_batch_end is not None and np.mod(batch + 1, self.at_batch_end) == 0:
@@ -432,7 +434,6 @@ class ModelCheckpointParallel(keras.callbacks.Callback):
                  save_best_only=False, save_weights_only=False,
                  at_batch_end=None,
                  at_epoch_end=True,
-                 init_epoch=0,
                  mode='auto', period=1):
         super(ModelCheckpointParallel, self).__init__()
         self.monitor = monitor
@@ -465,8 +466,10 @@ class ModelCheckpointParallel(keras.callbacks.Callback):
 
         self.at_batch_end = at_batch_end
         self.at_epoch_end = at_epoch_end
-        self.current_epoch = init_epoch
+        self.current_epoch = 0
 
+    def on_epoch_begin(self, epoch, logs=None):
+        self.current_epoch = epoch
 
     def on_batch_end(self, batch, logs=None):
         if self.at_batch_end is not None and np.mod(batch + 1, self.at_batch_end) == 0:
