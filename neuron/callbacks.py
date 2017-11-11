@@ -13,6 +13,7 @@ We'd like the following callback actions for neuron:
 --- new callback, PlotSlices
 
 '''
+import sys
 
 import keras
 import numpy as np
@@ -35,7 +36,8 @@ class ModelWeightCheck(keras.callbacks.Callback):
     """
 
     def __init__(self,
-                 at_batch_end=None,
+                 weight_diff=False,
+                 at_batch_end=False,                 
                  at_epoch_end=True):
         """
         Params:
@@ -47,6 +49,8 @@ class ModelWeightCheck(keras.callbacks.Callback):
         self.at_batch_end = at_batch_end
         self.at_epoch_end = at_epoch_end
         self.current_epoch = 0
+        self.weight_diff = weight_diff
+        self.wts = None
 
     def on_batch_end(self, batch, logs=None):
         if self.at_batch_end is not None and np.mod(batch + 1, self.at_batch_end) == 0:
@@ -62,6 +66,71 @@ class ModelWeightCheck(keras.callbacks.Callback):
             for wt in layer.get_weights():
                 assert ~np.any(np.isnan(wt)), 'Found nan weights in model layer %s' % layer.name
                 assert np.all(np.isfinite(wt)), 'Found infinite weights in model layer %s' % layer.name
+
+        # compute max change
+        if self.weight_diff:
+            wts = self.model.get_weights()
+            diff = -np.inf
+
+            if self.wts is not None:
+                for wi, w in enumerate(wts):
+                    if len(w) > 0:
+                        for si, sw in enumerate(w):
+                            diff = np.maximum(diff, np.max(np.abs(sw - self.wts[wi][si])))
+                            
+            self.wts = wts
+            logs['max_diff'] = diff
+            # print("max diff", diff)
+
+class CheckLossTrend(keras.callbacks.Callback):
+    """
+        check model weights for nan and infinite entries
+    """
+
+    def __init__(self,
+                 at_batch_end=True,
+                 at_epoch_end=False,
+                 nb_std_err=2,
+                 loss_window=10):
+        """
+        Params:
+            at_batch_end: None or number indicate when to execute
+                (i.e. at_batch_end = 10 means execute every 10 batches)
+            at_epoch_end: logical, whether to execute at epoch end
+        """
+        super(CheckLossTrend, self).__init__()
+        self.at_batch_end = at_batch_end
+        self.at_epoch_end = at_epoch_end
+        self.current_epoch = 0
+        self.loss_window = loss_window
+        self.nb_std_err = nb_std_err
+        self.losses = []
+
+    def on_batch_end(self, batch, logs=None):
+        if self.at_batch_end is not None and np.mod(batch + 1, self.at_batch_end) == 0:
+            self.on_model_check(self.current_epoch, batch + 1, logs=logs)
+
+    def on_epoch_end(self, epoch, logs=None):
+        if self.at_epoch_end:
+            self.on_model_check(epoch, 0, logs=logs)
+        self.current_epoch = epoch
+
+    def on_model_check(self, epoch, iter, logs=None):
+        if len(self.losses) < self.loss_window:
+            self.losses = [*self.losses, logs['loss']]
+        else:
+            losses_mean = np.mean(self.losses)
+            losses_std = np.std(self.losses)
+            this_loss = logs['loss']
+            if (this_loss - losses_mean) > (losses_mean + self.nb_std_err * losses_std):
+                print(logs)
+                err = "Found loss %f, which is much higher than %f + %f " % (this_loss, losses_mean, losses_std)
+                # raise ValueError(err)
+                print(err, file=sys.stderr)
+            if (this_loss - losses_mean) > (losses_mean * 100):
+                err = "Found loss %f, which is much higher than %f * 100 " % (this_loss, losses_mean)
+                raise ValueError(err)
+            self.losses = [*self.losses[1:], logs['loss']]
 
 
 
@@ -542,3 +611,12 @@ def _generate_predictions(model, data_generator, batch_size, nb_samples, vol_par
         for _ in range(nb_samples):  # assumes nr batches
             vol_pred, vol_true = nrn_utils.next_label(model, data_generator)
             yield (vol_true, vol_pred)
+
+import collections
+def _flatten(l):
+    # https://stackoverflow.com/questions/2158395/flatten-an-irregular-list-of-lists
+    for el in l:
+        if isinstance(el, collections.Iterable) and not isinstance(el, (str, bytes)):
+            yield from _flatten(el)
+        else:
+            yield el

@@ -308,10 +308,14 @@ def seg_generators(paths, model, data, run, batch_size,
                    relabel='data',
                    seg_folder_name='asegs',
                    seg_binary=False,
+                   patch_rand=True,
                    extra_gens={}):
     """
     usual generators for segmentation
     """
+
+    if patch_rand:
+        print('randomizing patches!')
 
     # compute patch size, and dimension-collapse if necessary
     patch_size = run.patch_size
@@ -353,6 +357,7 @@ def seg_generators(paths, model, data, run, batch_size,
                 'rand_seed_vol':rand_seed_vol,
                 'nb_input_feats':nb_input_feats,
                 'seg_binary':seg_binary,
+                'patch_rand':patch_rand,
                 'verbose':gen_verbose}
 
     # prepare the generator function depending on whether a prior is used
@@ -399,6 +404,7 @@ def seg_generators(paths, model, data, run, batch_size,
                                           rand_seed_vol=rand_seed_vol,
                                           verbose=gen_verbose,
                                           binary=seg_binary,
+                                          patch_rand=patch_rand,
                                           keep_vol_size=True)
 
     generators['train-img'] = nrn_gen.vol(paths.datalink('train', 'vols'),
@@ -413,6 +419,7 @@ def seg_generators(paths, model, data, run, batch_size,
                                           collapse_2d=collapse_2d,
                                           rand_seed_vol=rand_seed_vol,
                                           verbose=gen_verbose,
+                                          patch_rand=patch_rand,
                                           keep_vol_size=None    )
 
     # generators['train-vol'] = genfcn_vol(paths.datalink('train', 'vols'),
@@ -448,6 +455,7 @@ def seg_generators(paths, model, data, run, batch_size,
                                           rand_seed_vol=rand_seed_vol,
                                           verbose=gen_verbose,
                                           binary=seg_binary,
+                                          patch_rand=patch_rand,
                                           keep_vol_size=True)
     generators['validate-img'] = nrn_gen.vol(paths.datalink('validate', 'vols'),
                                           name='validate_gen_img',
@@ -461,6 +469,7 @@ def seg_generators(paths, model, data, run, batch_size,
                                           collapse_2d=collapse_2d,
                                           rand_seed_vol=rand_seed_vol,
                                           verbose=gen_verbose,
+                                          patch_rand=patch_rand,
                                           keep_vol_size=None)
 
     # generators['validate-vol'] = genfcn_vol(paths.datalink('validate', 'vols'),
@@ -497,6 +506,7 @@ def seg_generators(paths, model, data, run, batch_size,
                                           rand_seed_vol=rand_seed_vol,
                                           verbose=gen_verbose,
                                           binary=seg_binary,
+                                          patch_rand=patch_rand,
                                           keep_vol_size=True)
     generators['test-img'] = nrn_gen.vol(paths.datalink('test', 'vols'),
                                           name='test_gen_img',
@@ -510,6 +520,7 @@ def seg_generators(paths, model, data, run, batch_size,
                                           collapse_2d=collapse_2d,
                                           rand_seed_vol=rand_seed_vol,
                                           verbose=gen_verbose,
+                                          patch_rand=patch_rand,
                                           keep_vol_size=None)
     generators['test-100'] = genfcn(paths.datalink('test-100', 'vols'),
                                 paths.datalink('test-100', seg_folder_name),

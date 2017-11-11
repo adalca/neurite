@@ -125,6 +125,9 @@ def design_unet(nb_features,
                 add_prior_layer=False,
                 add_prior_layer_reg=0,
                 nb_mid_level_dense=0,
+                batch_norm=False,
+                do_vae_mu_softsign=True,
+                do_vae_sigma_softsign=True,
                 do_vae=False):
     """
     unet-style model with lots of parametrization
@@ -199,6 +202,12 @@ def design_unet(nb_features,
             layers_dict[name] = KL.Activation(activation, name=name)(last_layer)
             last_layer = layers_dict[name]
 
+        if batch_norm:
+            name = '%s_bn_down_%d' % (prefix, level)
+            layers_dict[name] = KL.BatchNormalization(name=name)(last_layer)
+            last_layer = layers_dict[name]
+
+
         # max pool if we're not at the last level
         if level < (nb_levels - 1):
             name = '%s_maxpool_%d' % (prefix, level)
@@ -217,23 +226,59 @@ def design_unet(nb_features,
         last_layer = layers_dict[name]
 
         if do_vae: # variational auto-encoder
-            name = '%s_mid_mu_enc_%d' % (prefix, nb_mid_level_dense)
-            layers_dict[name] = KL.Dense(nb_mid_level_dense, name=name)(last_layer)
+            flat_layer = last_layer
 
-            name = '%s_mid_sigma_enc_%d' % (prefix, nb_mid_level_dense)
-            layers_dict[name] = KL.Dense(nb_mid_level_dense, name=name)(last_layer)
+            # mu branch
+            name = '%s_mid_mu_enc_%d' % (prefix, nb_mid_level_dense)
+            muname = name
+            layers_dict[name] = KL.Dense(nb_mid_level_dense, name=name)(flat_layer)
             last_layer = layers_dict[name]
 
+            if batch_norm:
+                name = '%s_mid_mu_bn_%d' % (prefix, nb_mid_level_dense)
+                muname = name
+                layers_dict[name] = KL.BatchNormalization(name=name)(last_layer)
+                last_layer = layers_dict[name]
+
+            if do_vae_mu_softsign:
+                name = '%s_mid_mu_softsign_%d' % (prefix, nb_mid_level_dense)
+                muname = name
+                layers_dict[name] = KL.Lambda(K.softsign, name=name)(last_layer)
+                last_layer = layers_dict[name]
+
+            # sigma branch
+            name = '%s_mid_sigma_enc_%d' % (prefix, nb_mid_level_dense)
+            sigmaname = name
+            layers_dict[name] = KL.Dense(nb_mid_level_dense, name=name)(flat_layer)
+            last_layer = layers_dict[name]
+
+            if batch_norm:
+                name = '%s_mid_sigma_bn_enc_%d' % (prefix, nb_mid_level_dense)
+                sigmaname = name
+                layers_dict[name] = KL.BatchNormalization(name=name)(last_layer)
+                last_layer = layers_dict[name]
+
+            if do_vae_sigma_softsign:
+                name = '%s_mid_sigma_softsign_%d' % (prefix, nb_mid_level_dense)
+                sigmaname = name
+                layers_dict[name] = KL.Lambda(K.softsign, name=name)(last_layer)
+                last_layer = layers_dict[name]
+
+            # VAE sampling
             sampler = _VAESample(nb_mid_level_dense).sample_z
 
             name = '%s_mid_dense_dec_sample' % prefix
-            pname = '%s_mid_mu_enc_%d' % (prefix, nb_mid_level_dense)
-            layers_dict[name] = KL.Lambda(sampler, name=name)([layers_dict[pname], last_layer])
+            layers_dict[name] = KL.Lambda(sampler, name=name)([layers_dict[muname], layers_dict[sigmaname]])
             last_layer = layers_dict[name]
 
             name = '%s_mid_dense_dec_flat' % prefix
             layers_dict[name] = KL.Dense(np.prod(save_shape), name=name)(last_layer)
             last_layer = layers_dict[name]
+
+            if batch_norm:
+                name = '%s_bn_mid_dense_dec_flat' % prefix
+                layers_dict[name] = KL.BatchNormalization(name=name)(last_layer)
+                last_layer = layers_dict[name]
 
         
         else: # normal
@@ -297,6 +342,11 @@ def design_unet(nb_features,
             
             name = '%s_res_up_merge_act_%d' % (prefix, level)
             layers_dict[name] = KL.Activation(activation, name=name)(last_layer)
+            last_layer = layers_dict[name]
+
+        if batch_norm:
+            name = '%s_bn_up_%d' % (prefix, level)
+            layers_dict[name] = KL.BatchNormalization(name=name)(last_layer)
             last_layer = layers_dict[name]
 
 

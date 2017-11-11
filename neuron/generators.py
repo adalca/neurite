@@ -46,6 +46,7 @@ def vol(volpath,
         extract_slice=None,
         force_binary=False,
         nb_feats=1,
+        patch_rand=False,
         rand_seed_vol=None,
         binary=False,
         yield_incomplete_final_batch=True,
@@ -77,6 +78,7 @@ def vol(volpath,
             patch_size = [*patch_size, vol_data.shape[-1]]
             patch_stride = [f for f in patch_stride]
             patch_stride = [*patch_stride, vol_data.shape[-1]]
+        assert len(vol_data.shape) == len(patch_size), "Vol dims %d are  not equal to patch dims %d" % (len(vol_data.shape), len(patch_size))
         nb_patches_per_vol = np.prod(pl.gridsize(vol_data.shape, patch_size, patch_stride))
     if nb_restart_cycle is None:
         nb_restart_cycle = nb_files
@@ -153,6 +155,7 @@ def vol(volpath,
                           batch_size=1,
                           infinite=False,
                           collapse_2d=collapse_2d,
+                          patch_rand=patch_rand,
                           keep_vol_size=keep_vol_size)
 
         empty_gen = True
@@ -212,6 +215,7 @@ def patch(vol_data,             # the volume
           keep_vol_size=False,  # whether to keep the volume size on categorical resizing
           batch_size=1,         # batch size
           collapse_2d=None,
+          patch_rand=False,
           variable_batch_size=False,
           infinite=False):      # whether the generator should continue (re)-generating patches
     """
@@ -236,7 +240,7 @@ def patch(vol_data,             # the volume
     # do while. if not infinite, will break at the end
     while True:
         # create patch generator
-        gen = pl.patch_gen(vol_data, patch_size, stride=patch_stride)
+        gen = pl.patch_gen(vol_data, patch_size, stride=patch_stride, rand=patch_rand)
 
         # go through the patch generator
         empty_gen = True
