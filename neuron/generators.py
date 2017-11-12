@@ -80,6 +80,7 @@ def vol(volpath,
         assert len(vol_data.shape) == len(patch_size), "Vol dims %d are  not equal to patch dims %d" % (len(vol_data.shape), len(patch_size))
         nb_patches_per_vol = np.prod(pl.gridsize(vol_data.shape, patch_size, patch_stride))
     if nb_restart_cycle is None:
+        print("setting restart cycle to", nb_files)
         nb_restart_cycle = nb_files
 
     
@@ -152,9 +153,10 @@ def vol(volpath,
                           keep_vol_size=keep_vol_size)
 
         empty_gen = True
+        patch_idx = -1
         for lpatch in patch_gen:
             empty_gen = False
-
+            patch_idx += 1
 
             # add to feature
             if np.mod(feat_idx, nb_feats) == 0:
@@ -169,12 +171,12 @@ def vol(volpath,
 
             if np.mod(feat_idx, nb_feats) == 0:
                 feats_shape = vol_data_feats[1:]
-                
 
                 # yield previous batch if the new volume has different patch sizes
                 if batch_shape is not None and (feats_shape != batch_shape):
                     batch_idx = -1
                     batch_shape = None
+                    print('switching patch sizes')
                     yield np.vstack(vol_data_batch)
 
                 # add to batch of volume data, unless the batch is currently empty
@@ -188,9 +190,9 @@ def vol(volpath,
                 batch_idx += 1
                 batch_done = batch_idx == batch_size - 1
                 files_done = np.mod(fileidx + 1, nb_restart_cycle) == 0
-                final_batch = (yield_incomplete_final_batch and files_done)
+                final_batch = yield_incomplete_final_batch and files_done and patch_idx == (nb_patches_per_vol-1)
                 if final_batch: # verbose and 
-                    print('last batch in %s cycle %d' % (name, fileidx))
+                    print('last batch in %s cycle %d. nb_batch:%d' % (name, fileidx, len(vol_data_batch)))
 
                 if batch_done or final_batch:
                     batch_idx = -1
