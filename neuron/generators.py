@@ -189,9 +189,8 @@ def vol(volpath,
                 batch_done = batch_idx == batch_size - 1
                 files_done = np.mod(fileidx + 1, nb_restart_cycle) == 0
                 final_batch = (yield_incomplete_final_batch and files_done)
-                if verbose and final_batch:
+                if final_batch: # verbose and 
                     print('last batch in %s cycle %d' % (name, fileidx))
-                print('last batch in %s cycle %d' % (name, fileidx))
 
                 if batch_done or final_batch:
                     batch_idx = -1
