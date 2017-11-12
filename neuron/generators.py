@@ -35,7 +35,6 @@ def vol(volpath,
         expected_files=None,
         data_proc_fn=None,  # processing function that takes in one arg (the volume)
         relabel=None,       # relabeling array
-        extract_labels=None,
         nb_labels_reshape=0,  # reshape to categorial format for keras, need # labels
         keep_vol_size=False,  # whether to keep the volume size on categorical resizing
         name='single_vol',  # name, optional
@@ -126,13 +125,7 @@ def vol(volpath,
         # the original segmentation files have non-sequential relabel (i.e. some relabel are
         # missing to avoid exploding our model, we only care about the relabel that exist.
         if relabel is not None:
-            resized_seg_data_fix = np.copy(vol_data)
-            for idx, val in np.ndenumerate(relabel):
-              vol_data[resized_seg_data_fix == val] = idx
-        
-        if extract_labels is not None:
-            vol_data = np.take(vol_data, -1, extract_labels)
-            assert False, "Need to normalize, Unfinished!"
+            vol_data = _relabel(vol_data, relabel)
 
         # split volume into patches if necessary and yield
         if patch_size is None:
@@ -1037,3 +1030,16 @@ def _to_categorical(y, num_classes=None, reshape=True):
         categorical = np.reshape(categorical, [*oshape, num_classes])
     
     return categorical
+
+def _relabel(vol_data, labels, forcecheck=False):
+    
+    if forcecheck:
+        vd = np.unique(vol_data.flat)
+        assert len(vd) == len(labels), "number of given labels does not match number of actual labels"
+    
+    # by doing zeros, any label not in labels gets left to 0
+    new_vol_data = np.zeros(vol_data.shape, vol_data.dtype)
+    for idx, val in np.ndenumerate(data.labels):
+        new_vol_data[vol_data == val] = idx
+    
+    return new_vol_data
