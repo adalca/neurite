@@ -191,6 +191,7 @@ def vol(volpath,
                 final_batch = (yield_incomplete_final_batch and files_done)
                 if verbose and final_batch:
                     print('last batch in %s cycle %d' % (name, fileidx))
+                print('last batch in %s cycle %d' % (name, fileidx))
 
                 if batch_done or final_batch:
                     batch_idx = -1
@@ -1039,7 +1040,7 @@ def _relabel(vol_data, labels, forcecheck=False):
     
     # by doing zeros, any label not in labels gets left to 0
     new_vol_data = np.zeros(vol_data.shape, vol_data.dtype)
-    for idx, val in np.ndenumerate(data.labels):
+    for idx, val in np.ndenumerate(labels):
         new_vol_data[vol_data == val] = idx
     
     return new_vol_data
