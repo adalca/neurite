@@ -995,9 +995,9 @@ def _load_medical_volume(filename, ext, verbose=False):
 def _categorical_prep(vol_data, nb_labels_reshape, keep_vol_size, patch_size):
 
     if nb_labels_reshape > 1:
-        lpatch = np_utils.to_categorical(vol_data, nb_labels_reshape)
-        if keep_vol_size:
-            lpatch = np.reshape(lpatch, [*patch_size, nb_labels_reshape])
+        lpatch = _to_categorical(vol_data, nb_labels_reshape, keep_vol_size)
+        # if keep_vol_size:
+            # lpatch = np.reshape(lpatch, [*patch_size, nb_labels_reshape])
     elif nb_labels_reshape == 1:
         lpatch = np.expand_dims(vol_data, axis=-1)
     else:
@@ -1008,3 +1008,32 @@ def _categorical_prep(vol_data, nb_labels_reshape, keep_vol_size, patch_size):
     return lpatch
 
 
+
+def _to_categorical(y, num_classes=None, reshape=True):
+    """
+    # copy of keras.utils.np_utils.to_categorical, but with a boolean matrix instead of float
+
+    Converts a class vector (integers) to binary class matrix.
+
+    E.g. for use with categorical_crossentropy.
+
+    # Arguments
+        y: class vector to be converted into a matrix
+            (integers from 0 to num_classes).
+        num_classes: total number of classes.
+
+    # Returns
+        A binary matrix representation of the input.
+    """
+    oshape = y.shape
+    y = np.array(y, dtype='int').ravel()
+    if not num_classes:
+        num_classes = np.max(y) + 1
+    n = y.shape[0]
+    categorical = np.zeros((n, num_classes), bool)
+    categorical[np.arange(n), y] = 1
+    
+    if reshape:
+        categorical = np.reshape(categorical, [*oshape, num_classes])
+    
+    return categorical
