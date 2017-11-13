@@ -126,8 +126,8 @@ def design_unet(nb_features,
                 add_prior_layer_reg=0,
                 nb_mid_level_dense=0,
                 batch_norm=False,
-                do_vae_mu_softsign=True,
-                do_vae_sigma_softsign=True,
+                do_vae_mu_softsign=False,
+                do_vae_sigma_softsign=False,
                 do_vae=False):
     """
     unet-style model with lots of parametrization
