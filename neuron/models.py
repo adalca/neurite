@@ -128,8 +128,8 @@ def design_unet(nb_features,
                 batch_norm=False,
                 do_vae_mu_softsign=False,
                 do_vae_sigma_softsign=False,
-                do_vae_mu_longtanh=False,
-                do_vae_sigma_longtanh=False,
+                do_vae_mu_longtanh=True,
+                do_vae_sigma_longtanh=True,
                 do_vae=False):
     """
     unet-style model with lots of parametrization
@@ -251,7 +251,8 @@ def design_unet(nb_features,
             if do_vae_mu_longtanh:
                 name = '%s_mid_mu_longtanh_%d' % (prefix, nb_mid_level_dense)
                 muname = name
-                longtanh = lambda x, a: K.tanh(x) *  K.log(2 + a * abs(x))
+                a = 1
+                longtanh = lambda x: K.tanh(x) *  K.log(2 + a * abs(x))
                 layers_dict[name] = KL.Lambda(longtanh, name=name)(last_layer)
                 last_layer = layers_dict[name]
 
@@ -273,7 +274,7 @@ def design_unet(nb_features,
                 layers_dict[name] = KL.Lambda(K.softsign, name=name)(last_layer)
                 last_layer = layers_dict[name]
 
-            if do_vae_signa_longtanh:
+            if do_vae_sigma_longtanh:
                 name = '%s_mid_sigma_longtanh_%d' % (prefix, nb_mid_level_dense)
                 sigmaname = name
                 layers_dict[name] = KL.Lambda(longtanh, name=name)(last_layer)
