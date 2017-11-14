@@ -309,13 +309,14 @@ def seg_generators(paths, model, data, run, batch_size,
                    seg_folder_name='asegs',
                    seg_binary=False,
                    patch_rand=True,
+                   test_batch_size=1,
                    extra_gens={}):
     """
     usual generators for segmentation
     """
 
     if patch_rand:
-        print('randomizing patches!')
+        print('randomizing patches, but only in modality-specific generators (-img or -seg)!')
 
     # compute patch size, and dimension-collapse if necessary
     patch_size = run.patch_size
@@ -357,7 +358,7 @@ def seg_generators(paths, model, data, run, batch_size,
                 'rand_seed_vol':rand_seed_vol,
                 'nb_input_feats':nb_input_feats,
                 'seg_binary':seg_binary,
-                'patch_rand':patch_rand,
+                'patch_rand':False,  # haven't implemented patch_rand in both vol_seg yet
                 'verbose':gen_verbose}
 
     # prepare the generator function depending on whether a prior is used
@@ -492,7 +493,7 @@ def seg_generators(paths, model, data, run, batch_size,
                                               run.nb_patches_per_volume,
                                               batch_size)
     gen_args['nb_restart_cycle'] = nb_test_files  # sample the same validation files
-    gen_args['batch_size'] = 1
+    gen_args['batch_size'] = test_batch_size
     generators['test'] = genfcn(paths.datalink('test', 'vols'),
                                 paths.datalink('test', seg_folder_name),
                                 name='test_gen',
