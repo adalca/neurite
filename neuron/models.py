@@ -426,6 +426,223 @@ def design_unet(nb_features,
     return model
 
 
+
+
+def design_dec(nb_features,
+                patch_size,
+                nb_levels,
+                conv_size,
+                nb_labels,
+                name=None,
+                prefix=None,
+                feat_mult=1,
+                pool_size=None,
+                use_logp=False,
+                nb_input_features=1,
+                use_skip_connections=True,
+                padding='same',
+                activation='relu',
+                use_residuals=False,
+                final_pred_activation='softmax',
+                nb_conv_per_level=2,
+                add_prior_layer=False,
+                add_prior_layer_reg=0,
+                nb_mid_level_dense=0,
+                batch_norm=False,
+                do_vae_mu_softsign=False,
+                do_vae_sigma_softsign=False,
+                do_vae_mu_longtanh=True,
+                do_vae_sigma_longtanh=True,
+                do_vae=False):
+    """
+    unet-style model with lots of parametrization
+
+    for U-net like architecture, we need to use Deconvolution3D.
+    However, this is not yet available (maybe soon, it's on a dev branch in github I believe)
+    Until then, we'll upsample and convolve.
+    TODO: Need to check that UpSampling3D actually does NN-upsampling!
+    """
+    
+    model_name = name
+    if model_name is None:
+        model_name = 'model_1'
+    if prefix is None:
+        prefix = model_name
+
+    ndims = len(patch_size)
+    patch_size = tuple(patch_size)
+    convL = KL.Conv3D if ndims == 3 else KL.Conv2D
+    maxpool = KL.MaxPooling3D if ndims == 3 else KL.MaxPooling2D
+    upsample = KL.UpSampling3D if ndims == 3 else KL.UpSampling2D
+    # vol_numel = np.prod(patch_size)
+    if pool_size is None:
+        pool_size = (2, 2, 2) if len(patch_size) == 3 else (2, 2)
+
+    # kwargs for the convolution layer
+    conv_kwargs = {'padding': padding, 'activation': activation}
+
+    # initialize a dictionary
+    layers_dict = {}
+
+    # first layer: input
+    name = '%s_input' % prefix
+    input_name = name
+    layers_dict[name] = KL.Input(shape=(nb_mid_level_dense,), name=name)
+    last_layer = layers_dict[name]
+
+    
+
+    # if want to go through a dense layer in the middle of the U, need to:
+    # - flatten last layer
+    # - do dense encoding and decoding
+    # - unflatten (rehsape spatially)
+    if nb_mid_level_dense > 0:
+        save_shape = last_layer.get_shape().as_list()[1:]
+        save_shape = [10, 12, 64]
+
+
+        if do_vae: # variational auto-encoder
+            flat_layer = last_layer
+
+            name = '%s_mid_dense_dec_flat' % prefix
+            layers_dict[name] = KL.Dense(np.prod(save_shape), name=name)(last_layer)
+            last_layer = layers_dict[name]
+
+            if batch_norm:
+                name = '%s_bn_mid_dense_dec_flat' % prefix
+                layers_dict[name] = KL.BatchNormalization(name=name)(last_layer)
+                last_layer = layers_dict[name]
+
+        
+        else: # normal
+            name = '%s_mid_dense_enc_%d' % (prefix, nb_mid_level_dense)
+            layers_dict[name] = KL.Dense(nb_mid_level_dense, name=name)(last_layer)
+            last_layer = layers_dict[name]
+
+            name = '%s_mid_dense_dec_flat_%d' % (prefix, nb_mid_level_dense)
+            layers_dict[name] = KL.Dense(np.prod(save_shape), name=name)(last_layer)
+            last_layer = layers_dict[name]
+
+        name = '%s_mid_dense_dec' % prefix
+        layers_dict[name] = KL.Reshape(save_shape, name=name)(last_layer)
+        last_layer = layers_dict[name]
+
+    print(name)
+
+    # up arm:
+    # nb_levels - 1 layers of Deconvolution3D
+    #    (approx via up + conv + ReLu) + merge + conv + ReLu + conv + ReLu
+    for level in range(nb_levels - 1):
+        nb_local_features = nb_features*(feat_mult**(nb_levels-2-level))
+
+        # upsample matching the max pooling layers
+        name = '%s_up_%d' % (prefix, nb_levels + level)
+        layers_dict[name] = upsample(size=pool_size, name=name)(last_layer)
+        last_layer = layers_dict[name]
+
+        # upsample matching the max pooling layers
+        #name = '%s_upconv_%d' % (prefix, nb_levels + level)
+        #layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
+        #last_layer = layers_dict[name]
+
+        # merge layers combining previous layer
+        # TODO: add Cropping3D or Cropping2D if 'valid' padding
+        if use_skip_connections:
+            conv_name = '%s_conv_downarm_%d_%d' % (prefix, nb_levels - 2 - level, nb_conv_per_level - 1)
+            name = '%s_merge_%d' % (prefix, nb_levels + level)
+            layers_dict[name] = KL.concatenate([layers_dict[conv_name], last_layer], axis=ndims+1, name=name)
+            last_layer = layers_dict[name]
+
+        # convolution layers
+        for conv in range(nb_conv_per_level):
+            name = '%s_conv_uparm_%d_%d' % (prefix, nb_levels + level, conv)
+            if conv < (nb_conv_per_level-1) or (not use_residuals):
+              layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(last_layer)
+            else:
+              layers_dict[name] = convL(nb_local_features, conv_size, padding=padding, name=name)(last_layer)
+            last_layer = layers_dict[name]
+
+
+        if use_residuals:
+            conv_name = '%s_up_%d' % (prefix, nb_levels + level)
+            convarm_layer = last_layer
+
+            # name = '%s_expand_up_merge_%d' % (prefix, level)
+            # layers_dict[name] = convL(nb_local_features, conv_size, **conv_kwargs, name=name)(layers_dict[conv_name])
+            # last_layer = layers_dict[name]
+
+            name = '%s_res_up_merge_%d' % (prefix, level)
+            layers_dict[name] = KL.add([convarm_layer, layers_dict[conv_name] ], name=name)
+            last_layer = layers_dict[name]
+            
+            name = '%s_res_up_merge_act_%d' % (prefix, level)
+            layers_dict[name] = KL.Activation(activation, name=name)(last_layer)
+            last_layer = layers_dict[name]
+
+        if batch_norm:
+            name = '%s_bn_up_%d' % (prefix, level)
+            layers_dict[name] = KL.BatchNormalization(name=name)(last_layer)
+            last_layer = layers_dict[name]
+
+
+    # Compute likelyhood prediction (no activation yet)
+    name = '%s_likelihood' % prefix
+    layers_dict[name] = convL(nb_labels, 1, activation=None, name=name)(last_layer)
+    like_layer = layers_dict[name]
+    last_layer = layers_dict[name]
+
+    # add optional prior
+    model_inputs = [layers_dict[input_name]]
+    if add_prior_layer:
+
+        # prior input layer
+        prior_input_name = '%s_prior-input' % prefix
+        layers_dict[prior_input_name] = KL.Input(shape=patch_size + (nb_labels,), name=prior_input_name)
+        prior_layer = layers_dict[prior_input_name]
+        
+        # operation varies depending on whether we log() prior or not.
+        merge_op = KL.multiply
+        if use_logp:
+            name = '%s_prior-log' % prefix
+            prior_input = layers_dict['%s_prior-input' % prefix]
+            layers_dict[name] = KL.Lambda(_log_layer_wrap(add_prior_layer_reg), name=name)(prior_input)
+            prior_layer = layers_dict[name]
+
+            merge_op = KL.add
+        else:
+            # using sigmoid to get the likelihood values between 0 and 1
+            # note: they won't add up to 1.
+            name = '%s_likelihood_sigmoid' % prefix
+            layers_dict[name] = KL.Activation('sigmoid', name=name)(like_layer)
+            like_layer = layers_dict[name]
+            
+        # merge the likelihood and prior layers into posterior layer
+        name = '%s_posterior' % prefix
+        layers_dict[name] = merge_op([prior_layer, like_layer], name=name)
+        last_layer = layers_dict[name]
+
+        # update model inputs
+        model_inputs = [layers_dict[input_name], layers_dict[prior_input_name]]
+
+    # output prediction layer
+    # we use a softmax to compute P(L_x|I) where x is each location. 
+    if final_pred_activation == 'softmax':
+        assert (not add_prior_layer) or use_logp, 'softmaxing cannot be done when adding prior in P() form' 
+        
+        name = '%s_prediction' % prefix
+        softmax_lambda_fcn = lambda x: keras.activations.softmax(x, axis=ndims + 1)
+        layers_dict[name] = KL.Lambda(softmax_lambda_fcn, name=name)(last_layer)
+
+    else:
+        name = '%s_prediction' % prefix
+        layers_dict[name] = KL.Activation('linear', name=name)(like_layer)
+
+    # create the model
+    model = Model(inputs=model_inputs, outputs=[layers_dict['%s_prediction' % prefix]], name=model_name)
+    
+    # compile
+    return model
+
 def design_dnn(nb_features, patch_size, nb_levels, conv_size, nb_labels,
                feat_mult=1,
                pool_size=None,

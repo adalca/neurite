@@ -683,7 +683,7 @@ def seg_losses(nb_labels,
 
 
 
-def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_input_features=1, activation='relu'):
+def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_input_features=1, activation='elu'):
     """
     prepare models for segmentation tasks
 
@@ -697,6 +697,7 @@ def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_i
     if seed is not None:
         np.random.seed(seed)
 
+    print("Using activation:", activation)
 
 
     # a template for create a u-net model (since we create several unet models here)
@@ -790,6 +791,24 @@ def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_i
                                                        do_vae=True,
                                                        nb_input_features=data.nb_labels)
 
+        print(activation)
+        models['seg-dec'] = nrn_models.design_dec(model.nb_features,
+                                                       run.patch_size,
+                                                       model.nb_levels,
+                                                       model.conv_size,
+                                                       data.nb_labels,
+                                                       feat_mult=model.feat_mult,
+                                                       pool_size=model.pool_size,
+                                                       use_residuals=model.use_residuals,
+                                                       use_logp=model.use_logp,
+                                                       activation=activation,
+                                                       final_pred_activation=None,
+                                                       use_skip_connections=False,
+                                                       nb_mid_level_dense=nb_mid_level_dense,
+                                                       name='seg-seg-vae',
+                                                       add_prior_layer=model.include_prior,
+                                                       do_vae=True,
+                                                       nb_input_features=data.nb_labels)
 
         models['img-img-ae'] = nrn_models.design_unet(model.nb_features,
                                                       run.patch_size,
@@ -871,8 +890,9 @@ def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_i
                                                 name='disc')
 
 
-    except:
+    except Exception as e:
         print("Something happened while pre-loading fancier models. skipping...", file=sys.stderr)
+        print(str(e))
 
 
    
