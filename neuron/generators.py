@@ -469,10 +469,13 @@ def vol_seg_prior(*args,
         prior_vol = np.transpose(prior_vol, [1, 2, 3, 0])
         prior_vol = np.expand_dims(prior_vol, axis=0) # reshape for model
 
-    else: # assumes a npz filename passed in prior_file
-        with timer.Timer('loading prior', verbose):
+    elif prior_type == 'file': # assumes a npz filename passed in prior_file
+        with timer.Timer('loading prior', True):
             data = np.load(prior_file)
             prior_vol = data['prior'].astype('float16')
+    else : # assumes a volume
+        with timer.Timer('loading prior', True):
+            prior_vol = prior_file.astype('float16')
 
     if force_binary:
         nb_labels = prior_vol.shape[-1]
@@ -567,10 +570,13 @@ def vol_prior_hack(*args,
         prior_vol = np.transpose(prior_vol, [1, 2, 3, 0])
         prior_vol = np.expand_dims(prior_vol, axis=0) # reshape for model
 
-    else: # assumes a npz filename passed in prior_file
-        with timer.Timer('loading prior', verbose):
+    elif prior_type == 'file': # assumes a npz filename passed in prior_file
+        with timer.Timer('loading prior', True):
             data = np.load(prior_file)
             prior_vol = data['prior'].astype('float16')
+    else : # assumes a volume
+        with timer.Timer('loading prior', True):
+            prior_vol = prior_file.astype('float16')
 
     if force_binary:
         nb_labels = prior_vol.shape[-1]
