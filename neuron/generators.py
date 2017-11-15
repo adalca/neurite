@@ -522,6 +522,147 @@ def vol_seg_prior(*args,
             yield (input_vol, [output_vol, prior_batch])
 
 
+
+def vol_prior_hack(*args,
+                proc_vol_fn=None,
+                proc_seg_fn=None,
+                prior_type='location',  # file-static, file-gen, location
+                prior_file=None,  # prior filename
+                prior_feed='input',  # input or output
+                patch_stride=1,
+                patch_size=None,
+                batch_size=1,
+                collapse_2d=None,
+                extract_slice=None,
+                force_binary=False,
+                nb_input_feats=1,
+                verbose=False,
+                rand_seed_vol=None,
+                **kwargs):
+    """
+    generator that appends prior to (volume, segmentation) depending on input
+    e.g. could be ((volume, prior), segmentation)
+    """
+
+    if verbose:
+        print('starting vol_seg_prior')
+
+    # prepare the vol_seg
+    gen = vol_seg_hack(*args, **kwargs,
+                  proc_vol_fn=None,
+                  proc_seg_fn=None,
+                  collapse_2d=collapse_2d,
+                  extract_slice=extract_slice,
+                  force_binary=force_binary,
+                  verbose=verbose,
+                  patch_size=patch_size,
+                  patch_stride=patch_stride,
+                  batch_size=batch_size,
+                  rand_seed_vol=rand_seed_vol,
+                  nb_input_feats=nb_input_feats)
+
+    # get prior
+    if prior_type == 'location':
+        prior_vol = nd.volsize2ndgrid(vol_size)
+        prior_vol = np.transpose(prior_vol, [1, 2, 3, 0])
+        prior_vol = np.expand_dims(prior_vol, axis=0) # reshape for model
+
+    else: # assumes a npz filename passed in prior_file
+        with timer.Timer('loading prior', verbose):
+            data = np.load(prior_file)
+            prior_vol = data['prior'].astype('float16')
+
+    if force_binary:
+        nb_labels = prior_vol.shape[-1]
+        prior_vol[:, :, :, 1] = np.sum(prior_vol[:, :, :, 1:nb_labels], 3)
+        prior_vol = np.delete(prior_vol, range(2, nb_labels), 3)
+
+    nb_channels = prior_vol.shape[-1]
+
+    if extract_slice is not None:
+        if isinstance(extract_slice, int):
+            prior_vol = prior_vol[:, :, extract_slice, np.newaxis, :]
+        else:  # assume slices
+            prior_vol = prior_vol[:, :, extract_slice, :]
+
+    # get the prior to have the right volume [x, y, z, nb_channels]
+    assert np.ndim(prior_vol) == 4 or np.ndim(prior_vol) == 3, "prior is the wrong size"
+
+    # prior generator
+    if patch_size is None:
+        patch_size = prior_vol.shape[0:3]
+    assert len(patch_size) == len(patch_stride)
+    prior_gen = patch(prior_vol, [*patch_size, nb_channels],
+                      patch_stride=[*patch_stride, nb_channels],
+                      batch_size=batch_size,
+                      collapse_2d=collapse_2d,
+                      keep_vol_size=True,
+                      infinite=True,
+                      variable_batch_size=True,
+                      nb_labels_reshape=0)
+    assert next(prior_gen) is None, "bad prior gen setup"
+
+    # generator loop
+    while 1:
+
+        # generate input and output volumes
+        input_vol = next(gen)
+        if verbose and np.all(input_vol.flat == 0):
+            print("all entries are 0")
+
+        # generate prior batch
+        prior_batch = prior_gen.send(input_vol.shape[0])
+
+        if prior_feed == 'input':
+            yield ([input_vol, prior_batch], input_vol)
+        else:
+            assert prior_feed == 'output'
+            yield (input_vol, [input_vol, prior_batch])
+
+
+def vol_seg_hack(volpath,
+            segpath,
+            proc_vol_fn=None,
+            proc_seg_fn=None,
+            verbose=False,
+            name='vol_seg', # name, optional
+            ext='.npz',
+            nb_restart_cycle=None,  # number of files to restart after
+            nb_labels_reshape=-1,
+            collapse_2d=None,
+            force_binary=False,
+            nb_input_feats=1,
+            relabel=None,
+            rand_seed_vol=None,
+            seg_binary=False,
+            vol_subname='norm',  # subname of volume
+            seg_subname='aseg',  # subname of segmentation
+            **kwargs):
+    """
+    generator with (volume, segmentation)
+
+    verbose is passed down to the base generators.py primitive generator (e.g. vol, here)
+
+    ** kwargs are any named arguments for vol(...),
+        except verbose, data_proc_fn, ext, nb_labels_reshape and name
+            (which this function will control when calling vol())
+    """
+
+    # get vol generator
+    vol_gen = vol(volpath, **kwargs, ext=ext,
+                  nb_restart_cycle=nb_restart_cycle, collapse_2d=collapse_2d, force_binary=False,
+                  relabel=None, data_proc_fn=proc_vol_fn, nb_labels_reshape=1, name=name+' vol',
+                  verbose=verbose, nb_feats=nb_input_feats, rand_seed_vol=rand_seed_vol)
+  
+
+    # on next (while):
+    while 1:
+        # get input and output (seg) vols
+        input_vol = next(vol_gen).astype('float16')
+
+        # output input and output
+        yield input_vol
+
 def vol_sr_slices(volpath,
                   nb_input_slices,
                   nb_slice_spacing,
