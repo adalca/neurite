@@ -575,8 +575,10 @@ def vol_prior_hack(*args,
             data = np.load(prior_file)
             prior_vol = data['prior'].astype('float16')
     else : # assumes a volume
-        with timer.Timer('loading prior', True):
-            prior_vol = prior_file.astype('float16')
+        with timer.Timer('astyping prior', verbose):
+            prior_vol = prior_file
+            if not (prior_vol.dtype == 'float16'):
+                prior_vol = prior_vol.astype('float16')
 
     if force_binary:
         nb_labels = prior_vol.shape[-1]
@@ -604,20 +606,23 @@ def vol_prior_hack(*args,
                       collapse_2d=collapse_2d,
                       keep_vol_size=True,
                       infinite=True,
-                      variable_batch_size=True,
+                      #variable_batch_size=True,  # this
                       nb_labels_reshape=0)
-    assert next(prior_gen) is None, "bad prior gen setup"
+    # assert next(prior_gen) is None, "bad prior gen setup"
 
     # generator loop
     while 1:
 
         # generate input and output volumes
         input_vol = next(gen)
+
         if verbose and np.all(input_vol.flat == 0):
             print("all entries are 0")
 
         # generate prior batch
-        prior_batch = prior_gen.send(input_vol.shape[0])
+        # with timer.Timer("with send?"):
+            # prior_batch = prior_gen.send(input_vol.shape[0])
+        prior_batch = next(prior_gen)
 
         if prior_feed == 'input':
             yield ([input_vol, prior_batch], input_vol)

@@ -310,6 +310,7 @@ def seg_generators(paths, model, data, run, batch_size,
                    seg_binary=False,
                    patch_rand=True,
                    test_batch_size=1,
+                   prior_vol=None,
                    extra_gens={}):
     """
     usual generators for segmentation
@@ -368,8 +369,12 @@ def seg_generators(paths, model, data, run, batch_size,
     if model.include_prior:
         if verbose:
             print('Using prior')
-        gen_args['prior_type'] = 'file'
-        gen_args['prior_file'] = paths.prior
+        if prior_vol is None:
+            gen_args['prior_type'] = 'file'
+            gen_args['prior_file'] = paths.prior
+        else:
+            gen_args['prior_type'] = 'data'
+            gen_args['prior_file'] = prior_vol
         gen_args['prior_feed'] = 'input'
         genfcn = nrn_gen.vol_seg_prior
         # genfcn_vol = nrn_gen.vol_count_prior
@@ -387,6 +392,11 @@ def seg_generators(paths, model, data, run, batch_size,
                                                batch_size)
     
     gen_args['nb_restart_cycle'] = nb_train_files  # sample the same training files
+    generators['train-img-prior'] = nrn_gen.vol_prior_hack(paths.datalink('train', 'vols'),
+                                 paths.datalink('train', seg_folder_name),
+                                 name='training_gen',
+                                 **gen_args)
+
     generators['train'] = genfcn(paths.datalink('train', 'vols'),
                                  paths.datalink('train', seg_folder_name),
                                  name='training_gen',
@@ -423,7 +433,9 @@ def seg_generators(paths, model, data, run, batch_size,
                                           rand_seed_vol=rand_seed_vol,
                                           verbose=gen_verbose,
                                           patch_rand=patch_rand,
-                                          keep_vol_size=None    )
+                                          keep_vol_size=None)
+
+
 
     # generators['train-vol'] = genfcn_vol(paths.datalink('train', 'vols'),
     #                              paths.datalink('train', seg_folder_name),
@@ -445,6 +457,11 @@ def seg_generators(paths, model, data, run, batch_size,
                                     paths.datalink('validate', seg_folder_name),
                                     name='validation_gen',
                                     **gen_args)
+
+    generators['validate-img-prior'] = nrn_gen.vol_prior_hack(paths.datalink('validate', 'vols'),
+                                 paths.datalink('validate', seg_folder_name),
+                                 name='validate_gen',
+                                 **gen_args)
     generators['validate-seg'] = nrn_gen.vol(paths.datalink('validate', seg_folder_name),
                                           name='validate_gen_seg',
                                           ext=data.ext,
@@ -498,6 +515,10 @@ def seg_generators(paths, model, data, run, batch_size,
                                 paths.datalink('test', seg_folder_name),
                                 name='test_gen',
                                 **gen_args)
+    generators['test-img-prior'] = nrn_gen.vol_prior_hack(paths.datalink('test', 'vols'),
+                                 paths.datalink('test', seg_folder_name),
+                                 name='test_gen',
+                                 **gen_args)
     generators['test-seg'] = nrn_gen.vol(paths.datalink('test', seg_folder_name),
                                           name='test_gen_seg',
                                           ext=data.ext,
@@ -771,8 +792,7 @@ def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_i
                                                    name='seg-seg',
                                                    add_prior_layer=model.include_prior,
                                                    nb_input_features=data.nb_labels)
-
-
+        
         models['seg-seg-vae'] = nrn_models.design_unet(model.nb_features,
                                                        run.patch_size,
                                                        model.nb_levels,

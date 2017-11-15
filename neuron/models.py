@@ -376,7 +376,7 @@ def design_unet(nb_features,
     # add optional prior
     model_inputs = [layers_dict[input_name]]
     if add_prior_layer:
-
+        
         # prior input layer
         prior_input_name = '%s_prior-input' % prefix
         layers_dict[prior_input_name] = KL.Input(shape=patch_size + (nb_labels,), name=prior_input_name)
@@ -417,7 +417,7 @@ def design_unet(nb_features,
 
     else:
         name = '%s_prediction' % prefix
-        layers_dict[name] = KL.Activation('linear', name=name)(like_layer)
+        layers_dict[name] = KL.Activation('linear', name=name)(last_layer)
 
     # create the model
     model = Model(inputs=model_inputs, outputs=[layers_dict['%s_prediction' % prefix]], name=model_name)
