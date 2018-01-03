@@ -28,6 +28,42 @@ from . import dataproc as nrn_proc
 from . import models as nrn_models
 
 
+class Vol(object):
+    
+    def __init__(self, 
+                 volpath,
+                 ext='.npz',
+                 nb_restart_cycle=None,     # number of files to restart after
+                 name='single_vol',         # name
+                 fixed_vol_size=True,       # assumes each volume is fixed size
+                 ):
+
+        # get filenames at given paths
+        volfiles = _get_file_list(volpath, ext, rand_seed_vol)
+        nb_files = len(volfiles)
+        assert nb_files > 0, "Could not find any files at %s with extension %s" % (volpath, ext)
+
+        # set up restart cycle for volume files -- 
+        # i.e. after how many volumes do we restart
+        if nb_restart_cycle is None:
+            nb_restart_cycle = nb_files
+
+        # compute subvolume split
+        vol_data = _load_medical_volume(os.path.join(volpath, volfiles[0]), ext)
+        # process volume
+        if data_proc_fn is not None:
+            vol_data = data_proc_fn(vol_data)
+            [f for f in _npz_headers(npz, namelist=['vol_data.npy'])][0][1]
+
+        nb_patches_per_vol = 1
+        if fixed_vol_size and (patch_size is not None) and all(f is not None for f in patch_size):
+            nb_patches_per_vol = np.prod(pl.gridsize(vol_data.shape, patch_size, patch_stride))
+
+        assert nb_restart_cycle <= (nb_files * nb_patches_per_vol), \
+            '%s restart cycle (%s) too big (%s) in %s' % \
+            (name, nb_restart_cycle, nb_files * nb_patches_per_vol, volpath)
+
+
 def vol(volpath,
         ext='.npz',
         batch_size=1,
@@ -1197,3 +1233,31 @@ def _relabel(vol_data, labels, forcecheck=False):
         new_vol_data[vol_data == val] = idx
     
     return new_vol_data
+
+
+
+
+import zipfile
+
+def _npz_headers(npz, namelist=None):
+    """
+    taken from https://stackoverflow.com/a/43223420
+
+    Takes a path to an .npz file, which is a Zip archive of .npy files.
+    Generates a sequence of (name, shape, np.dtype).
+
+    namelist is a list with variable names, ending in '.npy'. 
+    e.g. if variable 'var' is in the file, namelist could be ['var.npy']
+    """
+    with zipfile.ZipFile(npz) as archive:
+        if namelist is None:
+            namelist = archive.namelist()
+
+        for name in namelist:
+            if not name.endswith('.npy'):
+                continue
+
+            npy = archive.open(name)
+            version = np.lib.format.read_magic(npy)
+            shape, fortran, dtype = np.lib.format._read_array_header(npy, version)
+            yield name[:-4], shape, dtype
