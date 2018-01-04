@@ -14,7 +14,7 @@ Other utilities and a few `jupyter` notebooks are also provided.
 
 ### Requirements:
 - tensorflow  
-- keras and all of it's requirements (e.g. hyp5)  
+- keras and all of it's requirements (e.g. hyp5) 
 - numpy, scipy  
 - tqdm  
 - [python libraries](https://github.com/search?q=user%3Aadalca+topic%3Apython) from @adalca github account  
