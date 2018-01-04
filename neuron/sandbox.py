@@ -743,6 +743,8 @@ def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_i
     else:        
         dct = {'name':'seg', 'add_prior_layer':model.include_prior, 'nb_input_features':nb_input_features}
         models['seg'] = unet_template(data.nb_labels, dct)
+        dct2 = {'name':'seg', 'add_prior_layer':model.include_prior, 'nb_input_features':nb_input_features, 'use_skip_connections':True}
+        models['seg-noskip'] = unet_template(data.nb_labels, dct2)
         # dct_valid = {'name':'seg', 'add_prior_layer':model.include_prior, 'nb_input_features':nb_input_features, 'padding':'valid'}
         # models['seg-valid'] = unet_template(data.nb_labels, dct_valid)
         
@@ -790,6 +792,22 @@ def seg_models(model, run, data, load_loss, seed=0, nb_mid_level_dense=100, nb_i
                                                    use_skip_connections=False,
                                                    nb_mid_level_dense=nb_mid_level_dense,
                                                    name='seg-seg',
+                                                   add_prior_layer=model.include_prior,
+                                                   nb_input_features=data.nb_labels)
+
+        models['seg-seg-conv'] = nrn_models.design_unet(model.nb_features,
+                                                   run.patch_size,
+                                                   model.nb_levels,
+                                                   model.conv_size,
+                                                   data.nb_labels,
+                                                   feat_mult=model.feat_mult,
+                                                   pool_size=model.pool_size,
+                                                   use_residuals=model.use_residuals,
+                                                   use_logp=model.use_logp,
+                                                   final_pred_activation=None,
+                                                   activation=activation,
+                                                   use_skip_connections=False,
+                                                   name='seg-seg-conv',
                                                    add_prior_layer=model.include_prior,
                                                    nb_input_features=data.nb_labels)
         
