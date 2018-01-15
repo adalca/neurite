@@ -3,6 +3,7 @@ Keras CNN models
 
 Tested on keras 2.0
 """
+import sys
 
 # third party
 import numpy as np
@@ -447,8 +448,9 @@ def add_prior(input_model,
 
     # operation varies depending on whether we log() prior or not.
     if use_logp:
-        name = '%s-log' % prefix
-        prior_tensor = KL.Lambda(_log_layer_wrap(add_prior_layer_reg), name=name)(prior_tensor)
+        # name = '%s-log' % prefix
+        # prior_tensor = KL.Lambda(_log_layer_wrap(add_prior_layer_reg), name=name)(prior_tensor)
+        print("Breaking change: use_logp option now requires log input!", file=sys.stderr)
         merge_op = KL.add
 
     else:
