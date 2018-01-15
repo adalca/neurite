@@ -299,8 +299,7 @@ def patch(vol_data,             # the volume
                 if variable_batch_size:
                     batch_size = batch_size_y
 
-        if empty_gen:
-            raise Exception('generator was empty. vol size was ', vol_data.shape)
+        assert not empty_gen, 'generator was empty. vol size was %s' % ''.join(['%d '%d for d in vol_data.shape])
 
         # if not infinite generation, yield the last batch and break the while
         if not infinite:
