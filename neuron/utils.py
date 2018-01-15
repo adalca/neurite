@@ -430,18 +430,12 @@ def mod_submodel(orig_model,
                 inp_layers[layer] = list(set(layer_inp_layers))            
 
     # get input layers
+    #   These layers will be 'ignored' in that they will not be called!
+    #   instead, the outbound nodes of the layers will be the input nodes
+    #   computed below or passed in
     if input_layers is None: # if none provided, search for them
         InputLayerClass = keras.engine.topology.InputLayer
-        tmp_input_layers = [l for l in orig_model.layers if isinstance(l, InputLayerClass)]
-       
-        # need the layers that feed into these layers, actually.
-        # Otherwise these layers will have multiple-inbound-nodes issues when using them to create models
-        # input_layers = [None] * len(tmp_input_layers)
-        # for li, layer in enumerate(tmp_input_layers):
-        #     input_layers[li] = []
-        #     for node in layer.outbound_nodes:
-        #         input_layers[li] += [node.outbound_layer]
-        input_layers = tmp_input_layers
+        input_layers = [l for l in orig_model.layers if isinstance(l, InputLayerClass)]
 
     else:
         if not isinstance(input_layers, (tuple, list)):
@@ -459,19 +453,13 @@ def mod_submodel(orig_model,
     assert len(input_nodes) == len(input_layers)
 
     # initialize dictionary of layer:new_output_node
+    #   note: the input layers are not called, instead their outbound nodes
+    #   are assumed to be the given input nodes. If we call the nodes, we can run
+    #   into multiple-inbound-nodes problems, or if we completely skip the layers altogether
+    #   we have problems with multiple inbound input layers into subsequent layers
     new_layer_outputs = {}
     for i, input_layer in enumerate(input_layers):
-        if isinstance(input_layer, (list, tuple)):
-            for l in input_layer:
-                print(input_nodes[i])
-                # TODO: This needs fixing for when a layer has >1 input,
-                # where one input is a model input, and the other is not (or even if it is)
-                # Potential Fix: via the recursion, there could be some 'fake' input layers
-                #   that output these 'input' nodes ? and update inp_layers as such
-                # new_layer_outputs[l] = l(input_nodes[i])
-        else:
-            # new_layer_outputs[input_layer] = input_layer(input_nodes[i])
-            new_layer_outputs[input_layer] = input_nodes[i]
+        new_layer_outputs[input_layer] = input_nodes[i]
 
     # recursively go back from output layers and request new input nodes
     output_layers = []
