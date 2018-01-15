@@ -370,7 +370,6 @@ def stack_models(models, connecting_node_ids=None):
         stacked_inputs = stacked_inputs + stacked_inputs_contrib
 
     stacked_inputs = [i for i in stacked_inputs if i is not None]
-    print(stacked_inputs)
     new_model = keras.models.Model(stacked_inputs, output_tensors)
     return new_model
 
@@ -398,7 +397,6 @@ def mod_submodel(orig_model,
         to within the recursion stack.
         """
 
-        # first, check if this layer's output nodes happen to exist
         if layer not in new_layer_outputs:
 
             # for all input layers to this layer, gather their output (our input)
@@ -424,21 +422,25 @@ def mod_submodel(orig_model,
             # Get the first input node, and if it's in the dictionary of output_node:[layers],
             # that means that this layer's can be connected to another layer through this node
             # We only use the first inbound node, it is sufficient for layer connectivity
-            input_node = layer.inbound_nodes[0]
-            if len(input_node.inbound_layers) > 0:
-                inp_layers[layer] = input_node.inbound_layers
-                assert layer not in inp_layers[layer], "layer cycle detected :("
+            layer_inp_layers = []
+            for input_node in layer.inbound_nodes:
+                if len(input_node.inbound_layers) > 0:
+                    layer_inp_layers += input_node.inbound_layers
+            if len(layer_inp_layers) > 0:
+                inp_layers[layer] = list(set(layer_inp_layers))            
 
     # get input layers
     if input_layers is None: # if none provided, search for them
         InputLayerClass = keras.engine.topology.InputLayer
-        tmp_input_layers = [l for l in orig_model.layers if isinstance(l, InputLayerClass)]       
+        tmp_input_layers = [l for l in orig_model.layers if isinstance(l, InputLayerClass)]
        
         # need the layers that feed into these layers, actually.
         # Otherwise these layers will have multiple-inbound-nodes issues when using them to create models
         input_layers = [None] * len(tmp_input_layers)
         for li, layer in enumerate(tmp_input_layers):
-            input_layers[li] = layer.outbound_nodes[0].outbound_layer
+            input_layers[li] = []
+            for node in layer.outbound_nodes:
+                input_layers[li] += [node.outbound_layer]
 
     else:
         if not isinstance(input_layers, (tuple, list)):
@@ -458,7 +460,11 @@ def mod_submodel(orig_model,
     # initialize dictionary of layer:new_output_node
     new_layer_outputs = {}
     for i, input_layer in enumerate(input_layers):
-        new_layer_outputs[input_layer] = input_layer(input_nodes[i])
+        if isinstance(input_layer, (list, tuple)):
+            for l in input_layer:
+                new_layer_outputs[l] = l(input_nodes[i])
+        else:
+            new_layer_outputs[input_layer] = input_layer(input_nodes[i])
 
     # recursively go back from output layers and request new input nodes
     output_layers = []
