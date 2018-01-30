@@ -39,11 +39,11 @@ class Vol(object):
                  ):
 
         # get filenames at given paths
-        volfiles = _get_file_list(volpath, ext, rand_seed_vol)
+        volfiles = _get_file_list(volpath, ext, vol_rand_seed)
         nb_files = len(volfiles)
         assert nb_files > 0, "Could not find any files at %s with extension %s" % (volpath, ext)
 
-        # set up restart cycle for volume files -- 
+        # set up restart cycle for volume files --
         # i.e. after how many volumes do we restart
         if nb_restart_cycle is None:
             nb_restart_cycle = nb_files
@@ -82,7 +82,8 @@ def vol(volpath,
         force_binary=False,
         nb_feats=1,
         patch_rand=False,
-        rand_seed_vol=None,
+        patch_rand_seed=None,
+        vol_rand_seed=None,
         binary=False,
         yield_incomplete_final_batch=True,
         verbose=False):
@@ -96,7 +97,7 @@ def vol(volpath,
     """
 
     # get filenames at given paths
-    volfiles = _get_file_list(volpath, ext, rand_seed_vol)
+    volfiles = _get_file_list(volpath, ext, vol_rand_seed)
     nb_files = len(volfiles)
     assert nb_files > 0, "Could not find any files at %s with extension %s" % (volpath, ext)
 
@@ -118,7 +119,6 @@ def vol(volpath,
     if nb_restart_cycle is None:
         print("setting restart cycle to", nb_files)
         nb_restart_cycle = nb_files
-
     
     assert nb_restart_cycle <= (nb_files * nb_patches_per_vol), \
         '%s restart cycle (%s) too big (%s) in %s' % \
@@ -186,6 +186,7 @@ def vol(volpath,
                           infinite=False,
                           collapse_2d=collapse_2d,
                           patch_rand=patch_rand,
+                          patch_rand_seed=patch_rand_seed,
                           keep_vol_size=keep_vol_size)
 
         empty_gen = True
@@ -247,6 +248,7 @@ def patch(vol_data,             # the volume
           batch_size=1,         # batch size
           collapse_2d=None,
           patch_rand=False,
+          patch_rand_seed=None,
           variable_batch_size=False,
           infinite=False):      # whether the generator should continue (re)-generating patches
     """
@@ -271,7 +273,10 @@ def patch(vol_data,             # the volume
     # do while. if not infinite, will break at the end
     while True:
         # create patch generator
-        gen = pl.patch_gen(vol_data, patch_size, stride=patch_stride, rand=patch_rand)
+        gen = pl.patch_gen(vol_data, patch_size,
+                           stride=patch_stride,
+                           rand=patch_rand,
+                           rand_seed=patch_rand_seed)
 
         # go through the patch generator
         empty_gen = True
@@ -281,15 +286,20 @@ def patch(vol_data,             # the volume
             # reshape output layer as categorical and prep proper size
             # print(lpatch.shape, nb_labels_reshape, keep_vol_size, patch_size)
             lpatch = _categorical_prep(lpatch, nb_labels_reshape, keep_vol_size, patch_size)
-            
+
             if collapse_2d is not None:
                 lpatch = np.squeeze(lpatch, collapse_2d + 1)  # +1 due to batch in first dim
 
             # add this patch to the stack
             if batch_idx == -1:
-                patch_data_batch = lpatch
+                if batch_size == 1:
+                    patch_data_batch = lpatch
+                else:
+                    patch_data_batch = np.zeros([batch_size, *lpatch.shape[1:]])
+                    patch_data_batch[0, :] = lpatch
+
             else:
-                patch_data_batch = np.vstack([patch_data_batch, lpatch])
+                patch_data_batch[batch_idx+1, :] = lpatch
 
             # yield patch
             batch_idx += 1
@@ -304,6 +314,7 @@ def patch(vol_data,             # the volume
         # if not infinite generation, yield the last batch and break the while
         if not infinite:
             if batch_idx >= 0:
+                patch_data_batch = patch_data_batch[:(batch_idx+1), :]
                 yield patch_data_batch
             break
 
@@ -321,7 +332,7 @@ def vol_seg(volpath,
             force_binary=False,
             nb_input_feats=1,
             relabel=None,
-            rand_seed_vol=None,
+            vol_rand_seed=None,
             seg_binary=False,
             vol_subname='norm',  # subname of volume
             seg_subname='aseg',  # subname of segmentation
@@ -340,14 +351,14 @@ def vol_seg(volpath,
     vol_gen = vol(volpath, **kwargs, ext=ext,
                   nb_restart_cycle=nb_restart_cycle, collapse_2d=collapse_2d, force_binary=False,
                   relabel=None, data_proc_fn=proc_vol_fn, nb_labels_reshape=1, name=name+' vol',
-                  verbose=verbose, nb_feats=nb_input_feats, rand_seed_vol=rand_seed_vol)
+                  verbose=verbose, nb_feats=nb_input_feats, vol_rand_seed=vol_rand_seed)
 
     # get seg generator, matching nb_files
     # vol_files = [f.replace('norm', 'aseg') for f in _get_file_list(volpath, ext)]
     # vol_files = [f.replace('orig', 'aseg') for f in vol_files]
-    vol_files = [f.replace(vol_subname, seg_subname) for f in _get_file_list(volpath, ext, rand_seed_vol)]
+    vol_files = [f.replace(vol_subname, seg_subname) for f in _get_file_list(volpath, ext, vol_rand_seed)]
     seg_gen = vol(segpath, **kwargs, ext=ext, nb_restart_cycle=nb_restart_cycle, collapse_2d=collapse_2d,
-                  force_binary=force_binary, relabel=relabel, rand_seed_vol=rand_seed_vol,
+                  force_binary=force_binary, relabel=relabel, vol_rand_seed=vol_rand_seed,
                   data_proc_fn=proc_seg_fn, nb_labels_reshape=nb_labels_reshape, keep_vol_size=True,
                   expected_files=vol_files, name=name+' seg', binary=seg_binary, verbose=False)
 
@@ -361,47 +372,47 @@ def vol_seg(volpath,
         yield (input_vol, output_vol)
 
 
-def seg_seg(volpath,
-            segpath,
-            crop=None, resize_shape=None, rescale=None, # processing parameters
-            verbose=False,
-            name='seg_seg', # name, optional
-            ext='.npz',
-            nb_restart_cycle=None,  # number of files to restart after
-            nb_labels_reshape=-1,
-            collapse_2d=None,
-            force_binary=False,
-            nb_input_feats=1,
-            **kwargs):
-    """
-    generator with (volume, segmentation)
+# def seg_seg(volpath,
+#             segpath,
+#             crop=None, resize_shape=None, rescale=None, # processing parameters
+#             verbose=False,
+#             name='seg_seg', # name, optional
+#             ext='.npz',
+#             nb_restart_cycle=None,  # number of files to restart after
+#             nb_labels_reshape=-1,
+#             collapse_2d=None,
+#             force_binary=False,
+#             nb_input_feats=1,
+#             **kwargs):
+#     """
+#     generator with (volume, segmentation)
 
-    verbose is passed down to the base generators.py primitive generator (e.g. vol, here)
+#     verbose is passed down to the base generators.py primitive generator (e.g. vol, here)
 
-    ** kwargs are any named arguments for vol(...), 
-        except verbose, data_proc_fn, ext, nb_labels_reshape and name 
-            (which this function will control when calling vol())
-    """
+#     ** kwargs are any named arguments for vol(...), 
+#         except verbose, data_proc_fn, ext, nb_labels_reshape and name 
+#             (which this function will control when calling vol())
+#     """
 
-    # compute processing function
-    proc_seg_fn = lambda x: nrn_proc.vol_proc(x, crop=crop, resize_shape=resize_shape,
-                                              interp_order=0, rescale=rescale)
+#     # compute processing function
+#     proc_seg_fn = lambda x: nrn_proc.vol_proc(x, crop=crop, resize_shape=resize_shape,
+#                                               interp_order=0, rescale=rescale)
 
-    # get seg generator, matching nb_files
-    seg_gen = vol(segpath, **kwargs, ext=ext, nb_restart_cycle=nb_restart_cycle,
-                  force_binary=force_binary, collapse_2d = collapse_2d,
-                  data_proc_fn=proc_seg_fn, nb_labels_reshape=nb_labels_reshape, keep_vol_size=True,
-                  name=name+' seg', verbose=False)
+#     # get seg generator, matching nb_files
+#     seg_gen = vol(segpath, **kwargs, ext=ext, nb_restart_cycle=nb_restart_cycle,
+#                   force_binary=force_binary, collapse_2d = collapse_2d,
+#                   data_proc_fn=proc_seg_fn, nb_labels_reshape=nb_labels_reshape, keep_vol_size=True,
+#                   name=name+' seg', verbose=False)
 
-    # on next (while):
-    while 1:
-        # get input and output (seg) vols
-        input_vol = next(seg_gen).astype('float16')
-        vol_size = np.prod(input_vol.shape[1:-1])  # get the volume size
-        output_vol = np.reshape(input_vol, (input_vol.shape[0], vol_size, input_vol.shape[-1]))
+#     # on next (while):
+#     while 1:
+#         # get input and output (seg) vols
+#         input_vol = next(seg_gen).astype('float16')
+#         vol_size = np.prod(input_vol.shape[1:-1])  # get the volume size
+#         output_vol = np.reshape(input_vol, (input_vol.shape[0], vol_size, input_vol.shape[-1]))
 
-        # output input and output
-        yield (input_vol, output_vol)
+#         # output input and output
+#         yield (input_vol, output_vol)
 
 
 
@@ -411,7 +422,7 @@ def vol_cat(volpaths, # expect two folders in here
             name='vol_cat', # name, optional
             ext='.npz',
             nb_labels_reshape=-1,
-            rand_seed_vol=None,
+            vol_rand_seed=None,
             **kwargs): # named arguments for vol(...), except verbose, data_proc_fn, ext, nb_labels_reshape and name (which this function will control when calling vol()) 
     """
     generator with (volume, binary_bit) (random order)
@@ -430,7 +441,7 @@ def vol_cat(volpaths, # expect two folders in here
     generators = ()
     generators_len = ()
     for folder in folders:
-        vol_gen = vol(os.path.join(volpaths, folder), **kwargs, ext=ext, rand_seed_vol=rand_seed_vol,
+        vol_gen = vol(os.path.join(volpaths, folder), **kwargs, ext=ext, vol_rand_seed=vol_rand_seed,
                       data_proc_fn=proc_vol_fn, nb_labels_reshape=1, name=folder, verbose=False)
         generators_len += (len(_get_file_list(os.path.join(volpaths, folder), '.npz')), )
         generators += (vol_gen, )
@@ -460,43 +471,27 @@ def vol_cat(volpaths, # expect two folders in here
             yield (data, z)
 
 
-def vol_seg_prior(*args,
-                  proc_vol_fn=None,
-                  proc_seg_fn=None,
-                  prior_type='location',  # file-static, file-gen, location
-                  prior_file=None,  # prior filename
-                  prior_feed='input',  # input or output
-                  patch_stride=1,
-                  patch_size=None,
-                  batch_size=1,
-                  collapse_2d=None,
-                  extract_slice=None,
-                  force_binary=False,
-                  nb_input_feats=1,
-                  verbose=False,
-                  rand_seed_vol=None,
-                  **kwargs):
-    """
-    generator that appends prior to (volume, segmentation) depending on input
-    e.g. could be ((volume, prior), segmentation)
-    """
 
-    if verbose:
-        print('starting vol_seg_prior')
-
-    # prepare the vol_seg
-    gen = vol_seg(*args, **kwargs,
-                  proc_vol_fn=None,
-                  proc_seg_fn=None,
-                  collapse_2d=collapse_2d,
-                  extract_slice=extract_slice,
-                  force_binary=force_binary,
-                  verbose=verbose,
-                  patch_size=patch_size,
-                  patch_stride=patch_stride,
-                  batch_size=batch_size,
-                  rand_seed_vol=rand_seed_vol,
-                  nb_input_feats=nb_input_feats)
+def add_prior(gen,
+              proc_vol_fn=None,
+              proc_seg_fn=None,
+              prior_type='location',  # file-static, file-gen, location
+              prior_file=None,  # prior filename
+              prior_feed='input',  # input or output
+              patch_stride=1,
+              patch_size=None,
+              batch_size=1,
+              collapse_2d=None,
+              extract_slice=None,
+              force_binary=False,
+              verbose=False,
+              patch_rand=False,
+              patch_rand_seed=None):
+    """
+    #
+    # add a prior generator to a given generator
+    # with the number of patches in batch matching output of gen
+    """
 
     # get prior
     if prior_type == 'location':
@@ -508,7 +503,8 @@ def vol_seg_prior(*args,
         with timer.Timer('loading prior', True):
             data = np.load(prior_file)
             prior_vol = data['prior'].astype('float16')
-    else : # assumes a volume
+
+    else: # assumes a volume
         with timer.Timer('loading prior', True):
             prior_vol = prior_file.astype('float16')
 
@@ -538,6 +534,8 @@ def vol_seg_prior(*args,
                       collapse_2d=collapse_2d,
                       keep_vol_size=True,
                       infinite=True,
+                      patch_rand=patch_rand,
+                      patch_rand_seed=patch_rand_seed,
                       variable_batch_size=True,
                       nb_labels_reshape=0)
     assert next(prior_gen) is None, "bad prior gen setup"
@@ -546,12 +544,160 @@ def vol_seg_prior(*args,
     while 1:
 
         # generate input and output volumes
-        input_vol, output_vol = next(gen)
-        if verbose and np.all(input_vol.flat == 0):
-            print("all entries are 0")
+        gen_sample = next(gen)
 
         # generate prior batch
-        prior_batch = prior_gen.send(output_vol.shape[0])
+        gs_sample = _get_shape(gen_sample)
+        prior_batch = prior_gen.send(gs_sample)
+
+        yield (gen_sample, prior_batch)
+
+
+def vol_prior(*args,
+              proc_vol_fn=None,
+              proc_seg_fn=None,
+              prior_type='location',  # file-static, file-gen, location
+              prior_file=None,  # prior filename
+              prior_feed='input',  # input or output
+              patch_stride=1,
+              patch_size=None,
+              batch_size=1,
+              collapse_2d=None,
+              extract_slice=None,
+              force_binary=False,
+              nb_input_feats=1,
+              verbose=False,
+              vol_rand_seed=None,
+              patch_rand=False,
+              **kwargs):  # anything else you'd like to pass to vol()
+    """
+    generator that appends prior to (volume, segmentation) depending on input
+    e.g. could be ((volume, prior), segmentation)
+    """
+
+    patch_rand_seed = None
+    if patch_rand:
+        patch_rand_seed = np.random.random()
+
+
+    # prepare the vol_seg
+    vol_gen = vol(*args,
+                  **kwargs,
+                  collapse_2d=collapse_2d,
+                  force_binary=False,
+                  verbose=verbose,
+                  vol_rand_seed=vol_rand_seed)
+    gen = vol(*args, **kwargs,
+              proc_vol_fn=None,
+              proc_seg_fn=None,
+              collapse_2d=collapse_2d,
+              extract_slice=extract_slice,
+              force_binary=force_binary,
+              verbose=verbose,
+              patch_size=patch_size,
+              patch_stride=patch_stride,
+              batch_size=batch_size,
+              vol_rand_seed=vol_rand_seed,
+              patch_rand=patch_rand,
+              patch_rand_seed=patch_rand_seed,
+              nb_input_feats=nb_input_feats)
+
+    # add prior to output
+    pgen = add_prior(gen,
+                     proc_vol_fn=proc_vol_fn,
+                     proc_seg_fn=proc_seg_fn,
+                     prior_type=prior_type,
+                     prior_file=prior_file,
+                     prior_feed=prior_feed,
+                     patch_stride=patch_stride,
+                     patch_size=patch_size,
+                     batch_size=batch_size,
+                     collapse_2d=collapse_2d,
+                     extract_slice=extract_slice,
+                     force_binary=force_binary,
+                     verbose=verbose,
+                     patch_rand=patch_rand,
+                     patch_rand_seed=patch_rand_seed,
+                     vol_rand_seed=vol_rand_seed)
+
+    # generator loop
+    while 1:
+
+        gen_sample, prior_batch = next(pgen)
+        input_vol, output_vol = gen_sample
+
+        if prior_feed == 'input':
+            yield ([input_vol, prior_batch], output_vol)
+        else:
+            assert prior_feed == 'output'
+            yield (input_vol, [output_vol, prior_batch])
+
+
+def vol_seg_prior(*args,
+                  proc_vol_fn=None,
+                  proc_seg_fn=None,
+                  prior_type='location',  # file-static, file-gen, location
+                  prior_file=None,  # prior filename
+                  prior_feed='input',  # input or output
+                  patch_stride=1,
+                  patch_size=None,
+                  batch_size=1,
+                  collapse_2d=None,
+                  extract_slice=None,
+                  force_binary=False,
+                  nb_input_feats=1,
+                  verbose=False,
+                  vol_rand_seed=None,
+                  patch_rand=None,
+                  **kwargs):
+    """
+    generator that appends prior to (volume, segmentation) depending on input
+    e.g. could be ((volume, prior), segmentation)
+    """
+
+
+    patch_rand_seed = None
+    if patch_rand:
+        patch_rand_seed = np.random.random()
+
+    # prepare the vol_seg
+    gen = vol_seg(*args, **kwargs,
+                  proc_vol_fn=None,
+                  proc_seg_fn=None,
+                  collapse_2d=collapse_2d,
+                  extract_slice=extract_slice,
+                  force_binary=force_binary,
+                  verbose=verbose,
+                  patch_size=patch_size,
+                  patch_stride=patch_stride,
+                  batch_size=batch_size,
+                  vol_rand_seed=vol_rand_seed,
+                  patch_rand=patch_rand,
+                  patch_rand_seed=patch_rand_seed,
+                  nb_input_feats=nb_input_feats)
+
+    # add prior to output
+    pgen = add_prior(gen,
+                     proc_vol_fn=proc_vol_fn,
+                     proc_seg_fn=proc_seg_fn,
+                     prior_type=prior_type,
+                     prior_file=prior_file,
+                     prior_feed=prior_feed,
+                     patch_stride=patch_stride,
+                     patch_size=patch_size,
+                     batch_size=batch_size,
+                     collapse_2d=collapse_2d,
+                     extract_slice=extract_slice,
+                     force_binary=force_binary,
+                     verbose=verbose,
+                     patch_rand=patch_rand,
+                     patch_rand_seed=patch_rand_seed)
+
+    # generator loop
+    while 1:
+
+        gen_sample, prior_batch = next(pgen)
+        input_vol, output_vol = gen_sample
 
         if prior_feed == 'input':
             yield ([input_vol, prior_batch], output_vol)
@@ -562,42 +708,37 @@ def vol_seg_prior(*args,
 
 
 def vol_prior_hack(*args,
-                proc_vol_fn=None,
-                proc_seg_fn=None,
-                prior_type='location',  # file-static, file-gen, location
-                prior_file=None,  # prior filename
-                prior_feed='input',  # input or output
-                patch_stride=1,
-                patch_size=None,
-                batch_size=1,
-                collapse_2d=None,
-                extract_slice=None,
-                force_binary=False,
-                nb_input_feats=1,
-                verbose=False,
-                rand_seed_vol=None,
-                **kwargs):
+                   proc_vol_fn=None,
+                   proc_seg_fn=None,
+                   prior_type='location',  # file-static, file-gen, location
+                   prior_file=None,  # prior filename
+                   prior_feed='input',  # input or output
+                   patch_stride=1,
+                   patch_size=None,
+                   batch_size=1,
+                   collapse_2d=None,
+                   extract_slice=None,
+                   force_binary=False,
+                   nb_input_feats=1,
+                   verbose=False,
+                   vol_rand_seed=None,
+                   **kwargs):
     """
-    generator that appends prior to (volume, segmentation) depending on input
-    e.g. could be ((volume, prior), segmentation)
+    
     """
-
-    if verbose:
-        print('starting vol_seg_prior')
-
     # prepare the vol_seg
     gen = vol_seg_hack(*args, **kwargs,
-                  proc_vol_fn=None,
-                  proc_seg_fn=None,
-                  collapse_2d=collapse_2d,
-                  extract_slice=extract_slice,
-                  force_binary=force_binary,
-                  verbose=verbose,
-                  patch_size=patch_size,
-                  patch_stride=patch_stride,
-                  batch_size=batch_size,
-                  rand_seed_vol=rand_seed_vol,
-                  nb_input_feats=nb_input_feats)
+                        proc_vol_fn=None,
+                        proc_seg_fn=None,
+                        collapse_2d=collapse_2d,
+                        extract_slice=extract_slice,
+                        force_binary=force_binary,
+                        verbose=verbose,
+                        patch_size=patch_size,
+                        patch_stride=patch_stride,
+                        batch_size=batch_size,
+                        vol_rand_seed=vol_rand_seed,
+                        nb_input_feats=nb_input_feats)
 
     # get prior
     if prior_type == 'location':
@@ -679,7 +820,7 @@ def vol_seg_hack(volpath,
             force_binary=False,
             nb_input_feats=1,
             relabel=None,
-            rand_seed_vol=None,
+            vol_rand_seed=None,
             seg_binary=False,
             vol_subname='norm',  # subname of volume
             seg_subname='aseg',  # subname of segmentation
@@ -698,7 +839,7 @@ def vol_seg_hack(volpath,
     vol_gen = vol(volpath, **kwargs, ext=ext,
                   nb_restart_cycle=nb_restart_cycle, collapse_2d=collapse_2d, force_binary=False,
                   relabel=None, data_proc_fn=proc_vol_fn, nb_labels_reshape=1, name=name+' vol',
-                  verbose=verbose, nb_feats=nb_input_feats, rand_seed_vol=rand_seed_vol)
+                  verbose=verbose, nb_feats=nb_input_feats, vol_rand_seed=vol_rand_seed)
   
 
     # on next (while):
@@ -714,7 +855,7 @@ def vol_sr_slices(volpath,
                   nb_slice_spacing,
                   batch_size=1,
                   ext='.npz',
-                  rand_seed_vol=None,
+                  vol_rand_seed=None,
                   nb_restart_cycle=None,
                   name='vol_sr_slices',
                   rand_slices=True,  # randomize init slice order (i.e. across entries per batch) given a volume
@@ -741,7 +882,7 @@ def vol_sr_slices(volpath,
 
     print('vol_sr_slices: SHOULD PROPERLY RANDOMIZE accross different subjects', file=sys.stderr)
     
-    volfiles = _get_file_list(volpath, ext, rand_seed_vol)
+    volfiles = _get_file_list(volpath, ext, vol_rand_seed)
     nb_files = len(volfiles)
 
     if nb_restart_cycle is None:
@@ -815,7 +956,7 @@ def ext_data(segpath,
              ext='.npy',
              nb_restart_cycle=None,
              data_proc_fn=None,  # processing function that takes in one arg (the volume)
-             rand_seed_vol=None,
+             vol_rand_seed=None,
              name='ext_data',
              verbose=False,
              yield_incomplete_final_batch=True,
@@ -827,7 +968,7 @@ def ext_data(segpath,
     assert ext_data_fields is not None, "Need some external data fields"
 
    # get filenames at given paths
-    volfiles = _get_file_list(segpath, ext, rand_seed_vol)
+    volfiles = _get_file_list(segpath, ext, vol_rand_seed)
     nb_files = len(volfiles)
     assert nb_files > 0, "Could not find any files at %s with extension %s" % (segpath, ext)
 
@@ -904,7 +1045,7 @@ def vol_ext_data(volpath,
                  force_binary=False,
                  nb_input_feats=1,
                  relabel=None,
-                 rand_seed_vol=None,
+                 vol_rand_seed=None,
                  vol_subname='norm',  # subname of volume
                  seg_subname='norm',  # subname of segmentation
                  **kwargs):
@@ -922,19 +1063,19 @@ def vol_ext_data(volpath,
     vol_gen = vol(volpath, **kwargs, ext=ext,
                   nb_restart_cycle=nb_restart_cycle, collapse_2d=collapse_2d, force_binary=False,
                   relabel=None, data_proc_fn=proc_vol_fn, nb_labels_reshape=1, name=name+' vol',
-                  verbose=verbose, nb_feats=nb_input_feats, rand_seed_vol=rand_seed_vol)
+                  verbose=verbose, nb_feats=nb_input_feats, vol_rand_seed=vol_rand_seed)
 
     # get seg generator, matching nb_files
     # vol_files = [f.replace('norm', 'aseg') for f in _get_file_list(volpath, ext)]
     # vol_files = [f.replace('orig', 'aseg') for f in vol_files]
-    vol_files = [f.replace(vol_subname, seg_subname) for f in _get_file_list(volpath, ext, rand_seed_vol)]
+    vol_files = [f.replace(vol_subname, seg_subname) for f in _get_file_list(volpath, ext, vol_rand_seed)]
     seg_gen = ext_data(segpath, 
                        volpath,
                        **kwargs,
                        data_proc_fn=proc_seg_fn,
                        ext='.npy',
                        nb_restart_cycle=nb_restart_cycle,
-                       rand_seed_vol=rand_seed_vol,
+                       vol_rand_seed=vol_rand_seed,
                        expected_files=vol_files,
                        name=name+' ext_data',
                        verbose=False)
@@ -965,7 +1106,7 @@ def vol_ext_data_prior(*args,
                   force_binary=False,
                   nb_input_feats=1,
                   verbose=False,
-                  rand_seed_vol=None,
+                  vol_rand_seed=None,
                   **kwargs):
     """
     generator that appends prior to (volume, segmentation) depending on input
@@ -986,7 +1127,7 @@ def vol_ext_data_prior(*args,
                   patch_size=patch_size,
                   patch_stride=patch_stride,
                   batch_size=batch_size,
-                  rand_seed_vol=rand_seed_vol,
+                  vol_rand_seed=vol_rand_seed,
                   nb_input_feats=nb_input_feats)
 
     # get prior
@@ -1107,7 +1248,7 @@ def img_seg(volpath,
             nb_restart_cycle=None,
             name='img_seg', # name, optional
             ext='.png',
-            rand_seed_vol=None,
+            vol_rand_seed=None,
             **kwargs):
     """
     generator for (image, segmentation)
@@ -1117,7 +1258,7 @@ def img_seg(volpath,
         """
         TODO: should really use the volume generators for this
         """
-        files = _get_file_list(path, ext, rand_seed_vol)
+        files = _get_file_list(path, ext, vol_rand_seed)
         if nb_restart_cycle is None:
             nb_restart_cycle = len(files)
 
@@ -1144,13 +1285,13 @@ def img_seg(volpath,
 
 # Some internal use functions
 
-def _get_file_list(volpath, ext=None, rand_seed_vol=None):
+def _get_file_list(volpath, ext=None, vol_rand_seed=None):
     """
     get a list of files at the given path with the given extension
     """
     files = [f for f in sorted(os.listdir(volpath)) if ext is None or f.endswith(ext)]
-    if rand_seed_vol is not None:
-        np.random.seed(rand_seed_vol)
+    if vol_rand_seed is not None:
+        np.random.seed(vol_rand_seed)
         files = np.random.permutation(files).tolist()
     return files
 
@@ -1260,3 +1401,9 @@ def _npz_headers(npz, namelist=None):
             version = np.lib.format.read_magic(npy)
             shape, fortran, dtype = np.lib.format._read_array_header(npy, version)
             yield name[:-4], shape, dtype
+
+def _get_shape(x):
+    if isinstance(x, (list, tuple)):
+        return _get_shape(x[0])
+    else:
+        return x.shape[0]
