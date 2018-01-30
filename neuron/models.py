@@ -347,8 +347,6 @@ def conv_dec(nb_features,
         last_tensor = input_model.output
         input_shape = last_tensor.shape.as_list()[1:]
 
-    # TODO: THIS IS TRICKIER HERE. DO WE EXPECT THAT THE INPU SHAPE INCLUDES CHANNELS OR NOT? PROB NOT?
-
     # vol size info
     ndims = len(input_shape) - 1
     input_shape = tuple(input_shape)
@@ -407,6 +405,7 @@ def conv_dec(nb_features,
     # output prediction layer
     # we use a softmax to compute P(L_x|I) where x is each location
     if final_pred_activation == 'softmax':
+        print("using final_pred_activation %s for %s" % (final_pred_activation, model_name))
         name = '%s_prediction' % prefix
         softmax_lambda_fcn = lambda x: keras.activations.softmax(x, axis=ndims + 1)
         pred_tensor = KL.Lambda(softmax_lambda_fcn, name=name)(last_tensor)
@@ -469,6 +468,7 @@ def add_prior(input_model,
     pred_name = '%s_prediction' % prefix
     if final_pred_activation == 'softmax':
         assert use_logp, 'cannot do softmax when adding prior via P()'
+        print("using final_pred_activation %s for %s" % (final_pred_activation, model_name))
         softmax_lambda_fcn = lambda x: keras.activations.softmax(x, axis=-1)
         pred_tensor = KL.Lambda(softmax_lambda_fcn, name=pred_name)(post_tensor)
 
@@ -547,7 +547,8 @@ def single_ae(enc_size,
         assert len(enc_size) == len(input_shape), \
             "encoding size does not match input shape %d %d" % (len(enc_size), len(input_shape))
 
-        if enc_size[:-1] != input_shape[:-1]:
+        if list(enc_size)[:-1] != list(input_shape)[:-1]:
+            print(enc_size, input_shape)
             assert len(enc_size) - 1 == 2, "Sorry, I have not yet implemented non-2D resizing..."
             name = '%s_ae_mu_enc_conv' % (prefix)
             last_tensor = convL(enc_size[-1], conv_size, name=name, **conv_kwargs)(pre_enc_layer)
@@ -581,7 +582,7 @@ def single_ae(enc_size,
 
         else:
 
-            if enc_size[:-1] != input_shape[:-1]:
+            if list(enc_size)[:-1] != list(input_shape)[:-1]:
                 assert len(enc_size) - 1 == 2, "Sorry, I have not yet implemented non-2D resizing..."
                 name = '%s_ae_sigma_enc_conv' % (prefix)
                 last_tensor = convL(enc_size[-1], conv_size, name=name, **conv_kwargs)(pre_enc_layer)
@@ -628,7 +629,7 @@ def single_ae(enc_size,
         name = '%s_ae_%s_dec' % (prefix, ae_type)
         last_tensor = convL(input_nb_feats, conv_size, name=name, **conv_kwargs)(last_tensor)
 
-        if enc_size[:-1] != input_shape[:-1]:
+        if list(enc_size)[:-1] != list(input_shape)[:-1]:
             name = '%s_ae_mu_dec' % (prefix)
             resize_fn = lambda x: tf.image.resize_bilinear(x, input_shape[:-1])
             last_tensor = KL.Lambda(resize_fn, name=name)(last_tensor)
