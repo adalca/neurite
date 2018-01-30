@@ -16,6 +16,8 @@ import pynd.ndutils as nd
 # often changed file
 from imp import reload
 import keras
+import keras.backend as K
+import tensorflow as tf
 reload(pl)
 
 
@@ -476,6 +478,13 @@ def mod_submodel(orig_model,
 
     return outputs
 
+
+# AE lambda layers
+def longtanh(x, a=1):
+    return K.tanh(x) *  K.log(2 + a * abs(x))
+
+def arcsinh(x):
+    return tf.asinh(x)
 
 ###############################################################################
 # helper functions
