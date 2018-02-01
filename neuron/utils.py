@@ -420,12 +420,12 @@ def mod_submodel(orig_model,
     # for each layer create list of input layers
     inp_layers = {}
     for layer in orig_model.layers:
-        if hasattr(layer, 'inbound_nodes') and len(layer.inbound_nodes) > 0:
+        if hasattr(layer, '_inbound_nodes') and len(layer._inbound_nodes) > 0:
             # Get the first input node, and if it's in the dictionary of output_node:[layers],
             # that means that this layer's can be connected to another layer through this node
             # We only use the first inbound node, it is sufficient for layer connectivity
             layer_inp_layers = []
-            for input_node in layer.inbound_nodes:
+            for input_node in layer._inbound_nodes:
                 if len(input_node.inbound_layers) > 0:
                     layer_inp_layers += input_node.inbound_layers
             if len(layer_inp_layers) > 0:
@@ -466,10 +466,11 @@ def mod_submodel(orig_model,
     # recursively go back from output layers and request new input nodes
     output_layers = []
     for layer in orig_model.layers:
-        for i in range(len(layer.inbound_nodes)):
-            if layer.get_output_at(i) in orig_model.outputs:
-                output_layers.append(layer)
-                break
+        if hasattr(layer, '_inbound_nodes'):
+            for i in range(len(layer._inbound_nodes)):
+                if layer.get_output_at(i) in orig_model.outputs:
+                    output_layers.append(layer)
+                    break
     assert len(output_layers) == len(orig_model.outputs), "Number of output layers don't match"
 
     outputs = [None] * len(output_layers)
