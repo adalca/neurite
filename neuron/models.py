@@ -578,7 +578,7 @@ def single_ae(enc_size,
         # encoding layer
         if ae_type == 'dense':
             name = '%s_ae_sigma_enc' % (prefix)
-            last_tensor = KL.Dense(enc_size, name=name)(pre_enc_layer)
+            last_tensor = KL.Dense(enc_size[0], name=name)(pre_enc_layer)
 
         else:
 
