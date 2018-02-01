@@ -540,7 +540,7 @@ def single_ae(enc_size,
     # encoding layer
     if ae_type == 'dense':
         name = '%s_ae_mu_enc' % (prefix)
-        last_tensor = KL.Dense(enc_size, name=name)(pre_enc_layer)
+        last_tensor = KL.Dense(enc_size[0], name=name)(pre_enc_layer)
 
     else: # convolution
         # convolve then resize. enc_size should be [nb_dim1, nb_dim2, ..., nb_feats]
@@ -795,9 +795,9 @@ def design_dnn(nb_features, input_shape, nb_levels, conv_size, nb_labels,
 
 
 
-
-
-
+###############################################################################
+# Helper function
+###############################################################################
 
 def _global_max_nd(xtens):
     ytens = K.batch_flatten(xtens)
@@ -810,7 +810,6 @@ def _log_layer_wrap(reg=K.epsilon()):
 
 # def _global_max_nd(x):
     # return K.exp(x)
-
 
 class _VAESample():
     def __init__(self): #, nb_z):
