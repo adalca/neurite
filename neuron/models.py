@@ -562,10 +562,10 @@ def single_ae(enc_size,
             last_tensor = convL(enc_size[-1], conv_size, name=name, **conv_kwargs)(pre_enc_layer)
 
     # encoding clean-up layers
-    for layer in enc_lambda_layers:
-        lambda_name = layer.__name__
+    for layer_fcn in enc_lambda_layers:
+        lambda_name = layer_fcn.__name__
         name = '%s_ae_mu_%s' % (prefix, lambda_name)
-        last_tensor = KL.Lambda(K.softsign, name=name)(last_tensor)
+        last_tensor = KL.Lambda(layer_fcn, name=name)(last_tensor)
 
     if batch_norm is not None:
         name = '%s_ae_mu_bn' % (prefix)
@@ -596,10 +596,10 @@ def single_ae(enc_size,
                 last_tensor = convL(input_nb_feats, conv_size, name=name, **conv_kwargs)(pre_enc_layer)
 
         # encoding clean-up layers
-        for layer in enc_lambda_layers:
-            lambda_name = layer.__name__
+        for layer_fcn in enc_lambda_layers:
+            lambda_name = layer_fcn.__name__
             name = '%s_ae_sigma_%s' % (prefix, lambda_name)
-            last_tensor = KL.Lambda(K.softsign, name=name)(last_tensor)
+            last_tensor = KL.Lambda(layer_fcn, name=name)(last_tensor)
 
         if batch_norm is not None:
             name = '%s_ae_sigma_bn' % (prefix)
