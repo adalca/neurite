@@ -480,6 +480,10 @@ def mod_submodel(orig_model,
     return outputs
 
 
+###############################################################################
+# simple functions
+###############################################################################
+
 # AE lambda layers
 def longtanh(x, a=1):
     return K.tanh(x) *  K.log(2 + a * abs(x))
