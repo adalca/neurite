@@ -484,6 +484,23 @@ def mod_submodel(orig_model,
 # simple functions
 ###############################################################################
 
+def crop3d(kvec, start, end):
+    """ crop a 3D volume of shape (None, dim_1, dim_2, dim_3) """
+    if kvec.ndim == 5:
+        return kvec[:, start[0]:end[0], start[1]:end[1], start[2]:end[1], :]
+    if kvec.ndim == 4:
+        return kvec[:, start[0]:end[0], start[1]:end[1], start[2]:end[1]]
+
+def mid_cc_3d(x, y, start, end):
+    xnew = crop3d(x, start, end)
+    ynew = crop3d(y, start, end)
+    return keras.losses.categorical_crossentropy(xnew, ynew)
+
+def mid_mse_3d(x, y, start, end):
+    xnew = crop3d(x, start, end)
+    ynew = crop3d(y, start, end)
+    return keras.losses.mean_squared_error(xnew, ynew)
+
 # AE lambda layers
 def longtanh(x, a=1):
     return K.tanh(x) *  K.log(2 + a * abs(x))
