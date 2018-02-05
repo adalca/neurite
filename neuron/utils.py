@@ -486,9 +486,10 @@ def mod_submodel(orig_model,
 
 def crop3d(kvec, start, end):
     """ crop a 3D volume of shape (None, dim_1, dim_2, dim_3) """
-    if kvec.ndim == 5:
+    ndims = len(kvec.get_shape())
+    if ndims == 5:
         return kvec[:, start[0]:end[0], start[1]:end[1], start[2]:end[1], :]
-    if kvec.ndim == 4:
+    if ndims == 4:
         return kvec[:, start[0]:end[0], start[1]:end[1], start[2]:end[1]]
 
 def mid_cc_3d(x, y, start, end):
