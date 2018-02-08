@@ -549,7 +549,7 @@ def single_ae(enc_size,
             "encoding size does not match input shape %d %d" % (len(enc_size), len(input_shape))
 
         if list(enc_size)[:-1] != list(input_shape)[:-1]:
-            
+
             assert len(enc_size) - 1 == 2, "Sorry, I have not yet implemented non-2D resizing..."
             name = '%s_ae_mu_enc_conv' % (prefix)
             last_tensor = convL(enc_size[-1], conv_size, name=name, **conv_kwargs)(pre_enc_layer)
