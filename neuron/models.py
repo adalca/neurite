@@ -493,7 +493,7 @@ def single_ae(enc_size,
               enc_lambda_layers=None,
               batch_norm=True,
               padding='same',
-              activation='elu',
+              activation=None,
               do_vae=False):
     "single-layer Autoencoder (i.e. input - encoding - output"
 
@@ -539,7 +539,8 @@ def single_ae(enc_size,
 
     # encoding layer
     if ae_type == 'dense':
-        name = '%s_ae_mu_enc' % (prefix)
+        enc_size_str = ''.join(['%d_' % d for d in enc_size])[:-1]
+        name = '%s_ae_mu_enc_%s' % (prefix, enc_size_str)
         last_tensor = KL.Dense(enc_size[0], name=name)(pre_enc_layer)
 
     else: # convolution
@@ -548,7 +549,7 @@ def single_ae(enc_size,
             "encoding size does not match input shape %d %d" % (len(enc_size), len(input_shape))
 
         if list(enc_size)[:-1] != list(input_shape)[:-1]:
-            print(enc_size, input_shape)
+            
             assert len(enc_size) - 1 == 2, "Sorry, I have not yet implemented non-2D resizing..."
             name = '%s_ae_mu_enc_conv' % (prefix)
             last_tensor = convL(enc_size[-1], conv_size, name=name, **conv_kwargs)(pre_enc_layer)
@@ -577,7 +578,7 @@ def single_ae(enc_size,
 
         # encoding layer
         if ae_type == 'dense':
-            name = '%s_ae_sigma_enc' % (prefix)
+            name = '%s_ae_sigma_enc_%s' % (prefix, enc_size_str)
             last_tensor = KL.Dense(enc_size[0], name=name)(pre_enc_layer)
 
         else:
@@ -593,7 +594,7 @@ def single_ae(enc_size,
 
             else:
                 name = '%s_ae_sigma_enc' % (prefix)
-                last_tensor = convL(input_nb_feats, conv_size, name=name, **conv_kwargs)(pre_enc_layer)
+                last_tensor = convL(enc_size[-1], conv_size, name=name, **conv_kwargs)(pre_enc_layer)
 
         # encoding clean-up layers
         for layer_fcn in enc_lambda_layers:
@@ -617,7 +618,7 @@ def single_ae(enc_size,
 
     # decoding layer
     if ae_type == 'dense':
-        name = '%s_ae_%s_dec_flat' % (prefix, ae_type)
+        name = '%s_ae_%s_dec_flat_%s' % (prefix, ae_type, enc_size_str)
         last_tensor = KL.Dense(np.prod(input_shape), name=name)(last_tensor)
 
         # unflatten if dense method
