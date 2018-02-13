@@ -119,6 +119,7 @@ def ae(nb_features,
        add_prior_layer=False,
        add_prior_layer_reg=0,
        use_logp=True,
+       include_mu_shift_layer=False,
        single_model=False, # whether to return a single model, or a tuple of models that can be stacked.
        final_pred_activation='softmax',
        do_vae=False):
@@ -176,6 +177,7 @@ def ae(nb_features,
                              input_model=in_model,
                              batch_norm=enc_batch_norm,
                              enc_lambda_layers=enc_lambda_layers,
+                             include_mu_shift_layer=include_mu_shift_layer,
                              do_vae=do_vae)
 
     # decoder
@@ -494,6 +496,7 @@ def single_ae(enc_size,
               batch_norm=True,
               padding='same',
               activation=None,
+              include_mu_shift_layer=False,
               do_vae=False):
     "single-layer Autoencoder (i.e. input - encoding - output"
 
@@ -539,6 +542,8 @@ def single_ae(enc_size,
 
     # encoding layer
     if ae_type == 'dense':
+        assert len(enc_size) == 1, "enc_size should be of length 1 for dense layer"
+
         enc_size_str = ''.join(['%d_' % d for d in enc_size])[:-1]
         name = '%s_ae_mu_enc_%s' % (prefix, enc_size_str)
         last_tensor = KL.Dense(enc_size[0], name=name)(pre_enc_layer)
@@ -562,6 +567,20 @@ def single_ae(enc_size,
             name = '%s_ae_mu_enc' % (prefix)
             last_tensor = convL(enc_size[-1], conv_size, name=name, **conv_kwargs)(pre_enc_layer)
 
+    if include_mu_shift_layer:
+        # flatten-reshape
+        sz = [np.prod(enc_size), 1]
+        name = '%s_ae_mu_shift_flat' % (prefix)
+        last_tensor = KL.Reshape(sz, name=name)(last_tensor)
+
+        # shift
+        name = '%s_ae_mu_shift' % (prefix)
+        last_tensor = KL.LocallyConnected1D(1, 1, name=name)(last_tensor)
+
+        # un-flatten
+        name = '%s_ae_mu_shift_reshape' % (prefix)
+        last_tensor = KL.Reshape(enc_size, name=name)(last_tensor)
+
     # encoding clean-up layers
     for layer_fcn in enc_lambda_layers:
         lambda_name = layer_fcn.__name__
@@ -582,7 +601,6 @@ def single_ae(enc_size,
             last_tensor = KL.Dense(enc_size[0], name=name)(pre_enc_layer)
 
         else:
-
             if list(enc_size)[:-1] != list(input_shape)[:-1]:
                 assert len(enc_size) - 1 == 2, "Sorry, I have not yet implemented non-2D resizing..."
                 name = '%s_ae_sigma_enc_conv' % (prefix)
@@ -615,6 +633,19 @@ def single_ae(enc_size,
         name = '%s_ae_%s_sample' % (prefix, ae_type)
         last_tensor = KL.Lambda(sampler, name=name)([mu_tensor, sigma_tensor])
 
+    if include_mu_shift_layer:
+        # flatten-reshape
+        sz = [np.prod(enc_size), 1]
+        name = '%s_ae_sample_shift_flat' % (prefix)
+        last_tensor = KL.Reshape(sz, name=name)(last_tensor)
+
+        # shift
+        name = '%s_ae_sample_shift' % (prefix)
+        last_tensor = KL.LocallyConnected1D(1, 1, name=name)(last_tensor)
+
+        # un-flatten
+        name = '%s_ae_sample_shift_reshape' % (prefix)
+        last_tensor = KL.Reshape(enc_size, name=name)(last_tensor)
 
     # decoding layer
     if ae_type == 'dense':
@@ -823,3 +854,30 @@ class _VAESample():
         shape = K.shape(mu)
         eps = K.random_normal(shape=shape, mean=0., stddev=1.)
         return mu + K.exp(log_sigma / 2) * eps
+
+
+
+def _softmax(x, axis=-1, alpha=1):
+    """
+    building on keras implementation, allow alpha parameter
+
+    Softmax activation function.
+    # Arguments
+        x : Tensor.
+        axis: Integer, axis along which the softmax normalization is applied.
+        alpha: a value to multiply all x
+    # Returns
+        Tensor, output of softmax transformation.
+    # Raises
+        ValueError: In case `dim(x) == 1`.
+    """
+    x = alpha * x
+    ndim = K.ndim(x)
+    if ndim == 2:
+        return K.softmax(x)
+    elif ndim > 2:
+        e = K.exp(x - K.max(x, axis=axis, keepdims=True))
+        s = K.sum(e, axis=axis, keepdims=True)
+        return e / s
+    else:
+        raise ValueError('Cannot apply softmax to a tensor that is 1D')
