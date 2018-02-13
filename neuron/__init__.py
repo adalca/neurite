@@ -7,3 +7,4 @@ from . import metrics
 from . import inits
 from . import models
 from . import utils
+from . import layers
