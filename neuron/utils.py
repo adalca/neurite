@@ -391,9 +391,9 @@ def mod_submodel(orig_model,
         layers, hence allowing cutting the model
     """
     
-    def _get_new_layer_output(layer, layers, new_layer_outputs, inp_layers):
+    def _get_new_layer_output(layer, new_layer_outputs, inp_layers):
         """
-        (recursive) given a layer, get new output based on new inputs 
+        (recursive) given a layer, get new outbound_nodes based on new inbound_nodes
 
         new_layer_outputs is a (reference) dictionary that we will be adding
         to within the recursion stack.
@@ -401,14 +401,17 @@ def mod_submodel(orig_model,
 
         if layer not in new_layer_outputs:
 
+            if layer not in inp_layers:
+                raise Exception('layer %s is not in inp_layers' % layer.name)
+
             # for all input layers to this layer, gather their output (our input)
             input_nodes = [None] * len(inp_layers[layer])
             for li, inp_layer in enumerate(inp_layers[layer]):
                 if inp_layer in new_layer_outputs:
                     input_nodes[li] = new_layer_outputs[inp_layer]
                 else: # recursive call
-                    input_nodes[li] = _get_new_layer_output(inp_layer, layers, new_layer_outputs, inp_layers)
-            
+                    input_nodes[li] = _get_new_layer_output(inp_layer, new_layer_outputs, inp_layers)
+
             # layer call
             if len(input_nodes) == 1:
                 new_layer_outputs[layer] = layer(*input_nodes)
@@ -416,6 +419,8 @@ def mod_submodel(orig_model,
                 new_layer_outputs[layer] = layer(input_nodes)
 
         return new_layer_outputs[layer]
+
+
 
     # for each layer create list of input layers
     inp_layers = {}
@@ -429,7 +434,10 @@ def mod_submodel(orig_model,
                 if len(input_node.inbound_layers) > 0:
                     layer_inp_layers += input_node.inbound_layers
             if len(layer_inp_layers) > 0:
-                inp_layers[layer] = list(set(layer_inp_layers))            
+
+                # add layer, if layer is in this model
+                # this layer might not be in this model if this model is modded from another model.
+                inp_layers[layer] = [l for l in list(set(layer_inp_layers)) if l in orig_model.layers]
 
     # get input layers
     #   These layers will be 'ignored' in that they will not be called!
@@ -475,7 +483,7 @@ def mod_submodel(orig_model,
 
     outputs = [None] * len(output_layers)
     for li, output_layer in enumerate(output_layers):
-        outputs[li] = _get_new_layer_output(layer, orig_model.layers, new_layer_outputs, inp_layers)
+        outputs[li] = _get_new_layer_output(output_layer, new_layer_outputs, inp_layers)
 
     return outputs
 
