@@ -5,6 +5,8 @@ Tested on keras 2.0
 """
 import sys
 
+from . import layers
+
 # third party
 import numpy as np
 import tensorflow as tf
@@ -568,18 +570,9 @@ def single_ae(enc_size,
             last_tensor = convL(enc_size[-1], conv_size, name=name, **conv_kwargs)(pre_enc_layer)
 
     if include_mu_shift_layer:
-        # flatten-reshape
-        sz = [np.prod(enc_size), 1]
-        name = '%s_ae_mu_shift_flat' % (prefix)
-        last_tensor = KL.Reshape(sz, name=name)(last_tensor)
-
         # shift
         name = '%s_ae_mu_shift' % (prefix)
-        last_tensor = KL.LocallyConnected1D(1, 1, name=name)(last_tensor)
-
-        # un-flatten
-        name = '%s_ae_mu_shift_reshape' % (prefix)
-        last_tensor = KL.Reshape(enc_size, name=name)(last_tensor)
+        last_tensor = layers.LocalBiasLayer(name=name)(last_tensor)
 
     # encoding clean-up layers
     for layer_fcn in enc_lambda_layers:
@@ -634,18 +627,9 @@ def single_ae(enc_size,
         last_tensor = KL.Lambda(sampler, name=name)([mu_tensor, sigma_tensor])
 
     if include_mu_shift_layer:
-        # flatten-reshape
-        sz = [np.prod(enc_size), 1]
-        name = '%s_ae_sample_shift_flat' % (prefix)
-        last_tensor = KL.Reshape(sz, name=name)(last_tensor)
-
         # shift
         name = '%s_ae_sample_shift' % (prefix)
-        last_tensor = KL.LocallyConnected1D(1, 1, name=name)(last_tensor)
-
-        # un-flatten
-        name = '%s_ae_sample_shift_reshape' % (prefix)
-        last_tensor = KL.Reshape(enc_size, name=name)(last_tensor)
+        last_tensor = layers.LocalBiasLayer(name=name)(last_tensor)
 
     # decoding layer
     if ae_type == 'dense':
