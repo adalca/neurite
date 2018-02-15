@@ -298,7 +298,7 @@ def conv_enc(nb_features,
         # max pool if we're not at the last level
         if level < (nb_levels - 1):
             name = '%s_maxpool_%d' % (prefix, level)
-            last_tensor = maxpool(pool_size=pool_size)(last_tensor)
+            last_tensor = maxpool(pool_size=pool_size, name=name)(last_tensor)
 
     # create the model and return
     model = Model(inputs=input_tensor, outputs=[last_tensor], name=model_name)
@@ -737,7 +737,7 @@ def design_dnn(nb_features, input_shape, nb_levels, conv_size, nb_labels,
             last_tensor = enc_tensors[name]
         else:
             name = '%s_maxpool_%d' % (prefix, level)
-            enc_tensors[name] = maxpool(pool_size=pool_size)(last_tensor)
+            enc_tensors[name] = maxpool(pool_size=pool_size, name=name)(last_tensor)
             last_tensor = enc_tensors[name]
 
     # dense layer
