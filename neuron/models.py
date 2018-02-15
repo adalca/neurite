@@ -547,7 +547,7 @@ def single_ae(enc_size,
         assert len(enc_size) == 1, "enc_size should be of length 1 for dense layer"
 
         enc_size_str = ''.join(['%d_' % d for d in enc_size])[:-1]
-        name = '%s_ae_mu_enc_%s' % (prefix, enc_size_str)
+        name = '%s_ae_mu_enc_dense_%s' % (prefix, enc_size_str)
         last_tensor = KL.Dense(enc_size[0], name=name)(pre_enc_layer)
 
     else: # convolution
@@ -584,13 +584,18 @@ def single_ae(enc_size,
         name = '%s_ae_mu_bn' % (prefix)
         last_tensor = KL.BatchNormalization(axis=batch_norm, name=name)(last_tensor)
 
+    # have a simple layer that does nothing to have a clear name before sampling
+    name = '%s_ae_mu' % (prefix)
+    last_tensor = KL.Lambda(lambda x: x, name=name)(last_tensor)
+    
+
     # if doing variational AE, will need the sigma layer as well.
     if do_vae:
         mu_tensor = last_tensor
 
         # encoding layer
         if ae_type == 'dense':
-            name = '%s_ae_sigma_enc_%s' % (prefix, enc_size_str)
+            name = '%s_ae_sigma_enc_dense_%s' % (prefix, enc_size_str)
             last_tensor = KL.Dense(enc_size[0], name=name)(pre_enc_layer)
 
         else:
@@ -617,13 +622,17 @@ def single_ae(enc_size,
             name = '%s_ae_sigma_bn' % (prefix)
             last_tensor = KL.BatchNormalization(axis=batch_norm, name=name)(last_tensor)
 
+        # have a simple layer that does nothing to have a clear name before sampling
+        name = '%s_ae_sigma' % (prefix)
+        last_tensor = KL.Lambda(lambda x: x, name=name)(last_tensor)
+
         sigma_tensor = last_tensor
 
         # VAE sampling
         # sampler = _VAESample(enc_size).sample_z
         sampler = _VAESample().sample_z
 
-        name = '%s_ae_%s_sample' % (prefix, ae_type)
+        name = '%s_ae_sample' % (prefix)
         last_tensor = KL.Lambda(sampler, name=name)([mu_tensor, sigma_tensor])
 
     if include_mu_shift_layer:
