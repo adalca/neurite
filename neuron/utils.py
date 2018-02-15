@@ -514,8 +514,8 @@ def mid_mse_3d(x, y, start, end):
 def longtanh(x, a=1):
     return K.tanh(x) *  K.log(2 + a * abs(x))
 
-def arcsinh(x):
-    return tf.asinh(x)
+def arcsinh(x, alpha=1):
+    return tf.asinh(x * alpha) / alpha
 
 ###############################################################################
 # helper functions
