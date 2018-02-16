@@ -298,7 +298,7 @@ def conv_enc(nb_features,
         # max pool if we're not at the last level
         if level < (nb_levels - 1):
             name = '%s_maxpool_%d' % (prefix, level)
-            last_tensor = maxpool(pool_size=pool_size, name=name)(last_tensor)
+            last_tensor = maxpool(pool_size=pool_size, name=name, padding=padding)(last_tensor)
 
     # create the model and return
     model = Model(inputs=input_tensor, outputs=[last_tensor], name=model_name)
@@ -500,7 +500,7 @@ def single_ae(enc_size,
               activation=None,
               include_mu_shift_layer=False,
               do_vae=False):
-    "single-layer Autoencoder (i.e. input - encoding - output"
+    """single-layer Autoencoder (i.e. input - encoding - output"""
 
     # naming
     model_name = name
@@ -651,13 +651,15 @@ def single_ae(enc_size,
             last_tensor = KL.Reshape(input_shape, name=name)(last_tensor)
 
     else:
-        name = '%s_ae_%s_dec' % (prefix, ae_type)
-        last_tensor = convL(input_nb_feats, conv_size, name=name, **conv_kwargs)(last_tensor)
 
         if list(enc_size)[:-1] != list(input_shape)[:-1]:
             name = '%s_ae_mu_dec' % (prefix)
             resize_fn = lambda x: tf.image.resize_bilinear(x, input_shape[:-1])
             last_tensor = KL.Lambda(resize_fn, name=name)(last_tensor)
+
+        name = '%s_ae_%s_dec' % (prefix, ae_type)
+        last_tensor = convL(input_nb_feats, conv_size, name=name, **conv_kwargs)(last_tensor)
+
 
     if batch_norm is not None:
         name = '%s_bn_ae_%s_dec' % (prefix, ae_type)
@@ -737,7 +739,7 @@ def design_dnn(nb_features, input_shape, nb_levels, conv_size, nb_labels,
             last_tensor = enc_tensors[name]
         else:
             name = '%s_maxpool_%d' % (prefix, level)
-            enc_tensors[name] = maxpool(pool_size=pool_size, name=name)(last_tensor)
+            enc_tensors[name] = maxpool(pool_size=pool_size, name=name, padding=padding)(last_tensor)
             last_tensor = enc_tensors[name]
 
     # dense layer
