@@ -132,6 +132,9 @@ def vol(volpath,
         if not (volfiles == expected_files):
             print('file lists did not match', file=sys.stderr)
 
+    if verbose:
+        print('nb_restart_cycle:', nb_restart_cycle)
+
     # iterate through files
     fileidx = -1
     batch_idx = -1
