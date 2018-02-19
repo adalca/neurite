@@ -626,14 +626,13 @@ def single_ae(enc_size,
         name = '%s_ae_sigma' % (prefix)
         last_tensor = KL.Lambda(lambda x: x, name=name)(last_tensor)
 
-        sigma_tensor = last_tensor
+        logvar_tensor = last_tensor
 
         # VAE sampling
-        # sampler = _VAESample(enc_size).sample_z
         sampler = _VAESample().sample_z
 
         name = '%s_ae_sample' % (prefix)
-        last_tensor = KL.Lambda(sampler, name=name)([mu_tensor, sigma_tensor])
+        last_tensor = KL.Lambda(sampler, name=name)([mu_tensor, logvar_tensor])
 
     if include_mu_shift_layer:
         # shift
@@ -844,11 +843,11 @@ class _VAESample():
         pass
 
     def sample_z(self, args):
-        mu, log_sigma = args
+        mu, log_var = args
         # shape = (K.shape(mu)[0], self.nb_z)
         shape = K.shape(mu)
         eps = K.random_normal(shape=shape, mean=0., stddev=1.)
-        return mu + K.exp(log_sigma / 2) * eps
+        return mu + K.exp(log_var / 2) * eps
 
 
 
