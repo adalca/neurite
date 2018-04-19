@@ -405,39 +405,26 @@ def mod_submodel(orig_model,
                 raise Exception('layer %s is not in inp_layers' % layer.name)
 
             # for all input layers to this layer, gather their output (our input)
-            input_nodes = [None] * len(inp_layers[layer])
-            for li, inp_layer in enumerate(inp_layers[layer]):
-                if inp_layer in new_layer_outputs:
-                    input_nodes[li] = new_layer_outputs[inp_layer]
-                else: # recursive call
-                    input_nodes[li] = _get_new_layer_output(inp_layer, new_layer_outputs, inp_layers)
+            for group in inp_layers[layer]:
+                input_nodes = [None] * len(group)
+                for li, inp_layer in enumerate(group):
+                    if inp_layer in new_layer_outputs:
+                        input_nodes[li] = new_layer_outputs[inp_layer]
+                    else: # recursive call
+                        input_nodes[li] = _get_new_layer_output(inp_layer, new_layer_outputs, inp_layers)
 
-            # layer call
-            if len(input_nodes) == 1:
-                new_layer_outputs[layer] = layer(*input_nodes)
-            else:
-                new_layer_outputs[layer] = layer(input_nodes)
+                # layer call
+                if len(input_nodes) == 1:
+                    new_layer_outputs[layer] = layer(*input_nodes)
+                else:
+                    new_layer_outputs[layer] = layer(input_nodes)
 
         return new_layer_outputs[layer]
 
 
 
     # for each layer create list of input layers
-    inp_layers = {}
-    for layer in orig_model.layers:
-        if hasattr(layer, '_inbound_nodes') and len(layer._inbound_nodes) > 0:
-            # Get the first input node, and if it's in the dictionary of output_node:[layers],
-            # that means that this layer's can be connected to another layer through this node
-            # We only use the first inbound node, it is sufficient for layer connectivity
-            layer_inp_layers = []
-            for input_node in layer._inbound_nodes:
-                if len(input_node.inbound_layers) > 0:
-                    layer_inp_layers += input_node.inbound_layers
-            if len(layer_inp_layers) > 0:
-
-                # add layer, if layer is in this model
-                # this layer might not be in this model if this model is modded from another model.
-                inp_layers[layer] = [l for l in list(set(layer_inp_layers)) if l in orig_model.layers]
+    inp_layers = _layer_dependency_dict(orig_model)
 
     # get input layers
     #   These layers will be 'ignored' in that they will not be called!
@@ -486,6 +473,70 @@ def mod_submodel(orig_model,
         outputs[li] = _get_new_layer_output(output_layer, new_layer_outputs, inp_layers)
 
     return outputs
+
+
+def _layer_dependency_dict(orig_model):
+    """
+    output: a dictionary of all layers in the orig_model
+    for each layer:
+        dct[layer] is a list of lists of layers.
+    """
+
+    """
+    OLD CODE - THIS LOST ORDER OF INPUT_LAYERS, AND SOMETIMES THIS SCREWED THINGS UP BAD,
+    SUCH AS IN VAE SAMPLING WHEN MU and SIGMA LAYERS MIGHT SWITCH...
+
+    inp_layers = {}
+    for layer in orig_model.layers:
+        if hasattr(layer, '_inbound_nodes') and len(layer._inbound_nodes) > 0:
+            # Get the first input node, and if it's in the dictionary of output_node:[layers],
+            # that means that this layer's can be connected to another layer through this node
+            # We only use the first inbound node, it is sufficient for layer connectivity
+            layer_inp_layers = []
+            for input_node in layer._inbound_nodes:
+                if len(input_node.inbound_layers) > 0:
+                    layer_inp_layers += input_node.inbound_layers
+
+            if len(layer_inp_layers) > 0:
+
+                # add layer, if layer is in this model
+                # this layer might not be in this model if this model is modded from another model.
+                # Warning: doing list(set(layer_inp_layers)) loses order, which is a problem!!!
+                inp_layers[layer] = [l for l in list(set(layer_inp_layers)) if l in orig_model.layers]
+    """
+
+    out_layers = orig_model.output_layers
+    out_node_idx = orig_model.output_layers_node_indices
+
+    node_list = [ol._inbound_nodes[out_node_idx[i]] for i, ol in enumerate(out_layers)]
+        
+    dct = {}
+    dct_node_idx = {}
+    while len(node_list) > 0:
+        node = node_list.pop(0)
+            
+        add = True
+        # if not empty. we need to check that we're not adding the same layers through the same node.
+        if len(dct.setdefault(node.outbound_layer, [])) > 0:
+            for li, layers in enumerate(dct[node.outbound_layer]):
+                if layers == node.inbound_layers and \
+                    dct_node_idx[node.outbound_layer][li] == node.node_indices:
+                    add = False
+                    break
+        if add:
+            dct[node.outbound_layer].append(node.inbound_layers)
+            dct_node_idx.setdefault(node.outbound_layer, []).append(node.node_indices)
+            #print(node, node.outbound_layer)
+        # append is in place
+
+        # add new node
+        for li, layer in enumerate(node.inbound_layers):
+            if hasattr(layer, '_inbound_nodes'):
+                node_list.append(layer._inbound_nodes[node.node_indices[li]])
+
+    return dct
+
+
 
 
 ###############################################################################

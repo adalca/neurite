@@ -9,12 +9,15 @@ This toolbox is **currently in development**, with the goal providing a set of t
 `dataproc`: a set of tools for processing medical imaging data for preparation for training/testing  
 `metrics`: metrics (most of which can be used as loss functions), such as dice or weighted categorical crossentropy.  
 `models`: a set of flexible models (many parameters to play with...) particularly useful in medical image analysis, such as a U-net/hourglass model and a standard classifier. 
+`layers`: a few simple layers
+`plot`: plotting tools, mostly for debugging models
+`utils`: various utilities useful in debugging.
 
 Other utilities and a few `jupyter` notebooks are also provided.
 
 ### Requirements:
 - tensorflow  
-- keras and all of it's requirements (e.g. hyp5) 
+- keras and all of its requirements (e.g. hyp5) 
 - numpy, scipy  
 - tqdm  
 - [python libraries](https://github.com/search?q=user%3Aadalca+topic%3Apython) from @adalca github account  

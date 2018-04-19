@@ -308,7 +308,7 @@ def conv_enc(nb_features,
         # max pool if we're not at the last level
         if level < (nb_levels - 1):
             name = '%s_maxpool_%d' % (prefix, level)
-            last_tensor = maxpool(pool_size=pool_size, name=name)(last_tensor)
+            last_tensor = maxpool(pool_size=pool_size, name=name, padding=padding)(last_tensor)
 
     # create the model and return
     model = Model(inputs=input_tensor, outputs=[last_tensor], name=model_name)
@@ -516,7 +516,7 @@ def single_ae(enc_size,
               activation=None,
               include_mu_shift_layer=False,
               do_vae=False):
-    "single-layer Autoencoder (i.e. input - encoding - output"
+    """single-layer Autoencoder (i.e. input - encoding - output"""
 
     # naming
     model_name = name
@@ -642,14 +642,13 @@ def single_ae(enc_size,
         name = '%s_ae_sigma' % (prefix)
         last_tensor = KL.Lambda(lambda x: x, name=name)(last_tensor)
 
-        sigma_tensor = last_tensor
+        logvar_tensor = last_tensor
 
         # VAE sampling
-        # sampler = _VAESample(enc_size).sample_z
         sampler = _VAESample().sample_z
 
         name = '%s_ae_sample' % (prefix)
-        last_tensor = KL.Lambda(sampler, name=name)([mu_tensor, sigma_tensor])
+        last_tensor = KL.Lambda(sampler, name=name)([mu_tensor, logvar_tensor])
 
     if include_mu_shift_layer:
         # shift
@@ -667,13 +666,15 @@ def single_ae(enc_size,
             last_tensor = KL.Reshape(input_shape, name=name)(last_tensor)
 
     else:
-        name = '%s_ae_%s_dec' % (prefix, ae_type)
-        last_tensor = convL(input_nb_feats, conv_size, name=name, **conv_kwargs)(last_tensor)
 
         if list(enc_size)[:-1] != list(input_shape)[:-1]:
             name = '%s_ae_mu_dec' % (prefix)
             resize_fn = lambda x: tf.image.resize_bilinear(x, input_shape[:-1])
             last_tensor = KL.Lambda(resize_fn, name=name)(last_tensor)
+
+        name = '%s_ae_%s_dec' % (prefix, ae_type)
+        last_tensor = convL(input_nb_feats, conv_size, name=name, **conv_kwargs)(last_tensor)
+
 
     if batch_norm is not None:
         name = '%s_bn_ae_%s_dec' % (prefix, ae_type)
@@ -753,7 +754,7 @@ def design_dnn(nb_features, input_shape, nb_levels, conv_size, nb_labels,
             last_tensor = enc_tensors[name]
         else:
             name = '%s_maxpool_%d' % (prefix, level)
-            enc_tensors[name] = maxpool(pool_size=pool_size, name=name)(last_tensor)
+            enc_tensors[name] = maxpool(pool_size=pool_size, name=name, padding=padding)(last_tensor)
             last_tensor = enc_tensors[name]
 
     # dense layer
@@ -858,11 +859,11 @@ class _VAESample():
         pass
 
     def sample_z(self, args):
-        mu, log_sigma = args
+        mu, log_var = args
         # shape = (K.shape(mu)[0], self.nb_z)
         shape = K.shape(mu)
         eps = K.random_normal(shape=shape, mean=0., stddev=1.)
-        return mu + K.exp(log_sigma / 2) * eps
+        return mu + K.exp(log_var / 2) * eps
 
 
 
