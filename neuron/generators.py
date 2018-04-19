@@ -103,6 +103,7 @@ def vol(volpath,
 
     # compute subvolume split
     vol_data = _load_medical_volume(os.path.join(volpath, volfiles[0]), ext)
+
     # process volume
     if data_proc_fn is not None:
         vol_data = data_proc_fn(vol_data)
@@ -1318,6 +1319,7 @@ def _load_medical_volume(filename, ext, verbose=False):
 def _categorical_prep(vol_data, nb_labels_reshape, keep_vol_size, patch_size):
 
     if nb_labels_reshape > 1:
+        
         lpatch = _to_categorical(vol_data, nb_labels_reshape, keep_vol_size)
         # if keep_vol_size:
             # lpatch = np.reshape(lpatch, [*patch_size, nb_labels_reshape])

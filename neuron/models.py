@@ -30,9 +30,10 @@ def unet(nb_features,
          activation='elu',
          use_residuals=False,
          final_pred_activation='softmax',
-         nb_conv_per_level=2,
+         nb_conv_per_level=1,
          add_prior_layer=False,
          add_prior_layer_reg=0,
+         layer_nb_feats=None,
          batch_norm=None):
     """
     unet-style model with an overdose of parametrization
@@ -66,10 +67,12 @@ def unet(nb_features,
                          activation=activation,
                          use_residuals=use_residuals,
                          nb_conv_per_level=nb_conv_per_level,
+                         layer_nb_feats=layer_nb_feats,
                          batch_norm=batch_norm)
 
     # get decoder
     # use_skip_connections=1 makes it a u-net
+    lnf = layer_nb_feats[(nb_levels * nb_conv_per_level):] if layer_nb_feats is not None else None
     dec_model = conv_dec(nb_features,
                          None,
                          nb_levels,
@@ -86,6 +89,7 @@ def unet(nb_features,
                          final_pred_activation='linear',
                          nb_conv_per_level=nb_conv_per_level,
                          batch_norm=batch_norm,
+                         layer_nb_feats=lnf,
                          input_model=enc_model)
 
     final_model = dec_model
@@ -113,7 +117,7 @@ def ae(nb_features,
        padding='same',
        activation='elu',
        use_residuals=False,
-       nb_conv_per_level=2,
+       nb_conv_per_level=1,
        batch_norm=None,
        enc_batch_norm=None,
        ae_type='conv', # 'dense', or 'conv'
@@ -231,6 +235,7 @@ def conv_enc(nb_features,
              pool_size=2,
              padding='same',
              activation='elu',
+             layer_nb_feats=None,
              use_residuals=False,
              nb_conv_per_level=2,
              batch_norm=None):
@@ -261,11 +266,16 @@ def conv_enc(nb_features,
 
     # down arm:
     # add nb_levels of conv + ReLu + conv + ReLu. Pool after each of first nb_levels - 1 layers
+    lfidx = 0
     for level in range(nb_levels):
         lvl_first_tensor = last_tensor
         nb_lvl_feats = nb_features*(feat_mult**level)
 
         for conv in range(nb_conv_per_level):
+            if layer_nb_feats is not None:
+                nb_lvl_feats = layer_nb_feats[lfidx]
+                lfidx += 1
+
             name = '%s_conv_downarm_%d_%d' % (prefix, level, conv)
             if conv < (nb_conv_per_level-1) or (not use_residuals):
                 last_tensor = convL(nb_lvl_feats, conv_size, **conv_kwargs, name=name)(last_tensor)
@@ -320,6 +330,7 @@ def conv_dec(nb_features,
              use_residuals=False,
              final_pred_activation='softmax',
              nb_conv_per_level=2,
+             layer_nb_feats=None,
              batch_norm=None,
              input_model=None):
     """
@@ -365,6 +376,7 @@ def conv_dec(nb_features,
     # up arm:
     # nb_levels - 1 layers of Deconvolution3D
     #    (approx via up + conv + ReLu) + merge + conv + ReLu + conv + ReLu
+    lfidx = 0
     for level in range(nb_levels - 1):
         nb_lvl_feats = nb_features*(feat_mult**(nb_levels-2-level))
 
@@ -383,6 +395,10 @@ def conv_dec(nb_features,
 
         # convolution layers
         for conv in range(nb_conv_per_level):
+            if layer_nb_feats is not None:
+                nb_lvl_feats = layer_nb_feats[lfidx]
+                lfidx += 1
+
             name = '%s_conv_uparm_%d_%d' % (prefix, nb_levels + level, conv)
             if conv < (nb_conv_per_level-1) or (not use_residuals):
                 last_tensor = convL(nb_lvl_feats, conv_size, **conv_kwargs, name=name)(last_tensor)
