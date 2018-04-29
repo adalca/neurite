@@ -1,6 +1,5 @@
 """ various utilities for the neuron project """
 
-
 # third party imports
 import numpy as np
 from tqdm import tqdm_notebook as tqdm

@@ -86,6 +86,3 @@ def slices(slices_in,              # the 2D slices
         plt.show()
 
     return (fig, axs)
-
-
-
