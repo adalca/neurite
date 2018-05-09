@@ -1,6 +1,7 @@
 # third party
 import numpy as np
 from keras import backend as K
+from keras.legacy import interfaces
 import keras
 from keras.layers import Layer
 
