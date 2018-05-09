@@ -537,6 +537,31 @@ def _layer_dependency_dict(orig_model):
 
 
 
+def reset_weights(model, session=None):
+    """
+    reset weights of model with the appropriate initializer
+
+    https://www.codementor.io/nitinsurya/how-to-re-initialize-keras-model-weights-et41zre2g
+
+    does not close session.
+    """
+
+    if session is None:
+        session = K.get_session()
+
+    for layer in model.layers: 
+        if hasattr(layer, 'kernel_initializer'):
+            layer.kernel.initializer.run(session=session)
+
+
+def robust_multi_gpu_model(model, gpus):
+    islist = isinstance(gpus, (list, tuple)) 
+    if (islist and len(gpus) > 1) or (not islist and gpus > 1):
+        return keras.utils.multi_gpu_model(model, gpus)
+    else:
+        return model
+
+
 
 ###############################################################################
 # simple functions
