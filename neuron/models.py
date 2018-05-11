@@ -407,8 +407,18 @@ def conv_dec(nb_features,
 
         # residual block
         if use_residuals:
+
+            # the "add" layer is the original input
+            # However, it may not have the right number of features to be added
+            add_layer = up_tensor
+            nb_feats_in = add_layer.get_shape()[-1]
+            nb_feats_out = last_tensor.get_shape()[-1]
+            if nb_feats_in > 1 and nb_feats_out > 1 and (nb_feats_in != nb_feats_out):
+                name = '%s_expand_up_merge_%d' % (prefix, level)
+                add_layer = convL(nb_lvl_feats, conv_size, **conv_kwargs, name=name)(add_layer)
+
             name = '%s_res_up_merge_%d' % (prefix, level)
-            last_tensor = KL.add([last_tensor, up_tensor], name=name)
+            last_tensor = KL.add([last_tensor, add_layer], name=name)
 
             name = '%s_res_up_merge_act_%d' % (prefix, level)
             last_tensor = KL.Activation(activation, name=name)(last_tensor)
