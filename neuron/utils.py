@@ -20,6 +20,111 @@ import tensorflow as tf
 reload(pl)
 
 
+
+
+def copy_model_weights(src_model, dst_model):
+    """ copy weights from the src model to the dst model """
+
+    for idx in range(len(dst_model.layers)):
+        layer = dst_model.layers[idx]
+        wts = src_model.layers[idx].get_weights()
+        layer.set_weights(wts)
+
+    # for layer in dst_model.layers:
+    #     layer.set_weights(src_model.get_layer(layer.name).get_weights())
+
+    return dst_model
+
+def stack_models(models, connecting_node_ids=None):
+    """
+    stacks keras models sequentially without nesting the models into layers
+        (the nominal behaviour in keras as of 1/13/2018 is to nest models)
+    This preserves the layers (i.e. does not copy layers). This means that if you modify the
+    original layer weights, you are automatically affecting the new stacked model.
+
+    models is a list of models, in order of: [input_model, second_model, ..., final_output_model]
+
+    1/13/2018:
+    currently using extract_submodel subfunction which is a bit finicky.    
+    """
+
+    output_tensors = models[0].outputs
+    stacked_inputs = [*models[0].inputs]
+
+    # go through models 1 onwards and stack with current graph
+    for mi in range(1, len(models)):
+        
+        # prepare input nodes - a combination of 
+        new_input_nodes = list(models[mi].inputs)
+        stacked_inputs_contrib = list(models[mi].inputs)
+
+        if connecting_node_ids is None: 
+            conn_id = list(range(len(new_input_nodes)))
+            assert len(new_input_nodes) == len(models[mi-1].outputs), \
+                'argument count does not match'
+        else:
+            conn_id = connecting_node_ids[mi-1]
+
+        for out_idx, ii in enumerate(conn_id):
+            new_input_nodes[ii] = output_tensors[out_idx]
+            stacked_inputs_contrib[ii] = None
+        
+        output_tensors = mod_submodel(models[mi], new_input_nodes=new_input_nodes)
+        stacked_inputs = stacked_inputs + stacked_inputs_contrib
+
+    stacked_inputs = [i for i in stacked_inputs if i is not None]
+    new_model = keras.models.Model(stacked_inputs, output_tensors)
+    return new_model
+
+
+def reset_weights(model, session=None):
+    """
+    reset weights of model with the appropriate initializer
+
+    https://www.codementor.io/nitinsurya/how-to-re-initialize-keras-model-weights-et41zre2g
+
+    does not close session.
+    """
+
+    if session is None:
+        session = K.get_session()
+
+    for layer in model.layers: 
+        if hasattr(layer, 'kernel_initializer'):
+            layer.kernel.initializer.run(session=session)
+
+
+def robust_multi_gpu_model(model, gpus, verbose=True):
+    """
+    re-work keras model for multi-gpus if number of gpus is > 1
+
+    Parameters:
+        model: keras Model
+        gpus: list of gpus to split to (e.g. [1, 4, 6]), or count of gpus available (e.g. 3)
+            Note: if given int, assume that is the count of gpus, 
+            so if you want a single specific gpu, this function will not do that.
+        verbose: whether to display what happened (default: True)
+    
+    Returns:
+        keras model
+    """
+
+    islist = isinstance(gpus, (list, tuple)) 
+    if (islist and len(gpus) > 1) or (not islist and gpus > 1):
+        count = gpus if not islist else len(islist)
+        print("Returning multi-gpu (%d) model" % count)
+        return keras.utils.multi_gpu_model(model, gpus)
+
+    else:
+        print("Returning keras model back (single gpu found)")
+        return model
+
+
+
+
+
+
+
 def predict_volumes(models,
                     data_generator,
                     batch_size,
@@ -294,85 +399,12 @@ def next_vol_pred(model, data_generator, verbose=False):
 
     return data
 
-def softmax(x, axis):
-    """
-    softmax of a numpy array along a given dimension
-    """
-
-    return np.exp(x) / np.sum(np.exp(x), axis=axis, keepdims=True)
 
 
 
-def copy_model_weights(src_model, dst_model):
-    """ copy weights from the src model to the dst model """
-
-    for idx in range(len(dst_model.layers)):
-        layer = dst_model.layers[idx]
-        wts = src_model.layers[idx].get_weights()
-        layer.set_weights(wts)
-
-    # for layer in dst_model.layers:
-    #     layer.set_weights(src_model.get_layer(layer.name).get_weights())
-
-    return dst_model
-
-    # seg_model_load = keras.models.load_model('/data/vision/polina/users/adalca/fsCNN/output/unet-prior-v3/hdf5/run_5/model.88-0.00.hdf5', custom_objects={'loss': wcce46})
-    # wts46 = seg_model_load.get_layer("likelihood").get_weights()
-    # print(wts46[0].shape, wts46[1].shape)
-
-    # for layer in seg_model.layers:
-    #     if layer.name == "likelihood":
-    #         nwts0, nwts1 = seg_model.get_layer("likelihood").get_weights()
-    #         nwts0[:,:,0:19] = wts46[0][:,:,0:19]
-    #         nwts0[:,:,20:] = wts46[0][:,:,19:]
-    #         nwts1[0:19] = wts46[1][0:19]
-    #         nwts1[20:] = wts46[1][19:]
-    #         seg_model.get_layer("likelihood").set_weights((nwts0,nwts1))
-    #     else:
-    #         layer.set_weights(seg_model_load.get_layer(layer.name).get_weights())
 
 
 
-def stack_models(models, connecting_node_ids=None):
-    """
-    stacks models sequentially without nesting the models into layers
-        (the nominal behaviour in keras as of 1/13/2018 is to nest models)
-    This preserves the layers (i.e. does not copy layers). This means that if you modify the
-    original layer weights, you are automatically affecting the new stacked model.
-
-    models is a list of models, in order of: [input_model, second_model, ..., final_output_model]
-
-    1/13/2018:
-    currently using extract_submodel subfunction which is a bit finicky.    
-    """
-
-    output_tensors = models[0].outputs
-    stacked_inputs = [*models[0].inputs]
-
-    # go through models 1 onwards and stack with current graph
-    for mi in range(1, len(models)):
-        
-        # prepare input nodes - a combination of 
-        new_input_nodes = list(models[mi].inputs)
-        stacked_inputs_contrib = list(models[mi].inputs)
-
-        if connecting_node_ids is None: 
-            conn_id = list(range(len(new_input_nodes)))
-            assert len(new_input_nodes) == len(models[mi-1].outputs), \
-                'argument count does not match'
-        else:
-            conn_id = connecting_node_ids[mi-1]
-
-        for out_idx, ii in enumerate(conn_id):
-            new_input_nodes[ii] = output_tensors[out_idx]
-            stacked_inputs_contrib[ii] = None
-        
-        output_tensors = mod_submodel(models[mi], new_input_nodes=new_input_nodes)
-        stacked_inputs = stacked_inputs + stacked_inputs_contrib
-
-    stacked_inputs = [i for i in stacked_inputs if i is not None]
-    new_model = keras.models.Model(stacked_inputs, output_tensors)
-    return new_model
 
 
 
@@ -386,10 +418,71 @@ def mod_submodel(orig_model,
         model stitching: given new input node(s), get output tensors of having pushed these 
         nodes through the model
         
-        model cutting: given input layer (pointers) inside the model, the new input nodes will match the new input
-        layers, hence allowing cutting the model
+        model cutting: given input layer (pointers) inside the model, the new input nodes
+        will match the new input layers, hence allowing cutting the model
     """
-    
+
+    def _layer_dependency_dict(orig_model):
+        """
+        output: a dictionary of all layers in the orig_model
+        for each layer:
+            dct[layer] is a list of lists of layers.
+        """
+
+        """
+        OLD CODE - THIS LOST ORDER OF INPUT_LAYERS, AND SOMETIMES THIS SCREWED THINGS UP BAD,
+        SUCH AS IN VAE SAMPLING WHEN MU and SIGMA LAYERS MIGHT SWITCH...
+
+        inp_layers = {}
+        for layer in orig_model.layers:
+            if hasattr(layer, '_inbound_nodes') and len(layer._inbound_nodes) > 0:
+                # Get the first input node, and if it's in the dictionary of output_node:[layers],
+                # that means that this layer's can be connected to another layer through this node
+                # We only use the first inbound node, it is sufficient for layer connectivity
+                layer_inp_layers = []
+                for input_node in layer._inbound_nodes:
+                    if len(input_node.inbound_layers) > 0:
+                        layer_inp_layers += input_node.inbound_layers
+
+                if len(layer_inp_layers) > 0:
+
+                    # add layer, if layer is in this model
+                    # this layer might not be in this model if this model is modded from another model.
+                    # Warning: doing list(set(layer_inp_layers)) loses order, which is a problem!!!
+                    inp_layers[layer] = [l for l in list(set(layer_inp_layers)) if l in orig_model.layers]
+        """
+
+        out_layers = orig_model.output_layers
+        out_node_idx = orig_model.output_layers_node_indices
+
+        node_list = [ol._inbound_nodes[out_node_idx[i]] for i, ol in enumerate(out_layers)]
+            
+        dct = {}
+        dct_node_idx = {}
+        while len(node_list) > 0:
+            node = node_list.pop(0)
+                
+            add = True
+            # if not empty. we need to check that we're not adding the same layers through the same node.
+            if len(dct.setdefault(node.outbound_layer, [])) > 0:
+                for li, layers in enumerate(dct[node.outbound_layer]):
+                    if layers == node.inbound_layers and \
+                        dct_node_idx[node.outbound_layer][li] == node.node_indices:
+                        add = False
+                        break
+            if add:
+                dct[node.outbound_layer].append(node.inbound_layers)
+                dct_node_idx.setdefault(node.outbound_layer, []).append(node.node_indices)
+                #print(node, node.outbound_layer)
+            # append is in place
+
+            # add new node
+            for li, layer in enumerate(node.inbound_layers):
+                if hasattr(layer, '_inbound_nodes'):
+                    node_list.append(layer._inbound_nodes[node.node_indices[li]])
+
+        return dct
+
     def _get_new_layer_output(layer, new_layer_outputs, inp_layers):
         """
         (recursive) given a layer, get new outbound_nodes based on new inbound_nodes
@@ -474,92 +567,10 @@ def mod_submodel(orig_model,
     return outputs
 
 
-def _layer_dependency_dict(orig_model):
-    """
-    output: a dictionary of all layers in the orig_model
-    for each layer:
-        dct[layer] is a list of lists of layers.
-    """
-
-    """
-    OLD CODE - THIS LOST ORDER OF INPUT_LAYERS, AND SOMETIMES THIS SCREWED THINGS UP BAD,
-    SUCH AS IN VAE SAMPLING WHEN MU and SIGMA LAYERS MIGHT SWITCH...
-
-    inp_layers = {}
-    for layer in orig_model.layers:
-        if hasattr(layer, '_inbound_nodes') and len(layer._inbound_nodes) > 0:
-            # Get the first input node, and if it's in the dictionary of output_node:[layers],
-            # that means that this layer's can be connected to another layer through this node
-            # We only use the first inbound node, it is sufficient for layer connectivity
-            layer_inp_layers = []
-            for input_node in layer._inbound_nodes:
-                if len(input_node.inbound_layers) > 0:
-                    layer_inp_layers += input_node.inbound_layers
-
-            if len(layer_inp_layers) > 0:
-
-                # add layer, if layer is in this model
-                # this layer might not be in this model if this model is modded from another model.
-                # Warning: doing list(set(layer_inp_layers)) loses order, which is a problem!!!
-                inp_layers[layer] = [l for l in list(set(layer_inp_layers)) if l in orig_model.layers]
-    """
-
-    out_layers = orig_model.output_layers
-    out_node_idx = orig_model.output_layers_node_indices
-
-    node_list = [ol._inbound_nodes[out_node_idx[i]] for i, ol in enumerate(out_layers)]
-        
-    dct = {}
-    dct_node_idx = {}
-    while len(node_list) > 0:
-        node = node_list.pop(0)
-            
-        add = True
-        # if not empty. we need to check that we're not adding the same layers through the same node.
-        if len(dct.setdefault(node.outbound_layer, [])) > 0:
-            for li, layers in enumerate(dct[node.outbound_layer]):
-                if layers == node.inbound_layers and \
-                    dct_node_idx[node.outbound_layer][li] == node.node_indices:
-                    add = False
-                    break
-        if add:
-            dct[node.outbound_layer].append(node.inbound_layers)
-            dct_node_idx.setdefault(node.outbound_layer, []).append(node.node_indices)
-            #print(node, node.outbound_layer)
-        # append is in place
-
-        # add new node
-        for li, layer in enumerate(node.inbound_layers):
-            if hasattr(layer, '_inbound_nodes'):
-                node_list.append(layer._inbound_nodes[node.node_indices[li]])
-
-    return dct
 
 
 
-def reset_weights(model, session=None):
-    """
-    reset weights of model with the appropriate initializer
 
-    https://www.codementor.io/nitinsurya/how-to-re-initialize-keras-model-weights-et41zre2g
-
-    does not close session.
-    """
-
-    if session is None:
-        session = K.get_session()
-
-    for layer in model.layers: 
-        if hasattr(layer, 'kernel_initializer'):
-            layer.kernel.initializer.run(session=session)
-
-
-def robust_multi_gpu_model(model, gpus):
-    islist = isinstance(gpus, (list, tuple)) 
-    if (islist and len(gpus) > 1) or (not islist and gpus > 1):
-        return keras.utils.multi_gpu_model(model, gpus)
-    else:
-        return model
 
 
 
@@ -575,7 +586,7 @@ def crop3d(kvec, start, end):
     if ndims == 4:
         return kvec[:, start[0]:end[0], start[1]:end[1], start[2]:end[1]]
 
-def mid_cc_3d(x, y, start, end):
+def mid_cce_3d(x, y, start, end):
     xnew = crop3d(x, start, end)
     ynew = crop3d(y, start, end)
     return keras.losses.categorical_crossentropy(xnew, ynew)
@@ -617,3 +628,16 @@ def _quilt(patches, patch_size, grid_size, patch_stride, verbose=False, **kwargs
 
 def _batch_flatten(x):
     return np.reshape(x, (x.shape[0], -1))
+
+
+
+
+
+
+# TO MOVE
+def softmax(x, axis):
+    """
+    softmax of a numpy array along a given dimension
+    """
+
+    return np.exp(x) / np.sum(np.exp(x), axis=axis, keepdims=True)
