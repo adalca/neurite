@@ -1,5 +1,8 @@
 """ various utilities for the neuron project """
 
+# python imports
+import itertools
+
 # third party imports
 import numpy as np
 from tqdm import tqdm_notebook as tqdm
@@ -11,7 +14,6 @@ import pytools.timer as timer
 # local imports
 import pynd.ndutils as nd
 
-
 # often changed file
 from imp import reload
 import keras
@@ -22,18 +24,170 @@ reload(pl)
 
 
 
-def copy_model_weights(src_model, dst_model):
-    """ copy weights from the src model to the dst model """
+def interpn(vol, loc, interp_method='linear'):
+    """
+    N-D gridded interpolation in tensorflow
 
-    for idx in range(len(dst_model.layers)):
-        layer = dst_model.layers[idx]
-        wts = src_model.layers[idx].get_weights()
-        layer.set_weights(wts)
+    vol can have more dimensions than loc[i], in which case loc[i] acts as a slice 
+    for the first dimensions
 
-    # for layer in dst_model.layers:
-    #     layer.set_weights(src_model.get_layer(layer.name).get_weights())
+    Parameters:
+        vol: an N-D Tensor, the volume values at the initial grid, assumed to be 0:volsize
+        loc: a N-long list of N-D Tensors (the interpolation locations) for the new grid
+            each tensor has to have the same size (but not nec. same size as vol)
+        interp_method: interpolation type 'linear' (default) or 'nearest'
 
-    return dst_model
+    Returns:
+        new interpolated volume of the same size as the entries in loc
+    """
+
+    # extract and check sizes and dimensions
+    volsize = tf.shape(vol)
+    ndims = len(volsize)
+
+    if ndims >= len(loc):
+        raise Exception("Number of loc Tensors %d does not match volume dimension %d"
+                        % (len(loc), ndims))
+
+    if ndims != len(tf.shape(loc[0])):
+        raise Exception("Loc dimension %d does not match volume dimension %d"
+                        % (len(loc), ndims))
+
+    # flatten and float location Tensors
+    loc = [tf.cast(d, 'float32') for d in loc]
+
+    # get 2^(ND) locations for interpolation
+    if interp_method == 'linear':
+        loc0 = [tf.cast(tf.floor(d), 'int32') for d in loc]
+
+        # clip values
+        max_loc = [tf.cast(d - 1, 'int32') for d in volsize]
+        loc0 = [tf.clip_by_value(loc0[d], 0, max_loc[d]) for d in range(ndims)]
+
+        # get other end of point cube
+        loc1 = [d + 1 for d in loc0]
+        locs = [loc0, loc1]
+
+        # compute the difference between the upper value and the original value
+        # differences are basically 1 - (pt - floor(pt))
+        #   because: floor(pt) + 1 - pt = 1 + (floor(pt) - pt) = 1 - (pt - floor(pt))
+        loc1_float = [tf.cast(d, 'float32') for d in loc1]
+        diff_loc1 = [loc1_float[d] - loc[d] for d in range(ndims)]
+        diff_loc0 = [1 - d for d in diff_loc1]
+        weights_loc = [diff_loc1, diff_loc0] # note reverse ordering since weights are inverse of diff.
+
+        # go through all the cube corners, indexed by a ND binary vector 
+        # e.g. [0, 0] means this "first" corner in a 2-D "cube"
+        cube_pts = list(itertools.product([0, 1], repeat=ndims))
+        wtvol_values = [None] * len(cube_pts)
+        for ci, c in cube_pts: 
+            # get nd values
+            indices = tf.stack([locs[c[d]] for d in range(ndims)], axis=ndims + 1)
+            vol_val = tf.gather_nd(vol, indices)
+
+            # get the weight of this cube_pt based on the distance
+            # if c[d] is 0 --> want weight = 1 - (pt - floor[pt]) = diff_loc1
+            # if c[d] is 1 --> want weight = pt - floor[pt] = diff_loc0
+            prod = tf.reduce_prod([weights_loc[c[d]] for d in range(ndims)])
+            wt = tf.expand_dims(prod, 1)
+            
+            # compute final weighted value for each cube corner
+            wtvol_values[ci] = wt * vol_val
+        
+        interp_vol = tf.add_n(wtvol_values)
+        
+    else:
+        assert interp_method == 'nearest'
+        roundloc = [tf.cast(tf.round(d), 'int32') for d in loc]
+
+        # clip values
+        max_loc = [tf.cast(d - 1, 'int32') for d in volsize]
+        roundloc = [tf.clip_by_value(roundloc[d], 0, max_loc[d]) for d in range(ndims)]
+
+        # get values
+        interp_vol = tf.gather_nd(vol, roundloc) 
+
+    return tf.reshape(interp_vol, tf.shape(loc[0]))
+
+
+def volsize_to_ndgrid(volsize, **kwargs):
+    """
+    compute Tensor ndgrid from a volume size
+
+    Parameters:
+        volsize: the volume size
+        **args: "name" (optional)
+
+    Returns:
+        A list of Tensors
+
+    See Also:
+        ndgrid
+    
+    -----------------------------------------
+    Old (manual) implementation:
+
+    grid = [None] * len(vol_size)
+    for di, d in enumerate(vol_size):
+        # create a linspace in d dimension
+        # todo: change to range.
+        linvec = tf.range(0, d)
+
+        # reshape it to the d'th dimension
+        reshape_shape = [1] * len(vol_size)
+        reshape_shape[di] = d
+        linvec_reshape = tf.reshape(linvec, reshape_shape)
+
+        # tile along all the other dimensions
+        tile_shape = vol_size.copy()
+        tile_shape[di] = 1
+        grid[di] = tf.tile(linvec_reshape, tile_shape)
+
+    return tuple(grid)
+    """
+    isint = [isinstance(d, int) for d in volsize]
+    if not all(isint):
+        raise ValueError("volsize needs to be a list of integers")
+
+    linvec = [tf.range(0, d) for d in volsize]
+    return ndgrid(*linvec, **kwargs)
+
+
+def ndgrid(*args, **kwargs):
+    """
+    broadcast Tensors on an N-D grid with ij indexing
+    uses tf.meshgrid with ij indexing
+
+    Parameters:
+        *args: Tensors with rank 1
+        **args: "name" (optional)
+
+    Returns:
+        A list of Tensors
+    
+    """
+    return tf.meshgrid(*args, 'indexing', 'ij', **kwargs)
+
+
+def flatten(v):
+    """
+    flatten Tensor v
+    
+    Parameters:
+        v: Tensor to be flattened
+    
+    Returns:
+        flat Tensor
+    """
+
+    v = tf.reshape(v, [-1])
+
+
+
+
+
+
+
 
 def stack_models(models, connecting_node_ids=None):
     """
@@ -42,10 +196,9 @@ def stack_models(models, connecting_node_ids=None):
     This preserves the layers (i.e. does not copy layers). This means that if you modify the
     original layer weights, you are automatically affecting the new stacked model.
 
-    models is a list of models, in order of: [input_model, second_model, ..., final_output_model]
-
-    1/13/2018:
-    currently using extract_submodel subfunction which is a bit finicky.    
+    Parameters:
+        models: a list of models, in order of: [input_model, second_model, ..., final_output_model]
+        connecting_node_ids (optional): a list of connecting node pointers from Nth model to N+1th model
     """
 
     output_tensors = models[0].outputs
@@ -76,6 +229,165 @@ def stack_models(models, connecting_node_ids=None):
     new_model = keras.models.Model(stacked_inputs, output_tensors)
     return new_model
 
+def mod_submodel(orig_model,
+                 new_input_nodes=None,
+                 input_layers=None):
+    """
+    cut and/or stitch submodel
+
+    given an original model:
+        model stitching: given new input node(s), get output tensors of having pushed these 
+        nodes through the model
+        
+        model cutting: given input layer (pointers) inside the model, the new input nodes
+        will match the new input layers, hence allowing cutting the model
+    """
+
+    def _layer_dependency_dict(orig_model):
+        """
+        output: a dictionary of all layers in the orig_model
+        for each layer:
+            dct[layer] is a list of lists of layers.
+        """
+
+        """
+        OLD CODE - THIS LOST ORDER OF INPUT_LAYERS, AND SOMETIMES THIS SCREWED THINGS UP BAD,
+        SUCH AS IN VAE SAMPLING WHEN MU and SIGMA LAYERS MIGHT SWITCH...
+
+        inp_layers = {}
+        for layer in orig_model.layers:
+            if hasattr(layer, '_inbound_nodes') and len(layer._inbound_nodes) > 0:
+                # Get the first input node, and if it's in the dictionary of output_node:[layers],
+                # that means that this layer's can be connected to another layer through this node
+                # We only use the first inbound node, it is sufficient for layer connectivity
+                layer_inp_layers = []
+                for input_node in layer._inbound_nodes:
+                    if len(input_node.inbound_layers) > 0:
+                        layer_inp_layers += input_node.inbound_layers
+
+                if len(layer_inp_layers) > 0:
+
+                    # add layer, if layer is in this model
+                    # this layer might not be in this model if this model is modded from another model.
+                    # Warning: doing list(set(layer_inp_layers)) loses order, which is a problem!!!
+                    inp_layers[layer] = [l for l in list(set(layer_inp_layers)) if l in orig_model.layers]
+        """
+
+        out_layers = orig_model.output_layers
+        out_node_idx = orig_model.output_layers_node_indices
+
+        node_list = [ol._inbound_nodes[out_node_idx[i]] for i, ol in enumerate(out_layers)]
+            
+        dct = {}
+        dct_node_idx = {}
+        while len(node_list) > 0:
+            node = node_list.pop(0)
+                
+            add = True
+            # if not empty. we need to check that we're not adding the same layers through the same node.
+            if len(dct.setdefault(node.outbound_layer, [])) > 0:
+                for li, layers in enumerate(dct[node.outbound_layer]):
+                    if layers == node.inbound_layers and \
+                        dct_node_idx[node.outbound_layer][li] == node.node_indices:
+                        add = False
+                        break
+            if add:
+                dct[node.outbound_layer].append(node.inbound_layers)
+                dct_node_idx.setdefault(node.outbound_layer, []).append(node.node_indices)
+                #print(node, node.outbound_layer)
+            # append is in place
+
+            # add new node
+            for li, layer in enumerate(node.inbound_layers):
+                if hasattr(layer, '_inbound_nodes'):
+                    node_list.append(layer._inbound_nodes[node.node_indices[li]])
+
+        return dct
+
+    def _get_new_layer_output(layer, new_layer_outputs, inp_layers):
+        """
+        (recursive) given a layer, get new outbound_nodes based on new inbound_nodes
+
+        new_layer_outputs is a (reference) dictionary that we will be adding
+        to within the recursion stack.
+        """
+
+        if layer not in new_layer_outputs:
+
+            if layer not in inp_layers:
+                raise Exception('layer %s is not in inp_layers' % layer.name)
+
+            # for all input layers to this layer, gather their output (our input)
+            for group in inp_layers[layer]:
+                input_nodes = [None] * len(group)
+                for li, inp_layer in enumerate(group):
+                    if inp_layer in new_layer_outputs:
+                        input_nodes[li] = new_layer_outputs[inp_layer]
+                    else: # recursive call
+                        input_nodes[li] = _get_new_layer_output(inp_layer, new_layer_outputs, inp_layers)
+
+                # layer call
+                if len(input_nodes) == 1:
+                    new_layer_outputs[layer] = layer(*input_nodes)
+                else:
+                    new_layer_outputs[layer] = layer(input_nodes)
+
+        return new_layer_outputs[layer]
+
+
+
+    # for each layer create list of input layers
+    inp_layers = _layer_dependency_dict(orig_model)
+
+    # get input layers
+    #   These layers will be 'ignored' in that they will not be called!
+    #   instead, the outbound nodes of the layers will be the input nodes
+    #   computed below or passed in
+    if input_layers is None: # if none provided, search for them
+        InputLayerClass = keras.engine.topology.InputLayer
+        input_layers = [l for l in orig_model.layers if isinstance(l, InputLayerClass)]
+
+    else:
+        if not isinstance(input_layers, (tuple, list)):
+            input_layers = [input_layers]
+        for idx, input_layer in enumerate(input_layers):
+            # if it's a string, assume it's layer name, and get the layer pointer
+            if isinstance(input_layer, str):
+                input_layers[idx] = orig_model.get_layer(input_layer)
+
+    # process new input nodes
+    if new_input_nodes is None:
+        input_nodes = list(orig_model.inputs)
+    else:
+        input_nodes = new_input_nodes
+    assert len(input_nodes) == len(input_layers)
+
+    # initialize dictionary of layer:new_output_node
+    #   note: the input layers are not called, instead their outbound nodes
+    #   are assumed to be the given input nodes. If we call the nodes, we can run
+    #   into multiple-inbound-nodes problems, or if we completely skip the layers altogether
+    #   we have problems with multiple inbound input layers into subsequent layers
+    new_layer_outputs = {}
+    for i, input_layer in enumerate(input_layers):
+        new_layer_outputs[input_layer] = input_nodes[i]
+
+    # recursively go back from output layers and request new input nodes
+    output_layers = []
+    for layer in orig_model.layers:
+        if hasattr(layer, '_inbound_nodes'):
+            for i in range(len(layer._inbound_nodes)):
+                if layer.get_output_at(i) in orig_model.outputs:
+                    output_layers.append(layer)
+                    break
+    assert len(output_layers) == len(orig_model.outputs), "Number of output layers don't match"
+
+    outputs = [None] * len(output_layers)
+    for li, output_layer in enumerate(output_layers):
+        outputs[li] = _get_new_layer_output(output_layer, new_layer_outputs, inp_layers)
+
+    return outputs
+
+
 
 def reset_weights(model, session=None):
     """
@@ -92,6 +404,16 @@ def reset_weights(model, session=None):
     for layer in model.layers: 
         if hasattr(layer, 'kernel_initializer'):
             layer.kernel.initializer.run(session=session)
+
+def copy_model_weights(src_model, dst_model):
+    """
+    copy weights from the src model to the dst model
+    """
+
+    for idx in range(len(dst_model.layers)):
+        layer = dst_model.layers[idx]
+        wts = src_model.layers[idx].get_weights()
+        layer.set_weights(wts)
 
 
 def robust_multi_gpu_model(model, gpus, verbose=True):
@@ -118,6 +440,7 @@ def robust_multi_gpu_model(model, gpus, verbose=True):
     else:
         print("Returning keras model back (single gpu found)")
         return model
+
 
 
 
@@ -398,178 +721,6 @@ def next_vol_pred(model, data_generator, verbose=False):
         data = (sample[0][0], sample[1], pred, sample[0][1])
 
     return data
-
-
-
-
-
-
-
-
-
-
-def mod_submodel(orig_model,
-                 new_input_nodes=None,
-                 input_layers=None):
-    """
-    cut and/or stitch submodel
-
-    given an original model:
-        model stitching: given new input node(s), get output tensors of having pushed these 
-        nodes through the model
-        
-        model cutting: given input layer (pointers) inside the model, the new input nodes
-        will match the new input layers, hence allowing cutting the model
-    """
-
-    def _layer_dependency_dict(orig_model):
-        """
-        output: a dictionary of all layers in the orig_model
-        for each layer:
-            dct[layer] is a list of lists of layers.
-        """
-
-        """
-        OLD CODE - THIS LOST ORDER OF INPUT_LAYERS, AND SOMETIMES THIS SCREWED THINGS UP BAD,
-        SUCH AS IN VAE SAMPLING WHEN MU and SIGMA LAYERS MIGHT SWITCH...
-
-        inp_layers = {}
-        for layer in orig_model.layers:
-            if hasattr(layer, '_inbound_nodes') and len(layer._inbound_nodes) > 0:
-                # Get the first input node, and if it's in the dictionary of output_node:[layers],
-                # that means that this layer's can be connected to another layer through this node
-                # We only use the first inbound node, it is sufficient for layer connectivity
-                layer_inp_layers = []
-                for input_node in layer._inbound_nodes:
-                    if len(input_node.inbound_layers) > 0:
-                        layer_inp_layers += input_node.inbound_layers
-
-                if len(layer_inp_layers) > 0:
-
-                    # add layer, if layer is in this model
-                    # this layer might not be in this model if this model is modded from another model.
-                    # Warning: doing list(set(layer_inp_layers)) loses order, which is a problem!!!
-                    inp_layers[layer] = [l for l in list(set(layer_inp_layers)) if l in orig_model.layers]
-        """
-
-        out_layers = orig_model.output_layers
-        out_node_idx = orig_model.output_layers_node_indices
-
-        node_list = [ol._inbound_nodes[out_node_idx[i]] for i, ol in enumerate(out_layers)]
-            
-        dct = {}
-        dct_node_idx = {}
-        while len(node_list) > 0:
-            node = node_list.pop(0)
-                
-            add = True
-            # if not empty. we need to check that we're not adding the same layers through the same node.
-            if len(dct.setdefault(node.outbound_layer, [])) > 0:
-                for li, layers in enumerate(dct[node.outbound_layer]):
-                    if layers == node.inbound_layers and \
-                        dct_node_idx[node.outbound_layer][li] == node.node_indices:
-                        add = False
-                        break
-            if add:
-                dct[node.outbound_layer].append(node.inbound_layers)
-                dct_node_idx.setdefault(node.outbound_layer, []).append(node.node_indices)
-                #print(node, node.outbound_layer)
-            # append is in place
-
-            # add new node
-            for li, layer in enumerate(node.inbound_layers):
-                if hasattr(layer, '_inbound_nodes'):
-                    node_list.append(layer._inbound_nodes[node.node_indices[li]])
-
-        return dct
-
-    def _get_new_layer_output(layer, new_layer_outputs, inp_layers):
-        """
-        (recursive) given a layer, get new outbound_nodes based on new inbound_nodes
-
-        new_layer_outputs is a (reference) dictionary that we will be adding
-        to within the recursion stack.
-        """
-
-        if layer not in new_layer_outputs:
-
-            if layer not in inp_layers:
-                raise Exception('layer %s is not in inp_layers' % layer.name)
-
-            # for all input layers to this layer, gather their output (our input)
-            for group in inp_layers[layer]:
-                input_nodes = [None] * len(group)
-                for li, inp_layer in enumerate(group):
-                    if inp_layer in new_layer_outputs:
-                        input_nodes[li] = new_layer_outputs[inp_layer]
-                    else: # recursive call
-                        input_nodes[li] = _get_new_layer_output(inp_layer, new_layer_outputs, inp_layers)
-
-                # layer call
-                if len(input_nodes) == 1:
-                    new_layer_outputs[layer] = layer(*input_nodes)
-                else:
-                    new_layer_outputs[layer] = layer(input_nodes)
-
-        return new_layer_outputs[layer]
-
-
-
-    # for each layer create list of input layers
-    inp_layers = _layer_dependency_dict(orig_model)
-
-    # get input layers
-    #   These layers will be 'ignored' in that they will not be called!
-    #   instead, the outbound nodes of the layers will be the input nodes
-    #   computed below or passed in
-    if input_layers is None: # if none provided, search for them
-        InputLayerClass = keras.engine.topology.InputLayer
-        input_layers = [l for l in orig_model.layers if isinstance(l, InputLayerClass)]
-
-    else:
-        if not isinstance(input_layers, (tuple, list)):
-            input_layers = [input_layers]
-        for idx, input_layer in enumerate(input_layers):
-            # if it's a string, assume it's layer name, and get the layer pointer
-            if isinstance(input_layer, str):
-                input_layers[idx] = orig_model.get_layer(input_layer)
-
-    # process new input nodes
-    if new_input_nodes is None:
-        input_nodes = list(orig_model.inputs)
-    else:
-        input_nodes = new_input_nodes
-    assert len(input_nodes) == len(input_layers)
-
-    # initialize dictionary of layer:new_output_node
-    #   note: the input layers are not called, instead their outbound nodes
-    #   are assumed to be the given input nodes. If we call the nodes, we can run
-    #   into multiple-inbound-nodes problems, or if we completely skip the layers altogether
-    #   we have problems with multiple inbound input layers into subsequent layers
-    new_layer_outputs = {}
-    for i, input_layer in enumerate(input_layers):
-        new_layer_outputs[input_layer] = input_nodes[i]
-
-    # recursively go back from output layers and request new input nodes
-    output_layers = []
-    for layer in orig_model.layers:
-        if hasattr(layer, '_inbound_nodes'):
-            for i in range(len(layer._inbound_nodes)):
-                if layer.get_output_at(i) in orig_model.outputs:
-                    output_layers.append(layer)
-                    break
-    assert len(output_layers) == len(orig_model.outputs), "Number of output layers don't match"
-
-    outputs = [None] * len(output_layers)
-    for li, output_layer in enumerate(output_layers):
-        outputs[li] = _get_new_layer_output(output_layer, new_layer_outputs, inp_layers)
-
-    return outputs
-
-
-
-
-
 
 
 
