@@ -180,7 +180,7 @@ def flatten(v):
         flat Tensor
     """
 
-    v = tf.reshape(v, [-1])
+    return tf.reshape(v, [-1])
 
 
 
