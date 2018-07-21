@@ -1,4 +1,6 @@
-""" various utilities for the neuron project """
+"""
+tensorflow/keras utilities for the neuron project
+"""
 
 # python imports
 import itertools
@@ -39,6 +41,9 @@ def interpn(vol, loc, interp_method='linear'):
 
     Returns:
         new interpolated volume of the same size as the entries in loc
+
+    TODO:
+        enable optional orig_grid
     """
 
     # extract and check sizes and dimensions
@@ -183,12 +188,6 @@ def flatten(v):
     return tf.reshape(v, [-1])
 
 
-
-
-
-
-
-
 def stack_models(models, connecting_node_ids=None):
     """
     stacks keras models sequentially without nesting the models into layers
@@ -199,6 +198,9 @@ def stack_models(models, connecting_node_ids=None):
     Parameters:
         models: a list of models, in order of: [input_model, second_model, ..., final_output_model]
         connecting_node_ids (optional): a list of connecting node pointers from Nth model to N+1th model
+
+    Returns:
+        new stacked model pointer
     """
 
     output_tensors = models[0].outputs
@@ -229,11 +231,16 @@ def stack_models(models, connecting_node_ids=None):
     new_model = keras.models.Model(stacked_inputs, output_tensors)
     return new_model
 
+
 def mod_submodel(orig_model,
                  new_input_nodes=None,
                  input_layers=None):
     """
-    cut and/or stitch submodel
+    modify (cut and/or stitch) keras submodel
+
+    layer objects themselved will be untouched - the new model, even if it includes, 
+    say, a subset of the previous layers, those layer objects will be shared with
+    the original model
 
     given an original model:
         model stitching: given new input node(s), get output tensors of having pushed these 
@@ -241,6 +248,14 @@ def mod_submodel(orig_model,
         
         model cutting: given input layer (pointers) inside the model, the new input nodes
         will match the new input layers, hence allowing cutting the model
+
+    Parameters:
+        orig_model: original keras model pointer
+        new_input_nodes: a pointer to a new input node replacement
+        input_layers: the name of the layer in the original model to replace input nodes
+    
+    Returns:
+        pointer to modified model
     """
 
     def _layer_dependency_dict(orig_model):
@@ -388,14 +403,17 @@ def mod_submodel(orig_model,
     return outputs
 
 
-
 def reset_weights(model, session=None):
     """
-    reset weights of model with the appropriate initializer
+    reset weights of model with the appropriate initializer.
+    does not close session.
 
+    Reference:
     https://www.codementor.io/nitinsurya/how-to-re-initialize-keras-model-weights-et41zre2g
 
-    does not close session.
+    Parameters:
+        model: keras model to reset
+        session (optional): the current session
     """
 
     if session is None:
@@ -405,9 +423,14 @@ def reset_weights(model, session=None):
         if hasattr(layer, 'kernel_initializer'):
             layer.kernel.initializer.run(session=session)
 
+
 def copy_model_weights(src_model, dst_model):
     """
-    copy weights from the src model to the dst model
+    copy weights from the src keras model to the dst keras model
+
+    Parameters:
+        src_model: source keras model to copy from
+        dst_model: destination keras model to copy to
     """
 
     for idx in range(len(dst_model.layers)):
