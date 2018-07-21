@@ -4,15 +4,17 @@ This module is currently very experimental...
 
 contact: adalca@csail.mit.edu
 """
+
 import sys
+
+# third party
 import numpy as np
 import keras.backend as K
 from keras import losses
 import tensorflow as tf
 
-# local packages
-import medipy.metrics
-
+# local
+import utils
 
 class CategoricalCrossentropy(object):
     """
@@ -31,14 +33,33 @@ class CategoricalCrossentropy(object):
         model.compile(loss=loss, optimizer='adam')
     """
 
-    def __init__(self, weights=None, use_float16=False, vox_weights=None):
+    def __init__(self, weights=None, use_float16=False, vox_weights=None, crop_indices=None):
+        """
+        Parameters:
+            vox_weights is either a numpy array the same size as y_true,
+                or a string: 'y_true' or 'expy_true'
+            crop_indices: indices to crop each element of the batch
+                if each element is N-D (so y_true is N+1 dimensional)
+                then crop_indices is a Tensor of crop ranges (indices)
+                of size <= N-D. If it's < N-D, then it acts as a slice
+                for the last few dimensions.
+                See Also: tf.gather_nd
+        """
 
         self.weights = weights if (weights is not None) else None
         self.use_float16 = use_float16
         self.vox_weights = vox_weights
+        self.crop_indices = crop_indices
+
+        if self.crop_indices is not None and vox_weights is not None:
+            self.vox_weights = utils.batch_gather(self.vox_weights, self.crop_indices)
 
     def loss(self, y_true, y_pred):
         """ categorical crossentropy loss """
+
+        if self.crop_indices is not None:
+            y_true = utils.batch_gather(y_true, self.crop_indices)
+            y_pred = utils.batch_gather(y_pred, self.crop_indices)
 
         if self.use_float16:
             y_true = K.cast(y_true, 'float16')
@@ -135,6 +156,7 @@ class Dice(object):
                  dice_type='soft',
                  approx_hard_max=True,
                  vox_weights=None,
+                 crop_indices=None,
                  area_reg=0.1):  # regularization for bottom of Dice coeff
         """
         input_type is 'prob', or 'max_label'
@@ -155,12 +177,19 @@ class Dice(object):
         self.dice_type = dice_type
         self.approx_hard_max = approx_hard_max
         self.area_reg = area_reg
+        self.crop_indices = crop_indices
+
+        if self.crop_indices is not None and vox_weights is not None:
+            self.vox_weights = utils.batch_gather(self.vox_weights, self.crop_indices)
 
     def dice(self, y_true, y_pred):
         """
         compute dice for given Tensors
 
         """
+        if self.crop_indices is not None:
+            y_true = utils.batch_gather(y_true, self.crop_indices)
+            y_pred = utils.batch_gather(y_pred, self.crop_indices)
 
         if self.input_type == 'prob':
             # We assume that y_true is probabilistic, but just in case:
@@ -246,14 +275,36 @@ class Dice(object):
 
 
 class MeanSquaredError():
-    def __init__(self, weights=None, vox_weights=None):
+    """
+    MSE with several weighting options
+    """
+
+
+    def __init__(self, weights=None, vox_weights=None, crop_indices=None):
         """
-        vox_weights is either a numpy array the same size as y_true, or a string: 'y_true' or 'expy_true'
+        Parameters:
+            vox_weights is either a numpy array the same size as y_true,
+                or a string: 'y_true' or 'expy_true'
+            crop_indices: indices to crop each element of the batch
+                if each element is N-D (so y_true is N+1 dimensional)
+                then crop_indices is a Tensor of crop ranges (indices)
+                of size <= N-D. If it's < N-D, then it acts as a slice
+                for the last few dimensions.
+                See Also: tf.gather_nd
         """
         self.weights = weights
         self.vox_weights = vox_weights
+        self.crop_indices = crop_indices
+
+        if self.crop_indices is not None and vox_weights is not None:
+            self.vox_weights = utils.batch_gather(self.vox_weights, self.crop_indices)
         
     def loss(self, y_true, y_pred):
+
+        if self.crop_indices is not None:
+            y_true = utils.batch_gather(y_true, self.crop_indices)
+            y_pred = utils.batch_gather(y_pred, self.crop_indices)
+
         ksq = K.square(y_pred - y_true)
 
         if self.vox_weights is not None:
@@ -268,6 +319,7 @@ class MeanSquaredError():
             ksq *= self.weights
 
         return K.mean(ksq)
+
 
 class Mix():
     """ a mix of several losses """
@@ -318,18 +370,6 @@ class WGAN_GP(object):
         return (K.mean(disc_pred) - K.mean(disc_true)) + self.lambda_gp * grad_pen
 
 
-
-
-
-def l1(y_true, y_pred):
-    """ L1 metric (MAE) """
-    return losses.mean_absolute_error(y_true, y_pred)
-
-def l2(y_true, y_pred):
-    """ L2 metric (MSE) """
-    return losses.mean_squared_error(y_true, y_pred)
-
-
 class Nonbg(object):
     """ UNTESTED
     class to modify output on operating only on the non-bg class
@@ -352,6 +392,17 @@ class Nonbg(object):
         y_true_fix = K.variable(yt.flat(ytbg))
         y_pred_fix = K.variable(y_pred.flat(ytbg))
         return self.metric(y_true_fix, y_pred_fix)
+
+
+def l1(y_true, y_pred):
+    """ L1 metric (MAE) """
+    return losses.mean_absolute_error(y_true, y_pred)
+
+
+def l2(y_true, y_pred):
+    """ L2 metric (MSE) """
+    return losses.mean_squared_error(y_true, y_pred)
+
 
 ###############################################################################
 # Helper Functions
