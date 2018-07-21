@@ -465,7 +465,23 @@ def robust_multi_gpu_model(model, gpus, verbose=True):
         return model
 
 
+# AE lambda layers
+def logtanh(x, a=1):
+    """
+    log * tanh
 
+    See Also: arcsinh
+    """
+    return K.tanh(x) *  K.log(2 + a * abs(x))
+
+
+def arcsinh(x, alpha=1):
+    """
+    asignh
+
+    See Also: logtanh
+    """
+    return tf.asinh(x * alpha) / alpha
 
 
 
@@ -633,11 +649,11 @@ def predict_volume_stack(models,
             batch_vox_idx = batch_end-batch_start
 
             # update stacks
-            all_vol[idx][batch_range, :] = _batch_flatten(input_batch)[0:batch_vox_idx, :]
-            all_true[idx][batch_range, :] = _batch_flatten(sample[1])[0:batch_vox_idx, :]
-            all_pred[idx][batch_range, :] = _batch_flatten(pred)[0:batch_vox_idx, :]
+            all_vol[idx][batch_range, :] = K.batch_flatten(input_batch)[0:batch_vox_idx, :]
+            all_true[idx][batch_range, :] = K.batch_flatten(sample[1])[0:batch_vox_idx, :]
+            all_pred[idx][batch_range, :] = K._batch_flatten(pred)[0:batch_vox_idx, :]
             if do_prior:
-                all_prior[idx][batch_range, :] = _batch_flatten(sample[0][1])[0:batch_vox_idx, :]
+                all_prior[idx][batch_range, :] = K.batch_flatten(sample[0][1])[0:batch_vox_idx, :]
 
     # reshape probabilistic answers
     for idx, _ in enumerate(models):
@@ -748,34 +764,44 @@ def next_vol_pred(model, data_generator, verbose=False):
 
 
 
+
 ###############################################################################
-# simple functions
+# functions from some external source
 ###############################################################################
 
-def crop3d(kvec, start, end):
-    """ crop a 3D volume of shape (None, dim_1, dim_2, dim_3) """
-    ndims = len(kvec.get_shape())
-    if ndims == 5:
-        return kvec[:, start[0]:end[0], start[1]:end[1], start[2]:end[1], :]
-    if ndims == 4:
-        return kvec[:, start[0]:end[0], start[1]:end[1], start[2]:end[1]]
+def batch_gather(reference, indices):
+    """
+    C+P From Keras pull request https://github.com/keras-team/keras/pull/6377/files
+    
+    Batchwise gathering of row indices.
 
-def mid_cce_3d(x, y, start, end):
-    xnew = crop3d(x, start, end)
-    ynew = crop3d(y, start, end)
-    return keras.losses.categorical_crossentropy(xnew, ynew)
+    The numpy equivalent is `reference[np.arange(batch_size), indices]`, where
+    `batch_size` is the first dimension of the reference tensor.
 
-def mid_mse_3d(x, y, start, end):
-    xnew = crop3d(x, start, end)
-    ynew = crop3d(y, start, end)
-    return keras.losses.mean_squared_error(xnew, ynew)
+    # Arguments
+        reference: A tensor with ndim >= 2 of shape.
+          (batch_size, dim1, dim2, ..., dimN)
+        indices: A 1d integer tensor of shape (batch_size) satisfying
+          0 <= i < dim2 for each element i.
 
-# AE lambda layers
-def longtanh(x, a=1):
-    return K.tanh(x) *  K.log(2 + a * abs(x))
+    # Returns
+        The selected tensor with shape (batch_size, dim2, ..., dimN).
 
-def arcsinh(x, alpha=1):
-    return tf.asinh(x * alpha) / alpha
+    # Examples
+        1. If reference is `[[3, 5, 7], [11, 13, 17]]` and indices is `[2, 1]`
+        then the result is `[7, 13]`.
+
+        2. If reference is
+        ```
+          [[[2, 3], [4, 5], [6, 7]],
+           [[10, 11], [12, 13], [16, 17]]]
+        ```
+        and indices is `[2, 1]` then the result is `[[6, 7], [12, 13]]`.
+    """
+    batch_size = K.shape(reference)[0]
+    indices = tf.stack([tf.range(batch_size), indices], axis=1)
+    return tf.gather_nd(reference, indices)
+
 
 ###############################################################################
 # helper functions
@@ -799,13 +825,6 @@ def _quilt(patches, patch_size, grid_size, patch_stride, verbose=False, **kwargs
 
     # return
     return quilted_vol
-
-def _batch_flatten(x):
-    return np.reshape(x, (x.shape[0], -1))
-
-
-
-
 
 
 # TO MOVE
