@@ -66,7 +66,7 @@ def interpn(vol, loc, interp_method='linear'):
     # flatten and float location Tensors
     loc = tf.cast(loc, 'float32')
 
-    # get 2^(ND) locations for interpolation
+    # interpolate
     if interp_method == 'linear':
         loc0 = tf.cast(tf.floor(loc), 'int32')
 
