@@ -20,8 +20,6 @@ class DenseSpatialTransformer(Layer):
 
     Since then, we've re-written the code to be generalized to any 
     dimensions, and along the way wrote grid and interpolation functions
-
-    adalca@mit.edu
     """
 
     def __init__(self, interp_method='linear', indexing='ij', **kwargs):
