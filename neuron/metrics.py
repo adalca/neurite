@@ -14,7 +14,7 @@ from keras import losses
 import tensorflow as tf
 
 # local
-import utils
+from . import utils
 
 class CategoricalCrossentropy(object):
     """
