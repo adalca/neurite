@@ -4,6 +4,92 @@ from keras import backend as K
 from keras.legacy import interfaces
 import keras
 from keras.layers import Layer
+import tensorflow as tf
+
+# local
+from .utils import transform  # for dense spatial transformer
+
+
+class DenseSpatialTransformer(Layer):
+    """
+    N-D Spatial Transformer Tensorflow / Keras Layer
+
+    Originally, this code was based on voxelmorph code, which 
+    was in turn written with the help of STN code 
+    via https://github.com/kevinzakka/spatial-transformer-network
+
+    Since then, we've re-written the code to be generalized to any 
+    dimensions, and along the way wrote grid and interpolation functions
+
+    adalca@mit.edu
+    """
+
+    def __init__(self, interp_method='linear', indexing='ij', **kwargs):
+        """
+        Parameters: 
+            interp_method: 'linear' or 'nearest'
+            indexing (default: 'ij'): 'ij' (matrix) or 'xy' (cartesian)
+                'xy' indexing will have the first two entries of the flow 
+                (along last axis) flipped compared to 'ij' indexing
+        """
+        self.interp_method = interp_method
+        self.ndims = None
+
+        assert indexing in ['ij', 'xy'], "indexing has to be 'ij' (matrix) or 'xy' (cartesian)"
+        self.indexing = indexing
+
+        super(self.__class__, self).__init__(**kwargs)
+
+
+    def build(self, input_shape):
+        if len(input_shape) > 2:
+            raise Exception('Spatial Transformer must be called on a list of length 2.'
+                            'First argument is the image, second is the offset field.')
+
+        # set up number of dimensions
+        self.ndims = len(input_shape[1]) - 2
+
+        if input_shape[1][-1] != self.ndims:
+            raise Exception('Offset flow field size expected: %d, found: %d' 
+                            % (self.ndims, input_shape[1][-1]))
+
+        if self.ndims not in [2,3]:
+            raise Exception('Implementation not available for %dD yet' % self.ndims)
+
+        if input_shape[0][1:-1] != input_shape[1][1:-1]:
+            raise Exception('Arguments should have the same inner dimensions.'
+                            'Got: ' + str(input_shape[0]) + ' and ' + str(input_shape[1]))
+
+        # confirm built
+        self.built = True
+
+
+    def call(self, inputs):
+        """
+        Parameters
+            inputs: list with two entries
+        """
+
+        # check shapes
+        assert len(inputs) == 2, "inputs has to be len 2, found: %d" % len(inputs)
+        if inputs[1].shape[1:-1] != inputs[0].shape[1:-1]:
+            raise Exception('Shift shape should match vol shape. '
+                            'Got: ' + inputs[1].shape[1:-1] + ' and ' + inputs[0].shape[1:-1])
+
+        # prepare location shift
+        loc_shift = inputs[1]
+        if self.indexing == 'xy':  # shift the first two dimensions
+            loc_shift_split = tf.split(loc_shift, loc_shift.shape[-1], axis=-1)
+            loc_shift_lst = [loc_shift_split[1], loc_shift_split[0], *loc_shift_split[2:]]
+            loc_shift = tf.concat(loc_shift_lst, -1)
+
+        # map transform across batch
+        return tf.map_fn(self._single_transform, [inputs[0], loc_shift], dtype=tf.float32)
+
+    def _single_transform(self, inputs):
+        trf = transform(inputs[0], inputs[1], interp_method=self.interp_method)
+        return K.expand_dims(trf, -1)
+
 
 class LocalBiasLayer(Layer):
     """ 

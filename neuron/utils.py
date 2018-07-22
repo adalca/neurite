@@ -24,8 +24,6 @@ import tensorflow as tf
 reload(pl)
 
 
-
-
 def interpn(vol, loc, interp_method='linear'):
     """
     N-D gridded interpolation in tensorflow
@@ -34,9 +32,10 @@ def interpn(vol, loc, interp_method='linear'):
     for the first dimensions
 
     Parameters:
-        vol: an N-D Tensor, the volume values at the initial grid, assumed to be 0:volsize
+        vol: volume with size vol_shape or [*vol_shape, nb_features]
         loc: a N-long list of N-D Tensors (the interpolation locations) for the new grid
             each tensor has to have the same size (but not nec. same size as vol)
+            or a tensor of size [*new_vol_shape, N]
         interp_method: interpolation type 'linear' (default) or 'nearest'
 
     Returns:
@@ -46,28 +45,34 @@ def interpn(vol, loc, interp_method='linear'):
         enable optional orig_grid
     """
 
+    if isinstance(loc, (list, tuple)):
+        loc = tf.stack(loc, -1)
+
     # extract and check sizes and dimensions
-    volsize = tf.shape(vol)
-    ndims = len(volsize)
+    new_volshape = loc.shape[:-1]
+    ndims = len(new_volshape)
 
-    if ndims >= len(loc):
+    if ndims != loc.shape[-1]:
         raise Exception("Number of loc Tensors %d does not match volume dimension %d"
-                        % (len(loc), ndims))
+                        % (loc.shape[-1], ndims))
 
-    if ndims != len(tf.shape(loc[0])):
+    if ndims > len(vol.shape):
         raise Exception("Loc dimension %d does not match volume dimension %d"
-                        % (len(loc), ndims))
+                        % (ndims, len(vol.shape)))
+
+    if len(vol.shape) == ndims:
+        vol = K.expand_dims(vol, -1)
 
     # flatten and float location Tensors
-    loc = [tf.cast(d, 'float32') for d in loc]
+    loc = tf.cast(loc, 'float32')
 
     # get 2^(ND) locations for interpolation
     if interp_method == 'linear':
-        loc0 = [tf.cast(tf.floor(d), 'int32') for d in loc]
+        loc0 = tf.cast(tf.floor(loc), 'int32')
 
         # clip values
-        max_loc = [tf.cast(d - 1, 'int32') for d in volsize]
-        loc0 = [tf.clip_by_value(loc0[d], 0, max_loc[d]) for d in range(ndims)]
+        max_loc = [tf.cast(d - 1, 'int32') for d in new_volshape]
+        loc0 = [tf.clip_by_value(loc0[...,d], 0, max_loc[d]) for d in range(ndims)]
 
         # get other end of point cube
         loc1 = [d + 1 for d in loc0]
@@ -77,7 +82,7 @@ def interpn(vol, loc, interp_method='linear'):
         # differences are basically 1 - (pt - floor(pt))
         #   because: floor(pt) + 1 - pt = 1 + (floor(pt) - pt) = 1 - (pt - floor(pt))
         loc1_float = [tf.cast(d, 'float32') for d in loc1]
-        diff_loc1 = [loc1_float[d] - loc[d] for d in range(ndims)]
+        diff_loc1 = [loc1_float[d] - loc[...,d] for d in range(ndims)]
         diff_loc0 = [1 - d for d in diff_loc1]
         weights_loc = [diff_loc1, diff_loc0] # note reverse ordering since weights are inverse of diff.
 
@@ -85,16 +90,19 @@ def interpn(vol, loc, interp_method='linear'):
         # e.g. [0, 0] means this "first" corner in a 2-D "cube"
         cube_pts = list(itertools.product([0, 1], repeat=ndims))
         wtvol_values = [None] * len(cube_pts)
-        for ci, c in cube_pts: 
+        
+        for ci, c in enumerate(cube_pts):
+            
             # get nd values
-            indices = tf.stack([locs[c[d]] for d in range(ndims)], axis=ndims + 1)
+            indices = tf.stack([locs[c[d]][d] for d in range(ndims)], axis=-1)
             vol_val = tf.gather_nd(vol, indices)
 
             # get the weight of this cube_pt based on the distance
             # if c[d] is 0 --> want weight = 1 - (pt - floor[pt]) = diff_loc1
             # if c[d] is 1 --> want weight = pt - floor[pt] = diff_loc0
-            prod = tf.reduce_prod([weights_loc[c[d]] for d in range(ndims)])
-            wt = tf.expand_dims(prod, 1)
+            wlm = tf.stack([weights_loc[c[d]][d] for d in range(ndims)], axis=0)
+            wt = tf.reduce_prod(wlm, axis=0)
+            wt = K.expand_dims(wt, -1)
             
             # compute final weighted value for each cube corner
             wtvol_values[ci] = wt * vol_val
@@ -103,24 +111,55 @@ def interpn(vol, loc, interp_method='linear'):
         
     else:
         assert interp_method == 'nearest'
-        roundloc = [tf.cast(tf.round(d), 'int32') for d in loc]
+        roundloc = tf.cast(tf.round(loc), 'int32')
 
         # clip values
-        max_loc = [tf.cast(d - 1, 'int32') for d in volsize]
-        roundloc = [tf.clip_by_value(roundloc[d], 0, max_loc[d]) for d in range(ndims)]
+        max_loc = [tf.cast(d - 1, 'int32') for d in new_volshape]
+        roundloc = [tf.clip_by_value(roundloc[...,d], 0, max_loc[d]) for d in range(ndims)]
+        roundloc = tf.stack(roundloc, axis=-1)
 
         # get values
         interp_vol = tf.gather_nd(vol, roundloc) 
 
-    return tf.reshape(interp_vol, tf.shape(loc[0]))
+    return tf.reshape(interp_vol, tf.shape(loc)[:-1])
 
 
-def volsize_to_ndgrid(volsize, **kwargs):
+def transform(vol, loc_shift, interp_method='linear', indexing='ij'):
+    """
+    transform N-D volumes (features) given shifts at each location
+
+    Parameters:
+        vol: volume with size vol_shape or [*vol_shape, nb_features]
+        loc_shift: shift volume [*new_vol_shape, N]
+        interp_method (default:'linear'): 'linear', 'nearest'
+        indexing (default: 'ij'): 'ij' (matrix) or 'xy' (cartesian).
+            In general, prefer to leave this 'ij'
+    
+    Return:
+        new interpolated volumes in the same size as loc_shift[0]
+    """
+
+    # parse shapes
+    volshape = loc_shift.shape[:-1].as_list()
+    ndims = len(volshape)
+    if loc_shift.shape[:-1] != vol.shape[:ndims]:
+        raise Exception('Shift shape should match vol shape. '
+                        'Got: ' + loc_shift.shape[:-1] + ' and ' + vol.shape[:ndims])
+
+    # location should be mesh and delta
+    mesh = volshape_to_meshgrid(volshape, indexing=indexing)  # volume mesh
+    loc = [tf.cast(mesh[d], 'float32') + loc_shift[..., d] for d in range(ndims)]
+
+    # test single
+    return interpn(vol, loc, interp_method=interp_method)
+
+
+def volshape_to_ndgrid(volshape, **kwargs):
     """
     compute Tensor ndgrid from a volume size
 
     Parameters:
-        volsize: the volume size
+        volshape: the volume size
         **args: "name" (optional)
 
     Returns:
@@ -128,34 +167,37 @@ def volsize_to_ndgrid(volsize, **kwargs):
 
     See Also:
         ndgrid
-    
-    -----------------------------------------
-    Old (manual) implementation:
-
-    grid = [None] * len(vol_size)
-    for di, d in enumerate(vol_size):
-        # create a linspace in d dimension
-        # todo: change to range.
-        linvec = tf.range(0, d)
-
-        # reshape it to the d'th dimension
-        reshape_shape = [1] * len(vol_size)
-        reshape_shape[di] = d
-        linvec_reshape = tf.reshape(linvec, reshape_shape)
-
-        # tile along all the other dimensions
-        tile_shape = vol_size.copy()
-        tile_shape[di] = 1
-        grid[di] = tf.tile(linvec_reshape, tile_shape)
-
-    return tuple(grid)
     """
-    isint = [isinstance(d, int) for d in volsize]
+    
+    isint = [float(d).is_integer() for d in volshape]
     if not all(isint):
-        raise ValueError("volsize needs to be a list of integers")
+        raise ValueError("volshape needs to be a list of integers")
 
-    linvec = [tf.range(0, d) for d in volsize]
+    linvec = [tf.range(0, d) for d in volshape]
     return ndgrid(*linvec, **kwargs)
+
+
+def volshape_to_meshgrid(volshape, **kwargs):
+    """
+    compute Tensor meshgrid from a volume size
+
+    Parameters:
+        volshape: the volume size
+        **args: "name" (optional)
+
+    Returns:
+        A list of Tensors
+
+    See Also:
+        tf.meshgrid, ndgrid, volshape_to_ndgrid
+    """
+    
+    isint = [float(d).is_integer() for d in volshape]
+    if not all(isint):
+        raise ValueError("volshape needs to be a list of integers")
+
+    linvec = [tf.range(0, d) for d in volshape]
+    return tf.meshgrid(*linvec, **kwargs)
 
 
 def ndgrid(*args, **kwargs):
@@ -171,7 +213,7 @@ def ndgrid(*args, **kwargs):
         A list of Tensors
     
     """
-    return tf.meshgrid(*args, 'indexing', 'ij', **kwargs)
+    return tf.meshgrid(*args, indexing='ij', **kwargs)
 
 
 def flatten(v):
@@ -827,7 +869,7 @@ def _quilt(patches, patch_size, grid_size, patch_stride, verbose=False, **kwargs
     return quilted_vol
 
 
-# TO MOVE
+# TO MOVE (numpy softmax)
 def softmax(x, axis):
     """
     softmax of a numpy array along a given dimension
