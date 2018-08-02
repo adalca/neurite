@@ -121,7 +121,8 @@ def interpn(vol, loc, interp_method='linear'):
         # get values
         interp_vol = tf.gather_nd(vol, roundloc) 
 
-    return tf.reshape(interp_vol, tf.shape(loc)[:-1])
+    # print('interp_vol:', interp_vol)
+    return interp_vol # tf.reshape(interp_vol, loc.shape[:-1] + [vol.shape[-1]])
 
 
 def transform(vol, loc_shift, interp_method='linear', indexing='ij'):
@@ -448,6 +449,7 @@ def mod_submodel(orig_model,
 def reset_weights(model, session=None):
     """
     reset weights of model with the appropriate initializer.
+    Note: only uses "kernel_initializer" and "bias_initializer"
     does not close session.
 
     Reference:
@@ -462,8 +464,17 @@ def reset_weights(model, session=None):
         session = K.get_session()
 
     for layer in model.layers: 
+        reset = False
         if hasattr(layer, 'kernel_initializer'):
             layer.kernel.initializer.run(session=session)
+            reset = True
+        
+        if hasattr(layer, 'bias_initializer'):
+            layer.bias.initializer.run(session=session)
+            reset = True
+        
+        if not reset:
+            print('skipping layer %s', layer.name)
 
 
 def copy_model_weights(src_model, dst_model):
@@ -475,10 +486,13 @@ def copy_model_weights(src_model, dst_model):
         dst_model: destination keras model to copy to
     """
 
-    for idx in range(len(dst_model.layers)):
-        layer = dst_model.layers[idx]
-        wts = src_model.layers[idx].get_weights()
-        layer.set_weights(wts)
+    for layer in tqdm(dst_model.layers):
+        try:
+            wts = src_model.get_layer(layer.name).get_weights()
+            layer.set_weights(wts)
+        except:
+            print('Could not copy weights of %s' % layer.name)
+            continue
 
 
 def robust_multi_gpu_model(model, gpus, verbose=True):
@@ -498,7 +512,7 @@ def robust_multi_gpu_model(model, gpus, verbose=True):
 
     islist = isinstance(gpus, (list, tuple)) 
     if (islist and len(gpus) > 1) or (not islist and gpus > 1):
-        count = gpus if not islist else len(islist)
+        count = gpus if not islist else len(gpus)
         print("Returning multi-gpu (%d) model" % count)
         return keras.utils.multi_gpu_model(model, gpus)
 
