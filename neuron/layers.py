@@ -10,6 +10,70 @@ import tensorflow as tf
 from .utils import transform  # for dense spatial transformer
 
 
+class OdeInt(Layer):
+
+    def __init__(self, indexing='ij', int_type='ode', int_steps=7, **kwargs):
+        """
+        """
+
+        assert indexing in ['ij', 'xy'], "indexing has to be 'ij' (matrix) or 'xy' (cartesian)"
+        self.indexing = indexing
+        self.int_type = int_type
+        self.int_steps = int_steps
+        super(self.__class__, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        # confirm built
+        self.built = True
+
+    def call(self, inputs):
+        """
+        Parameters
+            inputs: list with two entries
+            inputs[0] = image to move [None, *volshape]
+            imputs[1] = velocity field [None, *volshape]
+        """
+        
+        # prepare location shift
+        loc_shift = inputs
+        if self.indexing == 'xy':  # shift the first two dimensions
+            loc_shift_split = tf.split(loc_shift, loc_shift.shape[-1], axis=-1)
+            loc_shift_lst = [loc_shift_split[1], loc_shift_split[0], *loc_shift_split[2:]]
+            loc_shift = tf.concat(loc_shift_lst, -1)
+
+        # map transform across batch
+        return tf.map_fn(self._single_int, loc_shift, dtype=tf.float32)
+
+    def _single_int(self, inputs):
+
+        # TODO: can force a fit through a bunch of volume inputs! 
+        # just get different time points...
+
+        vel = inputs
+        if self.int_type == 'ode':
+            return self._int_ode(vel)
+
+        else:
+            assert self.int_type == 'layer'
+            return self._layer_based_integration(vel, self.int_steps)
+
+    def _int_ode(self, vel):
+        fn = lambda disp, _: transform(vel, disp)  # time-independent velocity field.
+        disp0 = vel*0  # this hsould be 0? but at 0 it's tricky, 
+        time_pt = K.variable([0, 1])
+        # [1:] because only caring about one time point here...
+        # method='dopri5', options={'max_num_steps':10}
+        return tf.contrib.integrate.odeint(fn, disp0, time_pt, rtol=1e-3, atol=1e-3)[1,:] 
+
+    def _layer_based_integration(self, vel, nb_steps):
+        
+        # This is a test to see how it compares with odeint. 
+        vel = vel/(2**nb_steps)
+        for _ in range(nb_steps):
+            vel1 = transform(vel, vel)
+            vel = vel + vel1
+        return vel
+
 class DenseSpatialTransformer(Layer):
     """
     N-D Spatial Transformer Tensorflow / Keras Layer
@@ -85,8 +149,7 @@ class DenseSpatialTransformer(Layer):
         return tf.map_fn(self._single_transform, [inputs[0], loc_shift], dtype=tf.float32)
 
     def _single_transform(self, inputs):
-        trf = transform(inputs[0], inputs[1], interp_method=self.interp_method)
-        return K.expand_dims(trf, -1)
+        return transform(inputs[0], inputs[1], interp_method=self.interp_method)
 
 
 class LocalBiasLayer(Layer):
