@@ -1,5 +1,5 @@
 # neuron
-neural networks for brain image analysis
+A Neural networks toolbox for anatomical  image analysis
 
 This toolbox is **currently in development**, with the goal providing a set of tools with infrastructure for medical image analysis with neural network. While the tools are somewhat general, `neuron` will generally run with `keras` on top of `tensorflow`.
 
