@@ -16,6 +16,51 @@ from keras.models import Model
 import keras.backend as K
 from keras.constraints import maxnorm
 
+
+def dilation_net(nb_features,
+                 input_shape, # input layer shape, vector of size ndims + 1(nb_channels)
+                 nb_levels,
+                 conv_size,
+                 nb_labels,
+                 name='dilation_net',
+                 prefix=None,
+                 feat_mult=1,
+                 pool_size=2,
+                 use_logp=True,
+                 padding='same',
+                 dilation_rate_mult=1,
+                 activation='elu',
+                 use_residuals=False,
+                 final_pred_activation='softmax',
+                 nb_conv_per_level=1,
+                 add_prior_layer=False,
+                 add_prior_layer_reg=0,
+                 layer_nb_feats=None,
+                 batch_norm=None):
+
+    return unet(nb_features,
+         input_shape, # input layer shape, vector of size ndims + 1(nb_channels)
+         nb_levels,
+         conv_size,
+         nb_labels,
+         name='unet',
+         prefix=None,
+         feat_mult=1,
+         pool_size=2,
+         use_logp=True,
+         padding='same',
+         activation='elu',
+         use_residuals=False,
+         dilation_rate_mult=dilation_rate_mult,
+         final_pred_activation='softmax',
+         nb_conv_per_level=1,
+         add_prior_layer=False,
+         add_prior_layer_reg=0,
+         layer_nb_feats=None,
+         batch_norm=None)
+
+
+
 def unet(nb_features,
          input_shape, # input layer shape, vector of size ndims + 1(nb_channels)
          nb_levels,
@@ -27,6 +72,7 @@ def unet(nb_features,
          pool_size=2,
          use_logp=True,
          padding='same',
+         dilation_rate_mult=1,
          activation='elu',
          use_residuals=False,
          final_pred_activation='softmax',
@@ -64,6 +110,7 @@ def unet(nb_features,
                          feat_mult=feat_mult,
                          pool_size=pool_size,
                          padding=padding,
+                         dilation_rate_mult=dilation_rate_mult,
                          activation=activation,
                          use_residuals=use_residuals,
                          nb_conv_per_level=nb_conv_per_level,
@@ -84,9 +131,10 @@ def unet(nb_features,
                          pool_size=pool_size,
                          use_skip_connections=1,
                          padding=padding,
+                         dilation_rate_mult=dilation_rate_mult,
                          activation=activation,
                          use_residuals=use_residuals,
-                         final_pred_activation='linear',
+                         final_pred_activation='linear' if add_prior_layer else final_pred_activation,
                          nb_conv_per_level=nb_conv_per_level,
                          batch_norm=batch_norm,
                          layer_nb_feats=lnf,
@@ -233,6 +281,7 @@ def conv_enc(nb_features,
              prefix=None,
              feat_mult=1,
              pool_size=2,
+             dilation_rate_mult=1,
              padding='same',
              activation='elu',
              layer_nb_feats=None,
@@ -269,7 +318,8 @@ def conv_enc(nb_features,
     lfidx = 0
     for level in range(nb_levels):
         lvl_first_tensor = last_tensor
-        nb_lvl_feats = nb_features*(feat_mult**level)
+        nb_lvl_feats = nb_features*np.round(feat_mult**level).astype(int)
+        conv_kwargs['dilation_rate'] = dilation_rate_mult**level
 
         for conv in range(nb_conv_per_level):
             if layer_nb_feats is not None:
@@ -326,6 +376,7 @@ def conv_dec(nb_features,
              pool_size=2,
              use_skip_connections=False,
              padding='same',
+             dilation_rate_mult=1,
              activation='elu',
              use_residuals=False,
              final_pred_activation='softmax',
@@ -378,7 +429,8 @@ def conv_dec(nb_features,
     #    (approx via up + conv + ReLu) + merge + conv + ReLu + conv + ReLu
     lfidx = 0
     for level in range(nb_levels - 1):
-        nb_lvl_feats = nb_features*(feat_mult**(nb_levels-2-level))
+        nb_lvl_feats = nb_features*np.round(feat_mult**(nb_levels-2-level)).astype(int)
+        conv_kwargs['dilation_rate'] = dilation_rate_mult**(nb_levels-2-level)
 
         # upsample matching the max pooling layers size
         name = '%s_up_%d' % (prefix, nb_levels + level)
@@ -581,7 +633,7 @@ def single_ae(enc_size,
         assert len(enc_size) == len(input_shape), \
             "encoding size does not match input shape %d %d" % (len(enc_size), len(input_shape))
 
-        if list(enc_size)[:-1] != list(input_shape)[:-1]:
+        if list(enc_size)[:-1] != list(input_shape)[:-1] and all([f is not None for f in input_shape]): 
 
             assert len(enc_size) - 1 == 2, "Sorry, I have not yet implemented non-2D resizing..."
             name = '%s_ae_mu_enc_conv' % (prefix)
@@ -677,7 +729,7 @@ def single_ae(enc_size,
 
     else:
 
-        if list(enc_size)[:-1] != list(input_shape)[:-1]:
+        if list(enc_size)[:-1] != list(input_shape)[:-1] and all([f is not None for f in input_shape]):
             name = '%s_ae_mu_dec' % (prefix)
             resize_fn = lambda x: tf.image.resize_bilinear(x, input_shape[:-1])
             last_tensor = KL.Lambda(resize_fn, name=name)(last_tensor)
@@ -753,7 +805,7 @@ def design_dnn(nb_features, input_shape, nb_levels, conv_size, nb_labels,
                 last_tensor = enc_tensors[name]
 
             name = '%s_conv_%d_%d' % (prefix, level, conv)
-            nb_lvl_feats = nb_features*(feat_mult**level)
+            nb_lvl_feats = nb_features*np.round(feat_mult**level).astype(int)
             enc_tensors[name] = convL(nb_lvl_feats, conv_size, **conv_kwargs, name=name)(last_tensor)
             last_tensor = enc_tensors[name]
 
