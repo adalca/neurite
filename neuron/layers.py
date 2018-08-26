@@ -7,18 +7,22 @@ from keras.layers import Layer
 import tensorflow as tf
 
 # local
-from .utils import transform  # for dense spatial transformer
+from .utils import transform, integrate_vec, affine_to_shift
 
 
-class OdeInt(Layer):
+class VecInt(Layer):
 
-    def __init__(self, indexing='ij', int_type='ode', int_steps=7, **kwargs):
+    def __init__(self, indexing='ij', method='ode', int_steps=7, **kwargs):
         """
+        Vector Integration Layer
+        
+        Parameters:
+            method can be any of the methods in neuron.utils.integrate_vec
         """
 
         assert indexing in ['ij', 'xy'], "indexing has to be 'ij' (matrix) or 'xy' (cartesian)"
         self.indexing = indexing
-        self.int_type = int_type
+        self.method = method
         self.int_steps = int_steps
         super(self.__class__, self).__init__(**kwargs)
 
@@ -27,12 +31,6 @@ class OdeInt(Layer):
         self.built = True
 
     def call(self, inputs):
-        """
-        Parameters
-            inputs: list with two entries
-            inputs[0] = image to move [None, *volshape]
-            imputs[1] = velocity field [None, *volshape]
-        """
         
         # prepare location shift
         loc_shift = inputs
@@ -46,40 +44,26 @@ class OdeInt(Layer):
 
     def _single_int(self, inputs):
 
-        # TODO: can force a fit through a bunch of volume inputs! 
-        # just get different time points...
-
         vel = inputs
-        if self.int_type == 'ode':
-            return self._int_ode(vel)
+        return integrate_vec(vel, method=self.method,
+                      nb_steps=self.int_steps,
+                      ode_args={'rtol':1e-6, 'atol':1e-12},
+                      time_pt=1)
 
-        else:
-            assert self.int_type == 'layer'
-            return self._layer_based_integration(vel, self.int_steps)
 
-    def _int_ode(self, vel):
-        fn = lambda disp, _: transform(vel, disp)  # time-independent velocity field.
-        disp0 = vel*0  # this hsould be 0? but at 0 it's tricky, 
-        time_pt = K.variable([0, 1])
-        # [1:] because only caring about one time point here...
-        # method='dopri5', options={'max_num_steps':10}
-        return tf.contrib.integrate.odeint(fn, disp0, time_pt, rtol=1e-3, atol=1e-3)[1,:] 
-
-    def _layer_based_integration(self, vel, nb_steps):
-        
-        # This is a test to see how it compares with odeint. 
-        vel = vel/(2**nb_steps)
-        for _ in range(nb_steps):
-            vel1 = transform(vel, vel)
-            vel = vel + vel1
-        return vel
-
-class DenseSpatialTransformer(Layer):
+class SpatialTransformer(Layer):
     """
     N-D Spatial Transformer Tensorflow / Keras Layer
 
+    The Layer can handle both affine and dense transforms. 
+    Both transforms are meant to give a 'shift' from the current position.
+    Therefore, a dense transform gives displacements (not absolute locations) at each voxel,
+    and an affine transform gives the *difference* of the affine matrix from 
+    the identity matrix.
+
+
     Originally, this code was based on voxelmorph code, which 
-    was in turn written with the help of STN code 
+    was in turn transformed to be dense with the help of (affine) STN code 
     via https://github.com/kevinzakka/spatial-transformer-network
 
     Since then, we've re-written the code to be generalized to any 
@@ -104,23 +88,47 @@ class DenseSpatialTransformer(Layer):
 
 
     def build(self, input_shape):
+        """
+        input_shape should be a list for two inputs:
+        input1: image.
+        input2: transform Tensor
+            if affine:
+                should be a N+1 x N+1 matrix
+                *or* a N*N+1 tensor (which will be reshape to N x (N+1) and an identity row added)
+            if not affine:
+                should be a *vol_shape x N
+        """
+
         if len(input_shape) > 2:
             raise Exception('Spatial Transformer must be called on a list of length 2.'
-                            'First argument is the image, second is the offset field.')
+                            'First argument is the image, second is the transform.')
 
         # set up number of dimensions
-        self.ndims = len(input_shape[1]) - 2
+        self.ndims = len(input_shape[0]) - 2
+        vol_shape = input_shape[0][1:-1]
+        trf_shape = input_shape[1][1:]
 
-        if input_shape[1][-1] != self.ndims:
-            raise Exception('Offset flow field size expected: %d, found: %d' 
-                            % (self.ndims, input_shape[1][-1]))
+        # the transform is an affine iff:
+        # it's a 1D Tensor [dense transforms need to be at least ndims + 1]
+        # it's a 2D Tensor and shape == [N+1, N+1]. 
+        #   [dense with N=1, which is the only one that could have a transform shape of 2, would be of size Mx1]
+        self.is_affine = len(trf_shape) == 1 or \
+                         (len(trf_shape) == 2 and all([f == self.ndims for f in trf_shape]))
 
-        if self.ndims not in [2,3]:
-            raise Exception('Implementation not available for %dD yet' % self.ndims)
+        # check sizes
+        if self.is_affine and len(trf_shape) == 1:
+            ex = self.ndims * (self.ndims + 1)
+            if trf_shape[0] != ex:
+                raise Exception('Expected flattened affine of len %d but got %d'
+                                % (ex, trf_shape[0]))
 
-        if input_shape[0][1:-1] != input_shape[1][1:-1]:
-            raise Exception('Arguments should have the same inner dimensions.'
-                            'Got: ' + str(input_shape[0]) + ' and ' + str(input_shape[1]))
+        if not self.is_affine:
+            if trf_shape[-1] != self.ndims:
+                raise Exception('Offset flow field size expected: %d, found: %d' 
+                                % (self.ndims, trf_shape[-1]))
+            if not trf_shape[:-1] == vol_shape:
+                raise Exception('flow field size expected' + str(vol_shape) + \
+                                'Found:' + str(trf_shape[:-1]))
 
         # confirm built
         self.built = True
@@ -134,19 +142,35 @@ class DenseSpatialTransformer(Layer):
 
         # check shapes
         assert len(inputs) == 2, "inputs has to be len 2, found: %d" % len(inputs)
-        if inputs[1].shape[1:-1] != inputs[0].shape[1:-1]:
-            raise Exception('Shift shape should match vol shape. '
-                            'Got: ' + inputs[1].shape[1:-1] + ' and ' + inputs[0].shape[1:-1])
+        vol = inputs[0]
+        trf = inputs[1]
+
+        if not self.is_affine:
+            if not all([trf.shape[1:-1][f] != vol.shape[1:-1][f] for f in range(self.ndims)]):
+                raise Exception('Shift shape should match vol shape. '
+                                'Got: ' + str(trf.shape[1:-1]) + ' and ' + str(vol.shape[1:-1]))
+
+        # go from affine
+        if self.is_affine:
+            trf = tf.map_fn(lambda x: self._single_aff_to_shift(x, vol.shape[1:-1]), trf, dtype=tf.float32)
 
         # prepare location shift
-        loc_shift = inputs[1]
         if self.indexing == 'xy':  # shift the first two dimensions
-            loc_shift_split = tf.split(loc_shift, loc_shift.shape[-1], axis=-1)
-            loc_shift_lst = [loc_shift_split[1], loc_shift_split[0], *loc_shift_split[2:]]
-            loc_shift = tf.concat(loc_shift_lst, -1)
+            trf_split = tf.split(trf, trf.shape[-1], axis=-1)
+            trf_lst = [trf_split[1], trf_split[0], *trf_split[2:]]
+            trf = tf.concat(trf_lst, -1)
 
         # map transform across batch
-        return tf.map_fn(self._single_transform, [inputs[0], loc_shift], dtype=tf.float32)
+        return tf.map_fn(self._single_transform, [inputs[0], trf], dtype=tf.float32)
+
+    def _single_aff_to_shift(self, trf, volshape):
+        if len(trf.shape) == 1:  # go from vector to matrix
+            trf = tf.reshape(trf, [self.ndims, self.ndims + 1])
+            zero_one = tf.concat([tf.zeros((1, self.ndims)), tf.ones((1,1))], axis=1)
+            trf = tf.concat([trf, zero_one], axis=0)
+        # note this is unnecessarily extra graph since at every batch_entry location we have a tf.eye graph
+        trf += tf.eye(self.ndims+1)  # add identity, hence affine is a shift from identitiy
+        return affine_to_shift(trf, volshape, shift_center=True)
 
     def _single_transform(self, inputs):
         return transform(inputs[0], inputs[1], interp_method=self.interp_method)
@@ -155,6 +179,8 @@ class DenseSpatialTransformer(Layer):
 class LocalBiasLayer(Layer):
     """ 
     local bias layer
+    
+    A layer with an additive bias at each volume element
     """
 
     def __init__(self, my_initializer='RandomNormal', **kwargs):
@@ -178,7 +204,7 @@ class LocalBiasLayer(Layer):
 
 class LocalLinearLayer(Layer):
     """ 
-    local linear bias layer
+    local linear layer
     """
 
     def __init__(self, my_initializer='RandomNormal', **kwargs):
@@ -206,33 +232,33 @@ class LocalLinearLayer(Layer):
 
 class LocallyConnected3D(Layer):
     """
-    code based on LocallyConnected2D from keras layers:
+    code based on LocallyConnected3D from keras layers:
     https://github.com/keras-team/keras/blob/master/keras/layers/local.py
 
-    # TODO: Comment better. Right now we have the comments from the 2D version from keras.
+    # TODO: Comment better. Right now we have the comments from the 3D version from keras.
 
-    Locally-connected layer for 2D inputs.
-    The `LocallyConnected2D` layer works similarly
-    to the `Conv2D` layer, except that weights are unshared,
+    Locally-connected layer for 3D inputs.
+    The `LocallyConnected3D` layer works similarly
+    to the `Conv3D` layer, except that weights are unshared,
     that is, a different set of filters is applied at each
     different patch of the input.
     # Examples
     ```python
-        # apply a 3x3 unshared weights convolution with 64 output filters on a 32x32 image
+        # apply a 3x3x3 unshared weights convolution with 64 output filters on a 32x32x32 image
         # with `data_format="channels_last"`:
         model = Sequential()
-        model.add(LocallyConnected2D(64, (3, 3), input_shape=(32, 32, 3)))
-        # now model.output_shape == (None, 30, 30, 64)
-        # notice that this layer will consume (30*30)*(3*3*3*64) + (30*30)*64 parameters
-        # add a 3x3 unshared weights convolution on top, with 32 output filters:
-        model.add(LocallyConnected2D(32, (3, 3)))
-        # now model.output_shape == (None, 28, 28, 32)
+        model.add(LocallyConnected3D(64, (3, 3, 3), input_shape=(32, 32, 32, 1)))
+        # now model.output_shape == (None, 30, 30, 30, 64)
+        # notice that this layer will consume (30*30*30)*(3*3*3*1*64) + (30*30*30)*64 parameters
+        # add a 3x3x3 unshared weights convolution on top, with 32 output filters:
+        model.add(LocallyConnected3D(32, (3, 3, 3)))
+        # now model.output_shape == (None, 28, 28, 28, 32)
     ```
     # Arguments
         filters: Integer, the dimensionality of the output space
             (i.e. the number of output filters in the convolution).
         kernel_size: An integer or tuple/list of 2 integers, specifying the
-            width and height of the 2D convolution window.
+            width and height of the 3D convolution window.
             Can be a single integer to specify the same value for
             all spatial dimensions.
         strides: An integer or tuple/list of 2 integers,
@@ -429,7 +455,7 @@ class LocallyConnected3D(Layer):
         return dict(list(base_config.items()) + list(config.items()))
 
     def local_conv3d(self, inputs, kernel, kernel_size, strides, output_shape, data_format=None):
-        """Apply 2D conv with un-shared weights.
+        """Apply 3D conv with un-shared weights.
         # Arguments
             inputs: 4D tensor with shape:
                     (batch_size, filters, new_rows, new_cols)
@@ -440,7 +466,7 @@ class LocallyConnected3D(Layer):
             kernel: the unshared weight for convolution,
                     with shape (output_items, feature_dim, filters)
             kernel_size: a tuple of 2 integers, specifying the
-                        width and height of the 2D convolution window.
+                        width and height of the 3D convolution window.
             strides: a tuple of 2 integers, specifying the strides
                     of the convolution along the width and height.
             output_shape: a tuple with (output_row, output_col)
@@ -493,3 +519,4 @@ class LocallyConnected3D(Layer):
         else:
             output = K.permute_dimensions(output, (3, 0, 1, 2, 4))
         return output
+
