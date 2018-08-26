@@ -715,7 +715,7 @@ def robust_multi_gpu_model(model, gpus, verbose=True):
     if (islist and len(gpus) > 1) or (not islist and gpus > 1):
         count = gpus if not islist else len(gpus)
         print("Returning multi-gpu (%d) model" % count)
-        return keras.utils.multi_gpu_model(model, gpus)
+        return keras.utils.multi_gpu_model(model, count)
 
     else:
         print("Returning keras model back (single gpu found)")
