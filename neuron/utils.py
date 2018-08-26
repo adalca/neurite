@@ -1,5 +1,7 @@
 """
 tensorflow/keras utilities for the neuron project
+
+Contact: adalca [at] csail [dot] mit [dot] edu
 """
 
 # python imports
@@ -23,7 +25,6 @@ import keras.backend as K
 import tensorflow as tf
 reload(pl)
 
-
 def interpn(vol, loc, interp_method='linear'):
     """
     N-D gridded interpolation in tensorflow
@@ -42,7 +43,8 @@ def interpn(vol, loc, interp_method='linear'):
         new interpolated volume of the same size as the entries in loc
 
     TODO:
-        enable optional orig_grid
+        enable optional orig_grid - the original grid points.
+        check out tf.contrib.resampler, only seems to work for 2D data
     """
 
     if isinstance(loc, (list, tuple)):
@@ -50,17 +52,17 @@ def interpn(vol, loc, interp_method='linear'):
 
     # extract and check sizes and dimensions
     new_volshape = loc.shape[:-1]
-    ndims = len(new_volshape)
+    nb_dims = len(new_volshape)
 
-    if ndims != loc.shape[-1]:
+    if nb_dims != loc.shape[-1]:
         raise Exception("Number of loc Tensors %d does not match volume dimension %d"
-                        % (loc.shape[-1], ndims))
+                        % (loc.shape[-1], nb_dims))
 
-    if ndims > len(vol.shape):
+    if nb_dims > len(vol.shape):
         raise Exception("Loc dimension %d does not match volume dimension %d"
-                        % (ndims, len(vol.shape)))
+                        % (nb_dims, len(vol.shape)))
 
-    if len(vol.shape) == ndims:
+    if len(vol.shape) == nb_dims:
         vol = K.expand_dims(vol, -1)
 
     # flatten and float location Tensors
@@ -72,7 +74,7 @@ def interpn(vol, loc, interp_method='linear'):
 
         # clip values
         max_loc = [tf.cast(d - 1, 'int32') for d in new_volshape]
-        loc0 = [tf.clip_by_value(loc0[...,d], 0, max_loc[d]) for d in range(ndims)]
+        loc0 = [tf.clip_by_value(loc0[...,d], 0, max_loc[d]) for d in range(nb_dims)]
 
         # get other end of point cube
         loc1 = [d + 1 for d in loc0]
@@ -82,25 +84,25 @@ def interpn(vol, loc, interp_method='linear'):
         # differences are basically 1 - (pt - floor(pt))
         #   because: floor(pt) + 1 - pt = 1 + (floor(pt) - pt) = 1 - (pt - floor(pt))
         loc1_float = [tf.cast(d, 'float32') for d in loc1]
-        diff_loc1 = [loc1_float[d] - loc[...,d] for d in range(ndims)]
+        diff_loc1 = [loc1_float[d] - loc[...,d] for d in range(nb_dims)]
         diff_loc0 = [1 - d for d in diff_loc1]
         weights_loc = [diff_loc1, diff_loc0] # note reverse ordering since weights are inverse of diff.
 
         # go through all the cube corners, indexed by a ND binary vector 
         # e.g. [0, 0] means this "first" corner in a 2-D "cube"
-        cube_pts = list(itertools.product([0, 1], repeat=ndims))
+        cube_pts = list(itertools.product([0, 1], repeat=nb_dims))
         wtvol_values = [None] * len(cube_pts)
         
         for ci, c in enumerate(cube_pts):
             
             # get nd values
-            indices = tf.stack([locs[c[d]][d] for d in range(ndims)], axis=-1)
+            indices = tf.stack([locs[c[d]][d] for d in range(nb_dims)], axis=-1)
             vol_val = tf.gather_nd(vol, indices)
 
             # get the weight of this cube_pt based on the distance
             # if c[d] is 0 --> want weight = 1 - (pt - floor[pt]) = diff_loc1
             # if c[d] is 1 --> want weight = pt - floor[pt] = diff_loc0
-            wlm = tf.stack([weights_loc[c[d]][d] for d in range(ndims)], axis=0)
+            wlm = tf.stack([weights_loc[c[d]][d] for d in range(nb_dims)], axis=0)
             wt = tf.reduce_prod(wlm, axis=0)
             wt = K.expand_dims(wt, -1)
             
@@ -115,7 +117,7 @@ def interpn(vol, loc, interp_method='linear'):
 
         # clip values
         max_loc = [tf.cast(d - 1, 'int32') for d in new_volshape]
-        roundloc = [tf.clip_by_value(roundloc[...,d], 0, max_loc[d]) for d in range(ndims)]
+        roundloc = [tf.clip_by_value(roundloc[...,d], 0, max_loc[d]) for d in range(nb_dims)]
         roundloc = tf.stack(roundloc, axis=-1)
 
         # get values
@@ -125,9 +127,65 @@ def interpn(vol, loc, interp_method='linear'):
     return interp_vol # tf.reshape(interp_vol, loc.shape[:-1] + [vol.shape[-1]])
 
 
+def affine_to_shift(affine_matrix, volshape, shift_center=False, indexing='ij'):
+    """
+    transform an affine matrix to a dense location shift tensor in tensorflow
+
+    Algorithm:
+        - get grid and shift grid to be centered at the center of the image (optionally)
+        - apply affine matrix to each index.
+        - subtract grid
+
+    Parameters:
+        affine_matrix: ND+1 x ND+1 matrix (Tensor)
+        volshape: 1xN Nd Tensor of the size of the volume.
+        shift_center (optional)
+
+    Returns:
+        ND
+    """
+
+    if isinstance(volshape, (tf.Dimension, tf.TensorShape)):
+        volshape = volshape.as_list()
+    
+    if affine_matrix.dtype != 'float32':
+        affine_matrix = tf.cast(affine_matrix, 'float32')
+
+    nb_dims = len(volshape)
+    if not all([f == nb_dims + 1 for f in affine_matrix.shape]):
+        raise Exception('Affine matrix shape should match %d+1 x %d+1.' % (nb_dims, nb_dims) + \
+                        'Got: ' + str(volshape))
+
+    # list of volume ndgrid
+    # N-long list, each entry of shape volshape
+    mesh = volshape_to_meshgrid(volshape, indexing=indexing)  
+    mesh = [tf.cast(f, 'float32') for f in mesh]
+    
+    if shift_center:
+        mesh = [mesh[f] - (volshape[f]-1)/2 for f in range(len(volshape))]
+
+    # add an all-ones entry and transform into a large matrix
+    flat_mesh = [flatten(f) for f in mesh]
+    flat_mesh.append(tf.ones(flat_mesh[0].shape, dtype='float32'))
+    mesh_matrix = tf.transpose(tf.stack(flat_mesh, axis=1))  # 4 x nb_voxels
+
+    # compute locations
+    loc_matrix = tf.matmul(affine_matrix, mesh_matrix)  # N+1 x nb_voxels
+    loc_matrix = tf.transpose(loc_matrix[:nb_dims, :])  # nb_voxels x N
+    loc = tf.reshape(loc_matrix, list(volshape) + [nb_dims])  # *volshape x N
+    # loc = [loc[..., f] for f in range(nb_dims)]  # N-long list, each entry of shape volshape
+
+    # get shifts and return
+    return loc - tf.stack(mesh, axis=nb_dims)
+
+
 def transform(vol, loc_shift, interp_method='linear', indexing='ij'):
     """
-    transform N-D volumes (features) given shifts at each location
+    transform (interpolation N-D volumes (features) given shifts at each location in tensorflow
+
+    Essentially interpolates volume vol at locations determined by loc_shift. 
+    This is a spatial transform in the sense that at location [x] we now have the data from, 
+    [x + shift] so we've moved data.
 
     Parameters:
         vol: volume with size vol_shape or [*vol_shape, nb_features]
@@ -138,21 +196,130 @@ def transform(vol, loc_shift, interp_method='linear', indexing='ij'):
     
     Return:
         new interpolated volumes in the same size as loc_shift[0]
+    
+    Keyworks:
+        interpolation, sampler, resampler, linear, bilinear
     """
 
     # parse shapes
     volshape = loc_shift.shape[:-1].as_list()
-    ndims = len(volshape)
-    if loc_shift.shape[:-1] != vol.shape[:ndims]:
+    nb_dims = len(volshape)
+    if loc_shift.shape[:-1] != vol.shape[:nb_dims]:
         raise Exception('Shift shape should match vol shape. '
-                        'Got: ' + loc_shift.shape[:-1] + ' and ' + vol.shape[:ndims])
+                        'Got: ' + loc_shift.shape[:-1] + ' and ' + vol.shape[:nb_dims])
 
     # location should be mesh and delta
     mesh = volshape_to_meshgrid(volshape, indexing=indexing)  # volume mesh
-    loc = [tf.cast(mesh[d], 'float32') + loc_shift[..., d] for d in range(ndims)]
+    loc = [tf.cast(mesh[d], 'float32') + loc_shift[..., d] for d in range(nb_dims)]
 
     # test single
     return interpn(vol, loc, interp_method=interp_method)
+
+
+def integrate_vec(vec, time_dep=False, method='ss', **kwargs):
+    """
+    Integrate (stationary of time-dependent) vector field (N-D Tensor) in tensorflow
+    
+    Aside from directly using tensorflow's numerical integration odeint(), also implements 
+    "scaling and squaring", and quadrature. Note that the diff. equation given to odeint
+    is the one used in quadrature.   
+
+    Parameters:
+        vec: the Tensor field to integrate. 
+            If vol_size is the size of the intrinsic volume, and vol_ndim = len(vol_size),
+            then vector shape (vec_shape) should be 
+            [vol_size, vol_ndim] (if stationary)
+            [vol_size, vol_ndim, nb_time_steps] (if time dependent)
+        time_dep: bool whether vector is time dependent
+        method: 'scaling_and_squaring' or 'ss' or 'ode' or 'quadrature'
+        
+        if using 'scaling_and_squaring': currently only supports integrating to time point 1.
+            nb_steps: int number of steps. Note that this means the vec field gets broken
+            down to 2**nb_steps. so nb_steps of 0 means integral = vec.
+
+        if using 'ode':
+            out_time_pt (optional): a time point or list of time points at which to evaluate
+                Default: 1
+            init (optional): if using 'ode', the initialization method.
+                Currently only supporting 'zero'. Default: 'zero'
+            ode_args (optional): dictionary of all other parameters for 
+                tf.contrib.integrate.odeint()
+
+    Returns:
+        int_vec: integral of vector field.
+        Same shape as the input if method is 'scaling_and_squaring', 'ss', 'quadrature', 
+        or 'ode' with out_time_pt not a list. Will have shape [*vec_shape, len(out_time_pt)]
+        if method is 'ode' with out_time_pt being a list.
+
+    Todo:
+        quadrature for more than just intrinsically out_time_pt = 1
+    """
+
+    if method not in ['ss', 'scaling_and_squaring', 'ode', 'quadrature']:
+        raise ValueError("method has to be 'scaling_and_squaring' or 'ode'. found: %s" % method)
+
+    if method in ['ss', 'scaling_and_squaring']:
+        nb_steps = kwargs['nb_steps']
+        assert nb_steps >= 0, 'nb_steps should be >= 0, found: %d' % nb_steps
+
+        if time_dep:
+            svec = K.permute_dimensions(vec, [-1, *range(0, vec.shape[-1] - 1)])
+            assert 2**nb_steps == svec.shape[0], "2**nb_steps and vector shape don't match"
+
+            svec = svec/(2**nb_steps)
+            for _ in range(nb_steps):
+                svec = svec[0::2] + tf.map_fn(transform, svec[1::2,:], svec[0::2,:])
+
+            disp = svec[0, :]
+
+        else:
+            vec = vec/(2**nb_steps)
+            for _ in range(nb_steps):
+                vec += transform(vec, vec)
+            disp = vec
+
+    elif method == 'quadrature':
+        # TODO: could output more than a single timepoint!
+        nb_steps = kwargs['nb_steps']
+        assert nb_steps >= 1, 'nb_steps should be >= 1, found: %d' % nb_steps
+
+        vec = vec/nb_steps
+
+        if time_dep:
+            disp = vec[...,0]
+            for si in range(nb_steps-1):
+                disp += transform(vec[...,si+1], disp)
+        else:
+            disp = vec
+            for _ in range(nb_steps-1):
+                disp += transform(vec, disp)
+
+    else:
+        assert not time_dep, "odeint not implemented with time-dependent vector field"
+        fn = lambda disp, _: transform(vec, disp)  
+
+        # process time point.
+        out_time_pt = kwargs['out_time_pt'] if 'out_time_pt' in kwargs.keys() else 1
+        single_out_time_pt = not isinstance(out_time_pt, (list, tuple))
+        if single_out_time_pt: out_time_pt = [out_time_pt]
+        K_out_time_pt = K.variable([0, *out_time_pt])
+
+        # process initialization
+        if 'init' not in kwargs.keys() or kwargs['init'] == 'zero':
+            disp0 = vec*0
+        else:
+            raise ValueError('non-zero init for ode method not implemented')
+
+        # compute integration with tf.contrib.integrate.odeint
+        if 'ode_args' not in kwargs.keys(): kwargs['ode_args'] = {}
+        disp = tf.contrib.integrate.odeint(fn, disp0, K_out_time_pt, **kwargs['ode_args'])
+        disp = K.permute_dimensions(disp[1:len(out_time_pt)+1, :], [*range(1,len(disp.shape)), 0])
+
+        # return
+        if single_out_time_pt: 
+            disp = disp[...,0]
+
+    return disp
 
 
 def volshape_to_ndgrid(volshape, **kwargs):
@@ -231,6 +398,63 @@ def flatten(v):
     return tf.reshape(v, [-1])
 
 
+def gaussian_kernel(sigma, windowsize=None):
+    """
+    sigma will be a number of a list of numbers.
+
+    # some guidance from my MATLAB file 
+    https://github.com/adalca/mivt/blob/master/src/gaussFilt.m
+
+    Parameters:
+        sigma: scalar or list of scalars
+        windowsize (optional): scalar or list of scalars indicating the shape of the kernel
+    
+    Returns:
+        ND kernel the same dimensiosn as the number of sigmas.
+
+    Todo: could use MultivariateNormalDiag
+    """
+
+    if not isinstance(sigma, (list, tuple)):
+        sigma = [sigma]
+    sigma = [np.maximum(f, np.finfo(float).eps) for f in sigma]
+
+    nb_dims = len(sigma)
+
+    # compute windowsize
+    if windowsize is None:
+        windowsize = [np.round(f * 3) * 2 + 1 for f in sigma]
+
+    if len(sigma) != len(windowsize):
+        raise ValueError('sigma and windowsize should have the same length.'
+                         'Got vectors: ' + str(sigma) + 'and' + str(windowsize))
+
+    # ok, let's get to work.
+    mid = [(w - 1)/2 for w in windowsize]
+
+    # list of volume ndgrid
+    # N-long list, each entry of shape volshape
+    mesh = volshape_to_meshgrid(windowsize)  
+    mesh = tf.cast(mesh, 'float32')
+
+    # compute independent gaussians
+    diff = [mesh[f] - mid[f] for f in range(len(windowsize))]
+    exp_term = [- K.square(diff[f])/(2 * (sigma[f]**2)) for f in range(nb_dims)]
+    norms = [exp_term[f] - np.log(sigma[f] * np.sqrt(2 * np.pi)) for f in range(nb_dims)]
+
+    # add an all-ones entry and transform into a large matrix
+    norms_matrix = tf.stack(norms, axis=-1)  # *volshape x N
+    g = K.sum(norms_matrix, -1)  # volshape
+    g = tf.exp(g)
+    g /= tf.reduce_sum(g)
+
+    return g
+
+
+
+
+
+
 def stack_models(models, connecting_node_ids=None):
     """
     stacks keras models sequentially without nesting the models into layers
@@ -306,29 +530,6 @@ def mod_submodel(orig_model,
         output: a dictionary of all layers in the orig_model
         for each layer:
             dct[layer] is a list of lists of layers.
-        """
-
-        """
-        OLD CODE - THIS LOST ORDER OF INPUT_LAYERS, AND SOMETIMES THIS SCREWED THINGS UP BAD,
-        SUCH AS IN VAE SAMPLING WHEN MU and SIGMA LAYERS MIGHT SWITCH...
-
-        inp_layers = {}
-        for layer in orig_model.layers:
-            if hasattr(layer, '_inbound_nodes') and len(layer._inbound_nodes) > 0:
-                # Get the first input node, and if it's in the dictionary of output_node:[layers],
-                # that means that this layer's can be connected to another layer through this node
-                # We only use the first inbound node, it is sufficient for layer connectivity
-                layer_inp_layers = []
-                for input_node in layer._inbound_nodes:
-                    if len(input_node.inbound_layers) > 0:
-                        layer_inp_layers += input_node.inbound_layers
-
-                if len(layer_inp_layers) > 0:
-
-                    # add layer, if layer is in this model
-                    # this layer might not be in this model if this model is modded from another model.
-                    # Warning: doing list(set(layer_inp_layers)) loses order, which is a problem!!!
-                    inp_layers[layer] = [l for l in list(set(layer_inp_layers)) if l in orig_model.layers]
         """
 
         out_layers = orig_model.output_layers
@@ -474,12 +675,12 @@ def reset_weights(model, session=None):
             reset = True
         
         if not reset:
-            print('skipping layer %s', layer.name)
+            print('Could not find initializer for layer %s. skipping', layer.name)
 
 
 def copy_model_weights(src_model, dst_model):
     """
-    copy weights from the src keras model to the dst keras model
+    copy weights from the src keras model to the dst keras model via layer names
 
     Parameters:
         src_model: source keras model to copy from
@@ -510,7 +711,7 @@ def robust_multi_gpu_model(model, gpus, verbose=True):
         keras model
     """
 
-    islist = isinstance(gpus, (list, tuple)) 
+    islist = isinstance(gpus, (list, tuple))
     if (islist and len(gpus) > 1) or (not islist and gpus > 1):
         count = gpus if not islist else len(gpus)
         print("Returning multi-gpu (%d) model" % count)
@@ -521,7 +722,8 @@ def robust_multi_gpu_model(model, gpus, verbose=True):
         return model
 
 
-# AE lambda layers
+
+
 def logtanh(x, a=1):
     """
     log * tanh
@@ -538,6 +740,8 @@ def arcsinh(x, alpha=1):
     See Also: logtanh
     """
     return tf.asinh(x * alpha) / alpha
+
+
 
 
 
@@ -744,10 +948,10 @@ def prob_of_label(vol, labelvol):
     """
 
     # check dimensions
-    ndims = np.ndim(labelvol)
-    assert np.ndim(vol) == ndims + 1, "vol dimensions do not match [%d] vs [%d]" % (np.ndim(vol)-1, ndims)
+    nb_dims = np.ndim(labelvol)
+    assert np.ndim(vol) == nb_dims + 1, "vol dimensions do not match [%d] vs [%d]" % (np.ndim(vol)-1, nb_dims)
     shp = vol.shape
-    nb_voxels = np.prod(shp[0:ndims])
+    nb_voxels = np.prod(shp[0:nb_dims])
     nb_labels = shp[-1]
 
     # reshape volume to be [nb_voxels, nb_labels]
