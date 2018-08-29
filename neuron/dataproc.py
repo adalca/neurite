@@ -303,7 +303,7 @@ def filestruct_change(in_path, out_path, re_map,
         ...
     output structure:
         /.../out_path/asegs/subj_1.nii.gz, subj_2.nii.gz
-        /.../out_path/asegvols/subj_1.nii.gz, subj_2.nii.gz
+        /.../out_path/vols/subj_1.nii.gz, subj_2.nii.gz
 
     Parameters:
         in_path (string): input path
@@ -358,7 +358,12 @@ def filestruct_change(in_path, out_path, re_map,
                 shutil.copyfile(src_file, dst_file)
 
 
-def ml_split(in_path, out_path, cat_titles=['train', 'validate', 'test'], cat_prop=[0.5, 0.3, 0.2], use_symlinks=False, seed=None):
+def ml_split(in_path, out_path,
+             cat_titles=['train', 'validate', 'test'],
+             cat_prop=[0.5, 0.3, 0.2],
+             use_symlinks=False,
+             seed=None,
+             tqdm=tqdm):
     """
     split dataset 
     """
@@ -366,8 +371,11 @@ def ml_split(in_path, out_path, cat_titles=['train', 'validate', 'test'], cat_pr
     if seed is not None:
         np.random.seed(seed)
 
+    if not os.path.isdir(out_path):
+        os.makedirs(out_path)
+
     # get subjects and randomize their order
-    subjs = os.listdir(in_path)
+    subjs = sorted(os.listdir(in_path))
     nb_subj = len(subjs)
     subj_order = np.random.permutation(nb_subj)
 
@@ -381,7 +389,8 @@ def ml_split(in_path, out_path, cat_titles=['train', 'validate', 'test'], cat_pr
 
     # go through each category
     for cat_idx, cat in enumerate(cat_titles):
-        if not os.path.isdir(os.path.join(out_path, cat)): os.mkdir(os.path.join(out_path, cat))
+        if not os.path.isdir(os.path.join(out_path, cat)): 
+            os.mkdir(os.path.join(out_path, cat))
 
         cat_subj_idx = subj_order[cat_subj_start[cat_idx]:nb_cat_subj[cat_idx]]
         for subj_idx in tqdm(cat_subj_idx, desc=cat):
