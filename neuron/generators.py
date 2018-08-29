@@ -131,7 +131,8 @@ def vol(volpath,
             "number of files do not match: %d, %d" % (nb_files, expected_nb_files)
     if expected_files is not None:
         if not (volfiles == expected_files):
-            print('file lists did not match', file=sys.stderr)
+            print('file lists did not match. You should probably stop execution.', file=sys.stderr)
+            print(len(volfiles), len(expected_files))
 
     if verbose:
         print('nb_restart_cycle:', nb_restart_cycle)
@@ -1412,3 +1413,4 @@ def _get_shape(x):
         return _get_shape(x[0])
     else:
         return x.shape[0]
+                                                    
