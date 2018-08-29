@@ -318,7 +318,7 @@ def conv_enc(nb_features,
     lfidx = 0
     for level in range(nb_levels):
         lvl_first_tensor = last_tensor
-        nb_lvl_feats = nb_features*np.round(feat_mult**level).astype(int)
+        nb_lvl_feats = np.round(nb_features*feat_mult**level).astype(int)
         conv_kwargs['dilation_rate'] = dilation_rate_mult**level
 
         for conv in range(nb_conv_per_level):
@@ -429,7 +429,7 @@ def conv_dec(nb_features,
     #    (approx via up + conv + ReLu) + merge + conv + ReLu + conv + ReLu
     lfidx = 0
     for level in range(nb_levels - 1):
-        nb_lvl_feats = nb_features*np.round(feat_mult**(nb_levels-2-level)).astype(int)
+        nb_lvl_feats = np.round(nb_features*feat_mult**(nb_levels-2-level)).astype(int)
         conv_kwargs['dilation_rate'] = dilation_rate_mult**(nb_levels-2-level)
 
         # upsample matching the max pooling layers size
@@ -643,6 +643,10 @@ def single_ae(enc_size,
             resize_fn = lambda x: tf.image.resize_bilinear(x, enc_size[:-1])
             last_tensor = KL.Lambda(resize_fn, name=name)(last_tensor)
 
+        elif enc_size[-1] is None:  # convolutional, but won't tell us bottleneck
+            name = '%s_ae_mu_enc' % (prefix)
+            last_tensor = KL.Lambda(lambda x: x, name=name)(pre_enc_layer)
+
         else:
             name = '%s_ae_mu_enc' % (prefix)
             last_tensor = convL(enc_size[-1], conv_size, name=name, **conv_kwargs)(pre_enc_layer)
@@ -805,7 +809,7 @@ def design_dnn(nb_features, input_shape, nb_levels, conv_size, nb_labels,
                 last_tensor = enc_tensors[name]
 
             name = '%s_conv_%d_%d' % (prefix, level, conv)
-            nb_lvl_feats = nb_features*np.round(feat_mult**level).astype(int)
+            nb_lvl_feats = np.round(nb_features*feat_mult**level).astype(int)
             enc_tensors[name] = convL(nb_lvl_feats, conv_size, **conv_kwargs, name=name)(last_tensor)
             last_tensor = enc_tensors[name]
 
