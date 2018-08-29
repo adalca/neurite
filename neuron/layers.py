@@ -166,10 +166,12 @@ class SpatialTransformer(Layer):
     def _single_aff_to_shift(self, trf, volshape):
         if len(trf.shape) == 1:  # go from vector to matrix
             trf = tf.reshape(trf, [self.ndims, self.ndims + 1])
-            zero_one = tf.concat([tf.zeros((1, self.ndims)), tf.ones((1,1))], axis=1)
-            trf = tf.concat([trf, zero_one], axis=0)
+
+            # the code below is unnecessary.
+            # zero_one = tf.concat([tf.zeros((1, self.ndims)), tf.ones((1,1))], axis=1)
+            # trf = tf.concat([trf, zero_one], axis=0)
         # note this is unnecessarily extra graph since at every batch_entry location we have a tf.eye graph
-        trf += tf.eye(self.ndims+1)  # add identity, hence affine is a shift from identitiy
+        trf += tf.eye(self.ndims+1)[:self.ndims,:]  # add identity, hence affine is a shift from identitiy
         return affine_to_shift(trf, volshape, shift_center=True)
 
     def _single_transform(self, inputs):
