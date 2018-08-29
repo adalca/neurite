@@ -127,7 +127,7 @@ def interpn(vol, loc, interp_method='linear'):
     return interp_vol # tf.reshape(interp_vol, loc.shape[:-1] + [vol.shape[-1]])
 
 
-def affine_to_shift(affine_matrix, volshape, shift_center=False, indexing='ij'):
+def affine_to_shift(affine_matrix, volshape, shift_center=True, indexing='ij'):
     """
     transform an affine matrix to a dense location shift tensor in tensorflow
 
@@ -137,12 +137,15 @@ def affine_to_shift(affine_matrix, volshape, shift_center=False, indexing='ij'):
         - subtract grid
 
     Parameters:
-        affine_matrix: ND+1 x ND+1 matrix (Tensor)
+        affine_matrix: ND+1 x ND+1 or ND x ND+1 matrix (Tensor)
         volshape: 1xN Nd Tensor of the size of the volume.
         shift_center (optional)
 
     Returns:
-        ND
+        shift field (Tensor) of size *volshape x N
+
+    TODO: 
+        allow affine_matrix to be a vector of size nb_dims * (nb_dims + 1)
     """
 
     if isinstance(volshape, (tf.Dimension, tf.TensorShape)):
@@ -152,8 +155,18 @@ def affine_to_shift(affine_matrix, volshape, shift_center=False, indexing='ij'):
         affine_matrix = tf.cast(affine_matrix, 'float32')
 
     nb_dims = len(volshape)
-    if not all([f == nb_dims + 1 for f in affine_matrix.shape]):
-        raise Exception('Affine matrix shape should match %d+1 x %d+1.' % (nb_dims, nb_dims) + \
+
+    if len(affine_matrix.shape) == 1:
+        if len(affine_matrix) != (nb_dims * (nb_dims + 1)) :
+            raise ValueError('transform is supposed a vector of len ndims * (ndims + 1).'
+                             'Got len %d' % len(affine_matrix))
+
+        affine_matrix = tf.reshape(affine_matrix, [nb_dims, nb_dims + 1])
+
+    if not (affine_matrix.shape[0] in [nb_dims, nb_dims + 1] and affine_matrix.shape[1] == (nb_dims + 1)):
+        raise Exception('Affine matrix shape should match'
+                        '%d+1 x %d+1 or ' % (nb_dims, nb_dims) + \
+                        '%d x %d+1.' % (nb_dims, nb_dims) + \
                         'Got: ' + str(volshape))
 
     # list of volume ndgrid
@@ -179,6 +192,10 @@ def affine_to_shift(affine_matrix, volshape, shift_center=False, indexing='ij'):
     return loc - tf.stack(mesh, axis=nb_dims)
 
 
+    
+    
+
+
 def transform(vol, loc_shift, interp_method='linear', indexing='ij'):
     """
     transform (interpolation N-D volumes (features) given shifts at each location in tensorflow
@@ -202,7 +219,10 @@ def transform(vol, loc_shift, interp_method='linear', indexing='ij'):
     """
 
     # parse shapes
-    volshape = loc_shift.shape[:-1].as_list()
+    if isinstance(loc_shift.shape, (tf.Dimension, tf.TensorShape)):
+        volshape = loc_shift.shape[:-1].as_list()
+    else:
+        volshape = loc_shift.shape[:-1]
     nb_dims = len(volshape)
     if loc_shift.shape[:-1] != vol.shape[:nb_dims]:
         raise Exception('Shift shape should match vol shape. '
