@@ -1413,4 +1413,3 @@ def _get_shape(x):
         return _get_shape(x[0])
     else:
         return x.shape[0]
-                                                    
