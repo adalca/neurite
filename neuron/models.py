@@ -80,6 +80,7 @@ def unet(nb_features,
          add_prior_layer=False,
          add_prior_layer_reg=0,
          layer_nb_feats=None,
+         conv_dropout=0,
          batch_norm=None):
     """
     unet-style model with an overdose of parametrization
@@ -115,6 +116,7 @@ def unet(nb_features,
                          use_residuals=use_residuals,
                          nb_conv_per_level=nb_conv_per_level,
                          layer_nb_feats=layer_nb_feats,
+                         conv_dropout=conv_dropout,
                          batch_norm=batch_norm)
 
     # get decoder
@@ -138,6 +140,7 @@ def unet(nb_features,
                          nb_conv_per_level=nb_conv_per_level,
                          batch_norm=batch_norm,
                          layer_nb_feats=lnf,
+                         conv_dropout=conv_dropout,
                          input_model=enc_model)
 
     final_model = dec_model
@@ -173,6 +176,7 @@ def ae(nb_features,
        add_prior_layer=False,
        add_prior_layer_reg=0,
        use_logp=True,
+       conv_dropout=0,
        include_mu_shift_layer=False,
        single_model=False, # whether to return a single model, or a tuple of models that can be stacked.
        final_pred_activation='softmax',
@@ -214,6 +218,7 @@ def ae(nb_features,
                          activation=activation,
                          use_residuals=use_residuals,
                          nb_conv_per_level=nb_conv_per_level,
+                         conv_dropout=conv_dropout,
                          batch_norm=batch_norm)
 
     # middle AE structure
@@ -256,6 +261,7 @@ def ae(nb_features,
                          final_pred_activation='linear',
                          nb_conv_per_level=nb_conv_per_level,
                          batch_norm=batch_norm,
+                         conv_dropout=conv_dropout,
                          input_model=in_model)
 
     if add_prior_layer:
@@ -287,6 +293,7 @@ def conv_enc(nb_features,
              layer_nb_feats=None,
              use_residuals=False,
              nb_conv_per_level=2,
+             conv_dropout=0,
              batch_norm=None):
     """
     Fully Convolutional Encoder
@@ -331,6 +338,10 @@ def conv_enc(nb_features,
                 last_tensor = convL(nb_lvl_feats, conv_size, **conv_kwargs, name=name)(last_tensor)
             else:  # no activation
                 last_tensor = convL(nb_lvl_feats, conv_size, padding=padding, name=name)(last_tensor)
+            
+            if conv_dropout > 0:
+                name = '%s_dropout_downarm_%d_%d' % (prefix, level, conv)
+                last_tensor = KL.Dropout(conv_dropout)(last_tensor)
 
         if use_residuals:
             convarm_layer = last_tensor
@@ -344,6 +355,10 @@ def conv_enc(nb_features,
                 name = '%s_expand_down_merge_%d' % (prefix, level)
                 last_tensor = convL(nb_lvl_feats, conv_size, **conv_kwargs, name=name)(lvl_first_tensor)
                 add_layer = last_tensor
+
+                if conv_dropout > 0:
+                    name = '%s_dropout_down_merge_%d_%d' % (prefix, level, conv)
+                    last_tensor = KL.Dropout(conv_dropout)(last_tensor)
 
             name = '%s_res_down_merge_%d' % (prefix, level)
             last_tensor = KL.add([add_layer, convarm_layer], name=name)
@@ -383,6 +398,7 @@ def conv_dec(nb_features,
              nb_conv_per_level=2,
              layer_nb_feats=None,
              batch_norm=None,
+             conv_dropout=0,
              input_model=None):
     """
     Fully Convolutional Decoder
@@ -457,6 +473,10 @@ def conv_dec(nb_features,
             else:
                 last_tensor = convL(nb_lvl_feats, conv_size, padding=padding, name=name)(last_tensor)
 
+            if conv_dropout > 0:
+                name = '%s_dropout_uparm_%d_%d' % (prefix, level, conv)
+                last_tensor = KL.Dropout(conv_dropout)(last_tensor)
+
         # residual block
         if use_residuals:
 
@@ -468,6 +488,10 @@ def conv_dec(nb_features,
             if nb_feats_in > 1 and nb_feats_out > 1 and (nb_feats_in != nb_feats_out):
                 name = '%s_expand_up_merge_%d' % (prefix, level)
                 add_layer = convL(nb_lvl_feats, conv_size, **conv_kwargs, name=name)(add_layer)
+
+                if conv_dropout > 0:
+                    name = '%s_dropout_up_merge_%d_%d' % (prefix, level, conv)
+                    last_tensor = KL.Dropout(conv_dropout)(last_tensor)
 
             name = '%s_res_up_merge_%d' % (prefix, level)
             last_tensor = KL.add([last_tensor, add_layer], name=name)
@@ -633,9 +657,11 @@ def single_ae(enc_size,
         assert len(enc_size) == len(input_shape), \
             "encoding size does not match input shape %d %d" % (len(enc_size), len(input_shape))
 
-        if list(enc_size)[:-1] != list(input_shape)[:-1] and all([f is not None for f in input_shape]): 
+        if list(enc_size)[:-1] != list(input_shape)[:-1] and \
+            all([f is not None for f in input_shape[:-1]]) and \
+            all([f is not None for f in enc_size[:-1]]): 
 
-            assert len(enc_size) - 1 == 2, "Sorry, I have not yet implemented non-2D resizing..."
+            assert len(enc_size) - 1 == 2, "Sorry, I have not yet implemented non-2D resizing -- need to check out interpn!"
             name = '%s_ae_mu_enc_conv' % (prefix)
             last_tensor = convL(enc_size[-1], conv_size, name=name, **conv_kwargs)(pre_enc_layer)
 
@@ -681,7 +707,10 @@ def single_ae(enc_size,
             last_tensor = KL.Dense(enc_size[0], name=name)(pre_enc_layer)
 
         else:
-            if list(enc_size)[:-1] != list(input_shape)[:-1]:
+            if list(enc_size)[:-1] != list(input_shape)[:-1] and \
+                all([f is not None for f in input_shape[:-1]]) and \
+                all([f is not None for f in enc_size[:-1]]): 
+
                 assert len(enc_size) - 1 == 2, "Sorry, I have not yet implemented non-2D resizing..."
                 name = '%s_ae_sigma_enc_conv' % (prefix)
                 last_tensor = convL(enc_size[-1], conv_size, name=name, **conv_kwargs)(pre_enc_layer)
@@ -689,6 +718,10 @@ def single_ae(enc_size,
                 name = '%s_ae_sigma_enc' % (prefix)
                 resize_fn = lambda x: tf.image.resize_bilinear(x, enc_size[:-1])
                 last_tensor = KL.Lambda(resize_fn, name=name)(last_tensor)
+
+            elif enc_size[-1] is None:  # convolutional, but won't tell us bottleneck
+                name = '%s_ae_sigma_enc' % (prefix)
+                last_tensor = KL.Lambda(lambda x: x, name=name)(pre_enc_layer)
 
             else:
                 name = '%s_ae_sigma_enc' % (prefix)
@@ -733,7 +766,10 @@ def single_ae(enc_size,
 
     else:
 
-        if list(enc_size)[:-1] != list(input_shape)[:-1] and all([f is not None for f in input_shape]):
+        if list(enc_size)[:-1] != list(input_shape)[:-1] and \
+            all([f is not None for f in input_shape[:-1]]) and \
+            all([f is not None for f in enc_size[:-1]]): 
+
             name = '%s_ae_mu_dec' % (prefix)
             resize_fn = lambda x: tf.image.resize_bilinear(x, input_shape[:-1])
             last_tensor = KL.Lambda(resize_fn, name=name)(last_tensor)
