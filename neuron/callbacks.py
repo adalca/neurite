@@ -122,14 +122,18 @@ class CheckLossTrend(keras.callbacks.Callback):
             losses_mean = np.mean(self.losses)
             losses_std = np.std(self.losses)
             this_loss = logs['loss']
-            if (this_loss - losses_mean) > (losses_mean + self.nb_std_err * losses_std):
+
+            if (this_loss) > (losses_mean + self.nb_std_err * losses_std):
                 print(logs)
                 err = "Found loss %f, which is much higher than %f + %f " % (this_loss, losses_mean, losses_std)
                 # raise ValueError(err)
                 print(err, file=sys.stderr)
+            
             if (this_loss - losses_mean) > (losses_mean * 100):
                 err = "Found loss %f, which is much higher than %f * 100 " % (this_loss, losses_mean)
                 raise ValueError(err)
+
+            # cut the first loss and stack athe latest loss.
             self.losses = [*self.losses[1:], logs['loss']]
 
 
