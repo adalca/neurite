@@ -146,7 +146,7 @@ class SpatialTransformer(Layer):
         trf = inputs[1]
 
         if not self.is_affine:
-            if not all([trf.shape[1:-1][f] != vol.shape[1:-1][f] for f in range(self.ndims)]):
+            if not all([trf.shape[1:-1][f] == vol.shape[1:-1][f] for f in range(self.ndims)]):
                 raise Exception('Shift shape should match vol shape. '
                                 'Got: ' + str(trf.shape[1:-1]) + ' and ' + str(vol.shape[1:-1]))
 
