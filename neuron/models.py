@@ -340,8 +340,10 @@ def conv_enc(nb_features,
                 last_tensor = convL(nb_lvl_feats, conv_size, padding=padding, name=name)(last_tensor)
             
             if conv_dropout > 0:
+                # conv dropout along feature space only
                 name = '%s_dropout_downarm_%d_%d' % (prefix, level, conv)
-                last_tensor = KL.Dropout(conv_dropout)(last_tensor)
+                noise_shape = [None, *[1]*ndims, nb_lvl_feats]
+                last_tensor = KL.Dropout(conv_dropout, noise_shape=noise_shape)(last_tensor)
 
         if use_residuals:
             convarm_layer = last_tensor
@@ -358,7 +360,8 @@ def conv_enc(nb_features,
 
                 if conv_dropout > 0:
                     name = '%s_dropout_down_merge_%d_%d' % (prefix, level, conv)
-                    last_tensor = KL.Dropout(conv_dropout)(last_tensor)
+                    noise_shape = [None, *[1]*ndims, nb_lvl_feats]
+                    last_tensor = KL.Dropout(conv_dropout, noise_shape=noise_shape)(last_tensor)
 
             name = '%s_res_down_merge_%d' % (prefix, level)
             last_tensor = KL.add([add_layer, convarm_layer], name=name)
@@ -475,7 +478,8 @@ def conv_dec(nb_features,
 
             if conv_dropout > 0:
                 name = '%s_dropout_uparm_%d_%d' % (prefix, level, conv)
-                last_tensor = KL.Dropout(conv_dropout)(last_tensor)
+                noise_shape = [None, *[1]*ndims, nb_lvl_feats]
+                last_tensor = KL.Dropout(conv_dropout, noise_shape=noise_shape)(last_tensor)
 
         # residual block
         if use_residuals:
@@ -491,7 +495,8 @@ def conv_dec(nb_features,
 
                 if conv_dropout > 0:
                     name = '%s_dropout_up_merge_%d_%d' % (prefix, level, conv)
-                    last_tensor = KL.Dropout(conv_dropout)(last_tensor)
+                    noise_shape = [None, *[1]*ndims, nb_lvl_feats]
+                    last_tensor = KL.Dropout(conv_dropout, noise_shape=noise_shape)(last_tensor)
 
             name = '%s_res_up_merge_%d' % (prefix, level)
             last_tensor = KL.add([last_tensor, add_layer], name=name)
@@ -721,7 +726,9 @@ def single_ae(enc_size,
 
             elif enc_size[-1] is None:  # convolutional, but won't tell us bottleneck
                 name = '%s_ae_sigma_enc' % (prefix)
-                last_tensor = KL.Lambda(lambda x: x, name=name)(pre_enc_layer)
+                last_tensor = convL(pre_enc_layer.shape.as_list()[-1], conv_size, name=name, **conv_kwargs)(pre_enc_layer)
+                # cannot use lambda, then mu and sigma will be same layer.
+                # last_tensor = KL.Lambda(lambda x: x, name=name)(pre_enc_layer)
 
             else:
                 name = '%s_ae_sigma_enc' % (prefix)
