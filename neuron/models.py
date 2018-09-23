@@ -202,7 +202,7 @@ def ae(nb_features,
     model_name = name
 
     # volume size data
-    ndims = len(input_shape)
+    ndims = len(input_shape) - 1
     if isinstance(pool_size, int):
         pool_size = (pool_size,) * ndims
 
