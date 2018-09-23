@@ -22,47 +22,6 @@ import tensorflow as tf
 from .utils import transform, integrate_vec, affine_to_shift
 
 
-class VecInt(Layer):
-
-    def __init__(self, indexing='ij', method='ode', int_steps=7, **kwargs):
-        """
-        Vector Integration Layer
-        
-        Parameters:
-            method can be any of the methods in neuron.utils.integrate_vec
-        """
-
-        assert indexing in ['ij', 'xy'], "indexing has to be 'ij' (matrix) or 'xy' (cartesian)"
-        self.indexing = indexing
-        self.method = method
-        self.int_steps = int_steps
-        super(self.__class__, self).__init__(**kwargs)
-
-    def build(self, input_shape):
-        # confirm built
-        self.built = True
-
-    def call(self, inputs):
-        
-        # prepare location shift
-        loc_shift = inputs
-        if self.indexing == 'xy':  # shift the first two dimensions
-            loc_shift_split = tf.split(loc_shift, loc_shift.shape[-1], axis=-1)
-            loc_shift_lst = [loc_shift_split[1], loc_shift_split[0], *loc_shift_split[2:]]
-            loc_shift = tf.concat(loc_shift_lst, -1)
-
-        # map transform across batch
-        return tf.map_fn(self._single_int, loc_shift, dtype=tf.float32)
-
-    def _single_int(self, inputs):
-
-        vel = inputs
-        return integrate_vec(vel, method=self.method,
-                      nb_steps=self.int_steps,
-                      ode_args={'rtol':1e-6, 'atol':1e-12},
-                      time_pt=1)
-
-
 class SpatialTransformer(Layer):
     """
     N-D Spatial Transformer Tensorflow / Keras Layer
@@ -188,6 +147,48 @@ class SpatialTransformer(Layer):
 
     def _single_transform(self, inputs):
         return transform(inputs[0], inputs[1], interp_method=self.interp_method)
+
+
+class VecInt(Layer):
+
+    def __init__(self, indexing='ij', method='ode', int_steps=7, **kwargs):
+        """
+        Vector Integration Layer
+        
+        Parameters:
+            method can be any of the methods in neuron.utils.integrate_vec
+        """
+
+        assert indexing in ['ij', 'xy'], "indexing has to be 'ij' (matrix) or 'xy' (cartesian)"
+        self.indexing = indexing
+        self.method = method
+        self.int_steps = int_steps
+        super(self.__class__, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        # confirm built
+        self.built = True
+
+    def call(self, inputs):
+        
+        # prepare location shift
+        loc_shift = inputs
+        if self.indexing == 'xy':  # shift the first two dimensions
+            loc_shift_split = tf.split(loc_shift, loc_shift.shape[-1], axis=-1)
+            loc_shift_lst = [loc_shift_split[1], loc_shift_split[0], *loc_shift_split[2:]]
+            loc_shift = tf.concat(loc_shift_lst, -1)
+
+        # map transform across batch
+        return tf.map_fn(self._single_int, loc_shift, dtype=tf.float32)
+
+    def _single_int(self, inputs):
+
+        vel = inputs
+        return integrate_vec(vel, method=self.method,
+                      nb_steps=self.int_steps,
+                      ode_args={'rtol':1e-6, 'atol':1e-12},
+                      time_pt=1)
+
 
 
 class LocalBiasLayer(Layer):
