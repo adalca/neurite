@@ -26,7 +26,7 @@ If you use this code, please cite one of the following:
 
 **Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation**  
 AV Dalca, J Guttag, MR Sabuncu  
-*Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition. 2018.*
+*IEEE CVPR: Conference on Computer Vision and Pattern Recognition. 2018.*
 
 **Spatial Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation**  
 A.V. Dalca, J. Guttag, and M. R. Sabuncu  
