@@ -190,12 +190,10 @@ class VecInt(Layer):
                       time_pt=1)
 
 
-
 class LocalBiasLayer(Layer):
     """ 
-    local bias layer
-    
-    A layer with an additive bias at each volume element
+    Local bias layer: each pixel/voxel has its own bias operation (one parameter)
+    out[v] = in[v] + b
     """
 
     def __init__(self, my_initializer='RandomNormal', **kwargs):
@@ -219,7 +217,8 @@ class LocalBiasLayer(Layer):
 
 class LocalLinearLayer(Layer):
     """ 
-    local linear layer
+    Local linear layer: each pixel/voxel has its own linear operation (two parameters)
+    out[v] = a * in[v] + b
     """
 
     def __init__(self, my_initializer='RandomNormal', **kwargs):
