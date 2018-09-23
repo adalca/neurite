@@ -1,7 +1,13 @@
 """
 tensorflow/keras utilities for the neuron project
 
+If you use this code, please cite 
+Dalca AV, Guttag J, Sabuncu MR
+Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation, 
+CVPR 2018
+
 Contact: adalca [at] csail [dot] mit [dot] edu
+License: GPLv3
 """
 
 # python imports
