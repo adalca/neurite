@@ -107,9 +107,6 @@ class SpatialTransformer(Layer):
             if trf_shape[-1] != self.ndims:
                 raise Exception('Offset flow field size expected: %d, found: %d' 
                                 % (self.ndims, trf_shape[-1]))
-            # if not trf_shape[:-1] == vol_shape:
-            #     raise Exception('flow field size expected' + str(vol_shape) + \
-            #                     'Found:' + str(trf_shape[:-1]))
 
         # confirm built
         self.built = True
@@ -125,11 +122,6 @@ class SpatialTransformer(Layer):
         assert len(inputs) == 2, "inputs has to be len 2, found: %d" % len(inputs)
         vol = inputs[0]
         trf = inputs[1]
-
-        # if not self.is_affine:
-        #     if not all([trf.shape[1:-1][f] == vol.shape[1:-1][f] for f in range(self.ndims)]):
-        #         raise Exception('Shift shape should match vol shape. '
-        #                         'Got: ' + str(trf.shape[1:-1]) + ' and ' + str(vol.shape[1:-1]))
 
         # go from affine
         if self.is_affine:
@@ -148,10 +140,7 @@ class SpatialTransformer(Layer):
         if len(trf.shape) == 1:  # go from vector to matrix
             trf = tf.reshape(trf, [self.ndims, self.ndims + 1])
 
-            # the code below is unnecessary.
-            # zero_one = tf.concat([tf.zeros((1, self.ndims)), tf.ones((1,1))], axis=1)
-            # trf = tf.concat([trf, zero_one], axis=0)
-        # note this is unnecessarily extra graph since at every batch_entry location we have a tf.eye graph
+        # note this is unnecessarily extra graph since at every batch entry we have a tf.eye graph
         trf += tf.eye(self.ndims+1)[:self.ndims,:]  # add identity, hence affine is a shift from identitiy
         return affine_to_shift(trf, volshape, shift_center=True)
 

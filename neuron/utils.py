@@ -232,9 +232,6 @@ def transform(vol, loc_shift, interp_method='linear', indexing='ij'):
     else:
         volshape = loc_shift.shape[:-1]
     nb_dims = len(volshape)
-    # if loc_shift.shape[:-1] != vol.shape[:nb_dims]:
-    #     raise Exception('Shift shape should match vol shape. '
-    #                     'Got: ' + loc_shift.shape[:-1] + ' and ' + vol.shape[:nb_dims])
 
     # location should be mesh and delta
     mesh = volshape_to_meshgrid(volshape, indexing=indexing)  # volume mesh
