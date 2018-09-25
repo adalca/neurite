@@ -6,6 +6,12 @@ Dalca AV, Guttag J, Sabuncu MR
 Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation, 
 CVPR 2018
 
+or for the transformation/integration functions:
+
+Unsupervised Learning for Fast Probabilistic Diffeomorphic Registration
+Adrian V. Dalca, Guha Balakrishnan, John Guttag, Mert R. Sabuncu
+MICCAI 2018.
+
 Contact: adalca [at] csail [dot] mit [dot] edu
 License: GPLv3
 """
@@ -32,6 +38,10 @@ class SpatialTransformer(Layer):
     and an affine transform gives the *difference* of the affine matrix from 
     the identity matrix.
 
+    If you find this function useful, please cite:
+      Unsupervised Learning for Fast Probabilistic Diffeomorphic Registration
+      Adrian V. Dalca, Guha Balakrishnan, John Guttag, Mert R. Sabuncu
+      MICCAI 2018.
 
     Originally, this code was based on voxelmorph code, which 
     was in turn transformed to be dense with the help of (affine) STN code 
@@ -150,11 +160,21 @@ class SpatialTransformer(Layer):
 
 
 class VecInt(Layer):
+    """
+    Vector Integration Layer
+
+    Enables vector integration via several methods 
+    (ode or quadrature for time-dependent vector fields, 
+    scaling and squaring for stationary fields)
+
+    If you find this function useful, please cite:
+      Unsupervised Learning for Fast Probabilistic Diffeomorphic Registration
+      Adrian V. Dalca, Guha Balakrishnan, John Guttag, Mert R. Sabuncu
+      MICCAI 2018.
+    """
 
     def __init__(self, indexing='ij', method='ode', int_steps=7, **kwargs):
-        """
-        Vector Integration Layer
-        
+        """        
         Parameters:
             method can be any of the methods in neuron.utils.integrate_vec
         """

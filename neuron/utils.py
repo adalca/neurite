@@ -6,6 +6,12 @@ Dalca AV, Guttag J, Sabuncu MR
 Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation, 
 CVPR 2018
 
+or for the transformation/interpolation related functions:
+
+Unsupervised Learning for Fast Probabilistic Diffeomorphic Registration
+Adrian V. Dalca, Guha Balakrishnan, John Guttag, Mert R. Sabuncu
+MICCAI 2018.
+
 Contact: adalca [at] csail [dot] mit [dot] edu
 License: GPLv3
 """
