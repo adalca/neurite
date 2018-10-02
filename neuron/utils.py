@@ -2,7 +2,7 @@
 tensorflow/keras utilities for the neuron project
 
 Contact: adalca [at] csail [dot] mit [dot] edu
-"""
+;rgb:0000/0000/0000"""
 
 # python imports
 import itertools
@@ -73,11 +73,11 @@ def interpn(vol, loc, interp_method='linear'):
         loc0 = tf.cast(tf.floor(loc), 'int32')
 
         # clip values
-        max_loc = [tf.cast(d - 1, 'int32') for d in new_volshape]
+        max_loc = [tf.cast(d - 1, 'int32') for d in vol.shape]
         loc0 = [tf.clip_by_value(loc0[...,d], 0, max_loc[d]) for d in range(nb_dims)]
 
         # get other end of point cube
-        loc1 = [d + 1 for d in loc0]
+        loc1 = [tf.clip_by_value(loc0[d] + 1, 0, max_loc[d]) for d in range(nb_dims)]
         locs = [loc0, loc1]
 
         # compute the difference between the upper value and the original value
@@ -96,6 +96,10 @@ def interpn(vol, loc, interp_method='linear'):
         for ci, c in enumerate(cube_pts):
             
             # get nd values
+            # note re: indices above volumes via https://github.com/tensorflow/tensorflow/issues/15091
+            #   It works on GPU because we do not perform index validation checking on GPU -- it's too
+            #   expensive. Instead we fill the output with zero for the corresponding value. The CPU
+            #   version caught the bad index and returned the appropriate error.
             indices = tf.stack([locs[c[d]][d] for d in range(nb_dims)], axis=-1)
             vol_val = tf.gather_nd(vol, indices)
 
@@ -116,7 +120,7 @@ def interpn(vol, loc, interp_method='linear'):
         roundloc = tf.cast(tf.round(loc), 'int32')
 
         # clip values
-        max_loc = [tf.cast(d - 1, 'int32') for d in new_volshape]
+        max_loc = [tf.cast(d - 1, 'int32') for d in vol.shape]
         roundloc = [tf.clip_by_value(roundloc[...,d], 0, max_loc[d]) for d in range(nb_dims)]
         roundloc = tf.stack(roundloc, axis=-1)
 
