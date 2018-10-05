@@ -80,52 +80,60 @@ def interpn(vol, loc, interp_method='linear'):
     # flatten and float location Tensors
     loc = tf.cast(loc, 'float32')
 
+
+
     # interpolate
     if interp_method == 'linear':
-        loc0 = tf.cast(tf.floor(loc), 'int32')
+        loc0 = tf.floor(loc)
 
         # clip values
-        max_loc = [tf.cast(d - 1, 'int32') for d in vol.shape]
+        max_loc = [d - 1 for d in vol.get_shape().as_list()]
         loc0 = [tf.clip_by_value(loc0[...,d], 0, max_loc[d]) for d in range(nb_dims)]
 
         # get other end of point cube
         loc1 = [tf.clip_by_value(loc0[d] + 1, 0, max_loc[d]) for d in range(nb_dims)]
-        locs = [loc0, loc1]
+        locs = [[tf.cast(f, 'int32') for f in loc0], [tf.cast(f, 'int32') for f in loc1]]
 
         # compute the difference between the upper value and the original value
         # differences are basically 1 - (pt - floor(pt))
         #   because: floor(pt) + 1 - pt = 1 + (floor(pt) - pt) = 1 - (pt - floor(pt))
-        loc1_float = [tf.cast(d, 'float32') for d in loc1]
-        diff_loc1 = [loc1_float[d] - loc[...,d] for d in range(nb_dims)]
+        diff_loc1 = [loc1[d] - loc[...,d] for d in range(nb_dims)]
         diff_loc0 = [1 - d for d in diff_loc1]
         weights_loc = [diff_loc1, diff_loc0] # note reverse ordering since weights are inverse of diff.
 
         # go through all the cube corners, indexed by a ND binary vector 
         # e.g. [0, 0] means this "first" corner in a 2-D "cube"
         cube_pts = list(itertools.product([0, 1], repeat=nb_dims))
-        wtvol_values = [None] * len(cube_pts)
+        interp_vol = 0
         
-        for ci, c in enumerate(cube_pts):
+        for c in cube_pts:
             
             # get nd values
             # note re: indices above volumes via https://github.com/tensorflow/tensorflow/issues/15091
             #   It works on GPU because we do not perform index validation checking on GPU -- it's too
             #   expensive. Instead we fill the output with zero for the corresponding value. The CPU
             #   version caught the bad index and returned the appropriate error.
-            indices = tf.stack([locs[c[d]][d] for d in range(nb_dims)], axis=-1)
-            vol_val = tf.gather_nd(vol, indices)
+            subs = [locs[c[d]][d] for d in range(nb_dims)]
+
+            # tf stacking is slow for large volumes, so we will use sub2ind and use single indexing.
+            # indices = tf.stack(subs, axis=-1)
+            # vol_val = tf.gather_nd(vol, indices)
+            # faster way to gather than gather_nd, because the latter needs tf.stack which is slow :(
+            idx = sub2ind(vol.shape[:-1], subs)
+            vol_val = tf.gather(tf.reshape(vol, [-1, vol.shape[-1]]), idx)
 
             # get the weight of this cube_pt based on the distance
             # if c[d] is 0 --> want weight = 1 - (pt - floor[pt]) = diff_loc1
             # if c[d] is 1 --> want weight = pt - floor[pt] = diff_loc0
-            wlm = tf.stack([weights_loc[c[d]][d] for d in range(nb_dims)], axis=0)
-            wt = tf.reduce_prod(wlm, axis=0)
+            wts_lst = [weights_loc[c[d]][d] for d in range(nb_dims)]
+            # tf stacking is slow, we we will use prod_n()
+            # wlm = tf.stack(wts_lst, axis=0)
+            # wt = tf.reduce_prod(wlm, axis=0)
+            wt = prod_n(wts_lst)
             wt = K.expand_dims(wt, -1)
             
             # compute final weighted value for each cube corner
-            wtvol_values[ci] = wt * vol_val
-        
-        interp_vol = tf.add_n(wtvol_values)
+            interp_vol += wt * vol_val
         
     else:
         assert interp_method == 'nearest'
@@ -134,13 +142,38 @@ def interpn(vol, loc, interp_method='linear'):
         # clip values
         max_loc = [tf.cast(d - 1, 'int32') for d in vol.shape]
         roundloc = [tf.clip_by_value(roundloc[...,d], 0, max_loc[d]) for d in range(nb_dims)]
-        roundloc = tf.stack(roundloc, axis=-1)
 
         # get values
-        interp_vol = tf.gather_nd(vol, roundloc) 
+        # tf stacking is slow. replace with gather
+        # roundloc = tf.stack(roundloc, axis=-1)
+        # interp_vol = tf.gather_nd(vol, roundloc)
+        idx = sub2ind(vol.shape[:-1], roundloc)
+        interp_vol = tf.gather(tf.reshape(vol, [-1, vol.shape[-1]]), idx) 
 
-    # print('interp_vol:', interp_vol)
-    return interp_vol # tf.reshape(interp_vol, loc.shape[:-1] + [vol.shape[-1]])
+    return interp_vol
+
+
+def prod_n(lst):
+    prod = lst[0]
+    for p in lst[1:]:
+        prod *= p
+    return prod
+
+
+def sub2ind(siz, subs, **kwargs):
+    """
+    assumes column-order major
+    """
+    # subs is a list
+    assert len(siz) == len(subs)
+
+    k = np.cumprod(siz[::-1])
+
+    ndx = subs[-1]
+    for i, v in enumerate(subs[:-1][::-1]):
+        ndx = ndx + v * k[i]
+
+    return ndx
 
 
 def affine_to_shift(affine_matrix, volshape, shift_center=True, indexing='ij'):
@@ -486,6 +519,7 @@ def meshgrid(*args, **kwargs):
         output.append(tf.reshape(tf.stack(x), (s0[:i] + (-1,) + s0[i + 1::])))
     # Create parameters for broadcasting each tensor to the full size
     shapes = [tf.size(x) for x in args]
+    sz = [x.get_shape().as_list()[0] for x in args]
 
     # output_dtype = tf.convert_to_tensor(args[0]).dtype.base_dtype
 
@@ -493,14 +527,13 @@ def meshgrid(*args, **kwargs):
         output[0] = tf.reshape(output[0], (1, -1) + (1,) * (ndim - 2))
         output[1] = tf.reshape(output[1], (-1, 1) + (1,) * (ndim - 2))
         shapes[0], shapes[1] = shapes[1], shapes[0]
+        sz[0], sz[1] = sz[1], sz[0]
 
     # This is the part of the implementation from tf that is slow. 
     # We replace it below to get a ~6x speedup (essentially using tile instead of * tf.ones())
     # TODO(nolivia): improve performance with a broadcast  
     # mult_fact = tf.ones(shapes, output_dtype)
     # return [x * mult_fact for x in output]
-
-    sz = [x.get_shape().as_list()[0] for f in args]
     for i in range(len(output)):       
         output[i] = tf.tile(output[i], tf.stack([*sz[:i], 1, *sz[(i+1):]]))
     return output
