@@ -479,7 +479,6 @@ def gaussian_kernel(sigma, windowsize=None):
 
 
 
-
 def stack_models(models, connecting_node_ids=None):
     """
     stacks keras models sequentially without nesting the models into layers
