@@ -258,8 +258,6 @@ class LocallyConnected3D(Layer):
     code based on LocallyConnected3D from keras layers:
     https://github.com/keras-team/keras/blob/master/keras/layers/local.py
 
-    # TODO: Comment better. Right now we have the comments from the 3D version from keras.
-
     Locally-connected layer for 3D inputs.
     The `LocallyConnected3D` layer works similarly
     to the `Conv3D` layer, except that weights are unshared,
