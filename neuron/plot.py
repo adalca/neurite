@@ -10,6 +10,7 @@ Contact: adalca [at] csail [dot] mit [dot] edu
 License: GPLv3
 """
 
+# third party
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable # plotting
