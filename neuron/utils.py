@@ -48,7 +48,7 @@ def interpn(vol, loc, interp_method='linear'):
         vol: volume with size vol_shape or [*vol_shape, nb_features]
         loc: a N-long list of N-D Tensors (the interpolation locations) for the new grid
             each tensor has to have the same size (but not nec. same size as vol)
-            or a tensor of size [*new_vol_shape, N]
+            or a tensor of size [*new_vol_shape, D]
         interp_method: interpolation type 'linear' (default) or 'nearest'
 
     Returns:
@@ -58,17 +58,16 @@ def interpn(vol, loc, interp_method='linear'):
         enable optional orig_grid - the original grid points.
         check out tf.contrib.resampler, only seems to work for 2D data
     """
-
+    
     if isinstance(loc, (list, tuple)):
         loc = tf.stack(loc, -1)
 
-    # extract and check sizes and dimensions
-    new_volshape = loc.shape[:-1]
-    nb_dims = len(new_volshape)
+    # since loc can be a list, nb_dims has to be based on vol.
+    nb_dims = loc.shape[-1]
 
-    if nb_dims != loc.shape[-1]:
+    if nb_dims != len(vol.shape[:-1]):
         raise Exception("Number of loc Tensors %d does not match volume dimension %d"
-                        % (loc.shape[-1], nb_dims))
+                        % (nb_dims, len(vol.shape[:-1])))
 
     if nb_dims > len(vol.shape):
         raise Exception("Loc dimension %d does not match volume dimension %d"
@@ -80,19 +79,17 @@ def interpn(vol, loc, interp_method='linear'):
     # flatten and float location Tensors
     loc = tf.cast(loc, 'float32')
 
-
-
     # interpolate
     if interp_method == 'linear':
         loc0 = tf.floor(loc)
 
         # clip values
         max_loc = [d - 1 for d in vol.get_shape().as_list()]
-        loc0 = [tf.clip_by_value(loc0[...,d], 0, max_loc[d]) for d in range(nb_dims)]
+        loc0lst = [tf.clip_by_value(loc0[...,d], 0, max_loc[d]) for d in range(nb_dims)]
 
         # get other end of point cube
-        loc1 = [tf.clip_by_value(loc0[d] + 1, 0, max_loc[d]) for d in range(nb_dims)]
-        locs = [[tf.cast(f, 'int32') for f in loc0], [tf.cast(f, 'int32') for f in loc1]]
+        loc1 = [tf.clip_by_value(loc0lst[d] + 1, 0, max_loc[d]) for d in range(nb_dims)]
+        locs = [[tf.cast(f, 'int32') for f in loc0lst], [tf.cast(f, 'int32') for f in loc1]]
 
         # compute the difference between the upper value and the original value
         # differences are basically 1 - (pt - floor(pt))
@@ -695,7 +692,6 @@ def mod_submodel(orig_model,
             if add:
                 dct[node.outbound_layer].append(node.inbound_layers)
                 dct_node_idx.setdefault(node.outbound_layer, []).append(node.node_indices)
-                #print(node, node.outbound_layer)
             # append is in place
 
             # add new node
