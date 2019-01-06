@@ -205,8 +205,9 @@ class LocalBiasLayer(Layer):
     out[v] = in[v] + b
     """
 
-    def __init__(self, my_initializer='RandomNormal', **kwargs):
+    def __init__(self, my_initializer='RandomNormal', biasmult=1.0, **kwargs):
         self.initializer = my_initializer
+        self.biasmult = biasmult
         super(LocalBiasLayer, self).__init__(**kwargs)
 
     def build(self, input_shape):
@@ -218,7 +219,7 @@ class LocalBiasLayer(Layer):
         super(LocalBiasLayer, self).build(input_shape)  # Be sure to call this somewhere!
 
     def call(self, x):
-        return x + self.kernel  # weights are difference from input
+        return x + self.kernel * self.biasmult  # weights are difference from input
 
     def compute_output_shape(self, input_shape):
         return input_shape
