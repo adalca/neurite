@@ -150,27 +150,43 @@ def interpn(vol, loc, interp_method='linear'):
     return interp_vol
 
 
-def prod_n(lst):
-    prod = lst[0]
-    for p in lst[1:]:
-        prod *= p
-    return prod
-
-
-def sub2ind(siz, subs, **kwargs):
+def resize(vol, zoom_factor, interp_method='linear'):
     """
-    assumes column-order major
+    if zoom_factor is a list, it will determine the ndims, in which case vol has to be of length ndims of ndims + 1
+
+    if zoom_factor is an integer, then vol must be of length ndims + 1
+
     """
-    # subs is a list
-    assert len(siz) == len(subs), 'found inconsistent siz and subs: %d %d' % (len(siz), len(subs))
 
-    k = np.cumprod(siz[::-1])
+    if isinstance(zoom_factor, (list, tuple)):
+        ndims = len(zoom_factor)
+        vol_shape = vol.shape[:ndims]
+        
+        assert len(vol_shape) in (ndims, ndims+1), \
+            "zoom_factor length %d does not match ndims %d" % (len(vol_shape), ndims)
 
-    ndx = subs[-1]
-    for i, v in enumerate(subs[:-1][::-1]):
-        ndx = ndx + v * k[i]
+    else:
+        vol_shape = vol.shape[:-1]
+        ndims = len(vol_shape)
+        zoom_factor = [zoom_factor] * ndims
+    if not isinstance(vol_shape[0], int):
+        vol_shape = vol_shape.as_list()
 
-    return ndx
+    new_shape = [vol_shape[f] * zoom_factor[f] for f in range(ndims)]
+    new_shape = [int(f) for f in new_shape]
+
+    # get grid for new shape
+    grid = volshape_to_ndgrid(new_shape)
+    grid = [tf.cast(f, 'float32') for f in grid]
+    offset = [grid[f] / zoom_factor[f] - grid[f] for f in range(ndims)]
+    offset = tf.stack(offset, ndims)
+
+    # transform
+    return transform(vol, offset, interp_method)
+
+
+def zoom(*args, **kwargs):
+    return resize(*args, **kwargs)
 
 
 def affine_to_shift(affine_matrix, volshape, shift_center=True, indexing='ij'):
@@ -536,6 +552,30 @@ def meshgrid(*args, **kwargs):
     return output
     
 
+    
+def prod_n(lst):
+    prod = lst[0]
+    for p in lst[1:]:
+        prod *= p
+    return prod
+
+
+def sub2ind(siz, subs, **kwargs):
+    """
+    assumes column-order major
+    """
+    # subs is a list
+    assert len(siz) == len(subs), 'found inconsistent siz and subs: %d %d' % (len(siz), len(subs))
+
+    k = np.cumprod(siz[::-1])
+
+    ndx = subs[-1]
+    for i, v in enumerate(subs[:-1][::-1]):
+        ndx = ndx + v * k[i]
+
+    return ndx
+
+
 
 def gaussian_kernel(sigma, windowsize=None):
     """
@@ -594,6 +634,8 @@ def gaussian_kernel(sigma, windowsize=None):
 
 
 
+
+
 def stack_models(models, connecting_node_ids=None):
     """
     stacks keras models sequentially without nesting the models into layers
@@ -633,7 +675,12 @@ def stack_models(models, connecting_node_ids=None):
         output_tensors = mod_submodel(models[mi], new_input_nodes=new_input_nodes)
         stacked_inputs = stacked_inputs + stacked_inputs_contrib
 
-    stacked_inputs = [i for i in stacked_inputs if i is not None]
+    stacked_inputs_ = [i for i in stacked_inputs if i is not None]
+    # check for unique, but keep order:
+    stacked_inputs = []
+    for inp in stacked_inputs_:
+        if inp not in stacked_inputs:
+            stacked_inputs.append(inp)
     new_model = keras.models.Model(stacked_inputs, output_tensors)
     return new_model
 
