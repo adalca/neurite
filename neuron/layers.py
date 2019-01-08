@@ -192,7 +192,7 @@ class Resize(Layer):
         self.interp_method = interp_method
         self.ndims = None
         self.inshape = None
-        super(self.__class__, self).__init__(**kwargs)
+        super(Resize, self).__init__(**kwargs)
 
     def build(self, input_shape):
         """
