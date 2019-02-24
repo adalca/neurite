@@ -61,11 +61,9 @@ def interpn(vol, loc, interp_method='linear'):
     
     if isinstance(loc, (list, tuple)):
         loc = tf.stack(loc, -1)
-
-    # since loc can be a list, nb_dims has to be based on vol.
     nb_dims = loc.shape[-1]
 
-    if nb_dims != len(vol.shape[:-1]):
+    if len(vol.shape) not in [nb_dims, nb_dims+1]:
         raise Exception("Number of loc Tensors %d does not match volume dimension %d"
                         % (nb_dims, len(vol.shape[:-1])))
 
