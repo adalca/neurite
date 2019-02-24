@@ -25,6 +25,7 @@ def slices(slices_in,           # the 2D slices
            grid=False,          # option to plot the images in a grid or a single row
            width=15,            # width in in
            show=True,           # option to actually show the plot (plt.show())
+           axes_off=True,
            imshow_args=None):
     '''
     plot a grid of slices (2d images)
@@ -106,13 +107,15 @@ def slices(slices_in,           # the 2D slices
         row_axs = axs if rows == 1 else axs[row]
         ax = row_axs[col]
 
-        ax.axis('off')
+        if axes_off:
+            ax.axis('off')
 
     # show the plots
     fig.set_size_inches(width, rows/cols*width)
-    plt.tight_layout()
+    
 
     if show:
+        plt.tight_layout()
         plt.show()
 
     return (fig, axs)
