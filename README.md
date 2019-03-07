@@ -27,3 +27,5 @@ If you use this code, please cite:
 
 **Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation**  
 [Adrian V. Dalca](http://adalca.mit.edu), [John Guttag](https://people.csail.mit.edu/guttag/), [Mert R. Sabuncu](http://sabuncu.engineering.cornell.edu/)  
+CVPR 2018.  
+[ [PDF](http://www.mit.edu/~adalca/files/papers/cvpr2018_priors.pdf) | [bibtex](bibtex.txt) ]
