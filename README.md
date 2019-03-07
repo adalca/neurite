@@ -23,8 +23,7 @@ A set of tools and infrastructure for medical image analysis with neural network
 Please contact Adrian Dalca, adalca@csail.mit.edu for question related to `neuron`
 
 ### Papers:
-If you use this code, please cite one of the following: 
+If you use this code, please cite:
 
 **Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation**  
 [Adrian V. Dalca](http://adalca.mit.edu), [John Guttag](https://people.csail.mit.edu/guttag/), [Mert R. Sabuncu](http://sabuncu.engineering.cornell.edu/)  
-CVPR 2018. [pdf](http://www.mit.edu/~adalca/files/papers/cvpr2018_priors.pdf)
