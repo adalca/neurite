@@ -1252,6 +1252,13 @@ def batch_gather(reference, indices):
     return tf.gather_nd(reference, indices)
 
 
+def model_diagram(model):
+    outfile = NamedTemporaryFile().name + '.png'
+    plot_model(model, to_file=outfile, show_shapes=True)
+    Image(outfile, width=100)
+
+
+
 ###############################################################################
 # helper functions
 ###############################################################################
