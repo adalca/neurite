@@ -189,8 +189,7 @@ def resize(vol, zoom_factor, interp_method='linear'):
     return transform(vol, offset, interp_method)
 
 
-def zoom(*args, **kwargs):
-    return resize(*args, **kwargs)
+zoom = resize
 
 
 def affine_to_shift(affine_matrix, volshape, shift_center=True, indexing='ij'):
@@ -463,20 +462,6 @@ def ndgrid(*args, **kwargs):
     return meshgrid(*args, indexing='ij', **kwargs)
 
 
-def flatten(v):
-    """
-    flatten Tensor v
-    
-    Parameters:
-        v: Tensor to be flattened
-    
-    Returns:
-        flat Tensor
-    """
-
-    return tf.reshape(v, [-1])
-
-
 def meshgrid(*args, **kwargs):
     """
     
@@ -539,7 +524,6 @@ def meshgrid(*args, **kwargs):
     sz = [x.get_shape().as_list()[0] for x in args]
 
     # output_dtype = tf.convert_to_tensor(args[0]).dtype.base_dtype
-
     if indexing == "xy" and ndim > 1:
         output[0] = tf.reshape(output[0], (1, -1) + (1,) * (ndim - 2))
         output[1] = tf.reshape(output[1], (-1, 1) + (1,) * (ndim - 2))
@@ -552,8 +536,26 @@ def meshgrid(*args, **kwargs):
     # mult_fact = tf.ones(shapes, output_dtype)
     # return [x * mult_fact for x in output]
     for i in range(len(output)):       
-        output[i] = tf.tile(output[i], tf.stack([*sz[:i], 1, *sz[(i+1):]]))
+        stack_sz = [*sz[:i], 1, *sz[(i+1):]]
+        if indexing == 'xy' and ndim > 1 and i < 2:
+            stack_sz[0], stack_sz[1] = stack_sz[1], stack_sz[0]
+        output[i] = tf.tile(output[i], tf.stack(stack_sz))
     return output
+
+
+def flatten(v):
+    """
+    flatten Tensor v
+    
+    Parameters:
+        v: Tensor to be flattened
+    
+    Returns:
+        flat Tensor
+    """
+
+    return tf.reshape(v, [-1])
+
     
 
     
