@@ -255,3 +255,44 @@ def flow(slices_in,           # the 2D slices
         plt.show()
 
     return (fig, axs)
+
+
+def pca(pca, x, y):
+    x_mean = np.mean(x, 0)
+    x_std = np.std(x, 0)
+
+    W = pca.components_
+    x_mu = W @ pca.mean_  # pca.mean_ is y_mean
+    y_hat = x @ W + pca.mean_
+
+    y_err = y_hat - y
+    y_rel_err = y_err / np.maximum(0.5*(np.abs(y)+np.abs(y_hat)), np.finfo('float').eps)
+
+    plt.figure(figsize=(15, 7))
+    plt.subplot(2, 3, 1)
+    plt.plot(pca.explained_variance_ratio_)
+    plt.title('var %% explained')
+    plt.subplot(2, 3, 2)
+    plt.plot(np.cumsum(pca.explained_variance_ratio_))
+    plt.ylim([0, 1.01])
+    plt.grid()
+    plt.title('cumvar explained')
+    plt.subplot(2, 3, 3)
+    plt.plot(np.cumsum(pca.explained_variance_ratio_))
+    plt.ylim([0.8, 1.01])
+    plt.grid()
+    plt.title('cumvar explained')
+
+    plt.subplot(2, 3, 4)
+    plt.plot(x_mean)
+    plt.plot(x_mean + x_std, 'k')
+    plt.plot(x_mean - x_std, 'k')
+    plt.title('x mean across dims (sorted)')
+    plt.subplot(2, 3, 5)
+    plt.hist(y_rel_err.flat, 100)
+    plt.title('y rel err histogram')
+    plt.subplot(2, 3, 6)
+    plt.imshow(W @ np.transpose(W), cmap=plt.get_cmap('gray'))
+    plt.colorbar()
+    plt.title('W * W\'')
+    plt.show()

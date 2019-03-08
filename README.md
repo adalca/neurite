@@ -5,13 +5,14 @@ A set of tools and infrastructure for medical image analysis with neural network
 
 ### Main tools
 `layers`: various network layers, including a rich `SpatialTransformer` layer for N-D (dense and affine) spatial transforms, a vector integration layer `VecInt`, and `LocallyConnected3D` currently not included in `keras`  
+`utils`: various utilities, including `interpn`: N-D gridded interpolation, `transform`: warp images, `integrate_vec`: vector field integration, `stack_models`: keras model stacking  
 `models`: flexible models (many parameters to play with) particularly useful in medical image analysis, such as UNet/hourglass model, convolutional encoders and decoders   
 `generators`: generators for medical image volumes and various combinations of volumes, segmentation, categorical and other output  
 `callbacks`: a set of callbacks for `keras` training to help with understanding your fit, such as Dice measurements and volume-segmentation overlaps  
 `dataproc`: a set of tools for processing medical imaging data for preparation for training/testing  
 `metrics`: metrics (most of which can be used as loss functions), such as Dice or weighted categorical crossentropy  
 `plot`: plotting tools, mostly for debugging models  
-`utils`: various utilities, including `interpn`: N-D gridded interpolation, `transform`: warp images, `integrate_vec`: vector field integration, `stack_models`: keras model stacking  
+
 
 ### Requirements:
 - tensorflow, keras and all of their requirements (e.g. hyp5) 
@@ -22,12 +23,9 @@ A set of tools and infrastructure for medical image analysis with neural network
 Please contact Adrian Dalca, adalca@csail.mit.edu for question related to `neuron`
 
 ### Papers:
-If you use this code, please cite one of the following: 
+If you use this code, please cite:
 
 **Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation**  
-AV Dalca, J Guttag, MR Sabuncu  
-*IEEE CVPR: Conference on Computer Vision and Pattern Recognition. 2018.*
-
-**Spatial Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation**  
-A.V. Dalca, J. Guttag, and M. R. Sabuncu  
-*NIPS ML4H: Machine Learning for Health. 2017.* 
+[Adrian V. Dalca](http://adalca.mit.edu), [John Guttag](https://people.csail.mit.edu/guttag/), [Mert R. Sabuncu](http://sabuncu.engineering.cornell.edu/)  
+CVPR 2018.  
+[ [PDF](http://www.mit.edu/~adalca/files/papers/cvpr2018_priors.pdf) | [bibtex](bibtex.txt) ]
