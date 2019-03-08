@@ -202,8 +202,7 @@ class Resize(Layer):
         """
 
         if isinstance(input_shape[0], (list, tuple)) and len(input_shape) > 1:
-            raise Exception('Resize must be called on a list of length 1.'
-                            'First argument is the image, second is the transform.')
+            raise Exception('Resize must be called on a list of length 1.')
 
         if isinstance(input_shape[0], (list, tuple)):
             input_shape = input_shape[0]
@@ -214,6 +213,9 @@ class Resize(Layer):
 
         # confirm built
         self.built = True
+
+        super(Resize, self).build(input_shape)  # Be sure to call this somewhere!
+
 
     def call(self, inputs):
         """
@@ -510,28 +512,108 @@ class MeanStream(Layer):
         super(MeanStream, self).build(input_shape)  # Be sure to call this somewhere!
 
     def call(self, x):
-        # previous mean
-        pre_mean = self.mean
-    
-        # compute this batch stats
-        this_sum = tf.reduce_sum(x, 0)
-        this_bs = tf.cast(K.shape(x)[0], 'float32')  # this batch size
+        # get new mean and count
+        this_bs_int = K.shape(x)[0]
+        new_mean, new_count = _mean_update(self.mean, self.count, x, self.cap)
         
-        # increase count and compute weights
-        new_count = self.count + this_bs
-        alpha = this_bs/K.minimum(new_count, self.cap)
-        
-        # compute new mean. Note that once we reach self.cap (e.g. 1000), the 'previous mean' matters less
-        new_mean = pre_mean * (1-alpha) + (this_sum/this_bs) * alpha
-        
+        # update op
         updates = [(self.count, new_count), (self.mean, new_mean)]
         self.add_update(updates, x)
+
+        # prep for broadcasting :(
+        p = tf.concat((K.reshape(this_bs_int, (1,)), K.shape(self.mean)), 0)
+        z = K.ones(p)
         
         # the first few 1000 should not matter that much towards this cost
-        return K.minimum(1., new_count/self.cap) * K.expand_dims(new_mean, 0)        
+        return K.minimum(1., new_count/self.cap) * (z * K.expand_dims(new_mean, 0))
 
     def compute_output_shape(self, input_shape):
         return input_shape
+
+
+def _mean_update(pre_mean, pre_count, x, pre_cap=None):
+
+    # compute this batch stats
+    this_sum = tf.reduce_sum(x, 0)
+    this_bs = tf.cast(K.shape(x)[0], 'float32')  # this batch size
+    
+    # increase count and compute weights
+    new_count = pre_count + this_bs
+    alpha = this_bs/K.minimum(new_count, pre_cap)
+    
+    # compute new mean. Note that once we reach self.cap (e.g. 1000), the 'previous mean' matters less
+    new_mean = pre_mean * (1-alpha) + (this_sum/this_bs) * alpha
+
+    return (new_mean, new_count)
+
+class CovStream(Layer):
+    """ 
+    Maintain stream of data mean. 
+
+    cap refers to mainting an approximation of up to that number of subjects -- that is,
+    any incoming datapoint will have at least 1/cap weight.
+    """
+
+    def __init__(self, cap=100, **kwargs):
+        self.cap = K.variable(cap, dtype='float32')
+        super(CovStream, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        # Create mean, cov and and count
+        # See note in MeanStream.build()
+        self.mean = self.add_weight(name='mean', 
+                                    shape=input_shape[1:],
+                                    initializer='zeros',
+                                    trainable=False)
+        v = np.prod(input_shape[1:])
+        self.cov = self.add_weight(name='cov', 
+                                 shape=[v, v],
+                                 initializer='zeros',
+                                 trainable=False)
+        self.count = self.add_weight(name='count', 
+                                      shape=[1],
+                                      initializer='zeros',
+                                      trainable=False)
+
+        super(CovStream, self).build(input_shape)  # Be sure to call this somewhere!
+
+    def call(self, x):
+        x_orig = x
+
+        # x reshape
+        this_bs_int = K.shape(x)[0]
+        this_bs = tf.cast(this_bs_int, 'float32')  # this batch size
+        prev_count = self.count
+        x = K.batch_flatten(x)  # B x N
+
+        # update mean
+        new_mean, new_count = _mean_update(self.mean, self.count, x, self.cap)        
+
+        # new C update. Should be B x N x N
+        x = K.expand_dims(x, -1)
+        C_delta = K.batch_dot(x, K.permute_dimensions(x, [0, 2, 1]))
+
+        # update cov
+        prev_cap = K.minimum(prev_count, self.cap)
+        C = self.cov * (prev_cap - 1) + K.sum(C_delta, 0)
+        new_cov = C / (prev_cap + this_bs - 1)
+
+        # updates
+        updates = [(self.count, new_count), (self.mean, new_mean), (self.cov, new_cov)]
+        self.add_update(updates, x_orig)
+
+        # prep for broadcasting :(
+        p = tf.concat((K.reshape(this_bs_int, (1,)), K.shape(self.cov)), 0)
+        z = K.ones(p)
+
+        return K.minimum(1., new_count/self.cap) * (z * K.expand_dims(new_cov, 0))
+
+    def compute_output_shape(self, input_shape):
+        v = np.prod(input_shape[1:])
+        return (input_shape[0], v, v)
+
+
+
 
 
 class LocalLinear(Layer):
