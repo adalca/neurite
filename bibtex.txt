@@ -5,3 +5,11 @@
   pages={9290--9299},
   year={2018}
 }
+
+
+@article{dalca2019imputation,
+  title={Unsupervised Data Imputation via Variational Inference of Deep Subspaces},
+  author={Dalca, Adrian V and Guttag, John and Sabuncu, Mert R},
+  journal={arXiv preprint arXiv:1903.03503},
+  year={2019}
+}

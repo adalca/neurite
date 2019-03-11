@@ -27,6 +27,14 @@ If you use this code, please cite:
 CVPR 2018.  
 [ [PDF](http://www.mit.edu/~adalca/files/papers/cvpr2018_priors.pdf) | [arxiv](http://arxiv.org/abs/1903.03148) | [bibtex](bibtex.txt) ]
 
+If you are using any of the sparse/imputation functions, please cite:  
+
+**Unsupervised Data Imputation via Variational Inference of Deep Subspaces**  
+[Adrian V. Dalca](http://adalca.mit.edu), [John Guttag](https://people.csail.mit.edu/guttag/), [Mert R. Sabuncu](http://sabuncu.engineering.cornell.edu/)  
+Arxiv preprint 2019  
+[ [arxiv](https://arxiv.org/abs/1903.03503) | [bibtex](bibtex.txt) ]
+
+
 ### Development:
 Please open an [issue](https://github.com/adalca/neuron/issues) [preferred] or contact Adrian Dalca at adalca@csail.mit.edu for question related to `neuron`.
 
