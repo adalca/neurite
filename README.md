@@ -25,7 +25,7 @@ If you use this code, please cite:
 **Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation**  
 [Adrian V. Dalca](http://adalca.mit.edu), [John Guttag](https://people.csail.mit.edu/guttag/), [Mert R. Sabuncu](http://sabuncu.engineering.cornell.edu/)  
 CVPR 2018.  
-[ [PDF](http://www.mit.edu/~adalca/files/papers/cvpr2018_priors.pdf) | [bibtex](bibtex.txt) ]
+[ [PDF](http://www.mit.edu/~adalca/files/papers/cvpr2018_priors.pdf) | [arxiv](http://arxiv.org/abs/1903.03148) | [bibtex](bibtex.txt) ]
 
 ### Development:
 Please open an [issue](https://github.com/adalca/neuron/issues) [preferred] or contact Adrian Dalca at adalca@csail.mit.edu for question related to `neuron`.
