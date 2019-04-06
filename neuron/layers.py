@@ -178,10 +178,13 @@ class VecInt(Layer):
       MICCAI 2018.
     """
 
-    def __init__(self, indexing='ij', method='ss', int_steps=7, **kwargs):
+    def __init__(self, indexing='ij', method='ss', int_steps=7, out_time_pt=1, **kwargs):
         """        
         Parameters:
             method can be any of the methods in neuron.utils.integrate_vec
+            indexing can be 'xy' (switches first two dimensions) or 'ij'
+            int_steps is the number of integration steps
+            out_time_pt is time point at which to output if using odeint integration
         """
 
         assert indexing in ['ij', 'xy'], "indexing has to be 'ij' (matrix) or 'xy' (cartesian)"
@@ -189,6 +192,7 @@ class VecInt(Layer):
         self.method = method
         self.int_steps = int_steps
         self.inshape = None
+        self.out_time_pt = 1
         super(self.__class__, self).__init__(**kwargs)
 
     def build(self, input_shape):
@@ -224,7 +228,7 @@ class VecInt(Layer):
         return integrate_vec(vel, method=self.method,
                       nb_steps=self.int_steps,
                       ode_args={'rtol':1e-6, 'atol':1e-12},
-                      time_pt=1)
+                      out_time_pt=self.out_time_pt)
        
 
 class Resize(Layer):
