@@ -192,7 +192,7 @@ class VecInt(Layer):
         self.method = method
         self.int_steps = int_steps
         self.inshape = None
-        self.out_time_pt = 1
+        self.out_time_pt = out_time_pt
         super(self.__class__, self).__init__(**kwargs)
 
     def build(self, input_shape):
