@@ -378,23 +378,23 @@ def integrate_vec(vec, time_dep=False, method='ss', **kwargs):
 
         # process time point.
         out_time_pt = kwargs['out_time_pt'] if 'out_time_pt' in kwargs.keys() else 1
-        single_out_time_pt = not isinstance(out_time_pt, (list, tuple))
-        if single_out_time_pt: out_time_pt = [out_time_pt]
-        K_out_time_pt = K.concatenate([K.zeros(1), K.flatten(K.variable(out_time_pt))], 0)
+        out_time_pt = K.flatten(K.variable(out_time_pt))
+        len_out_time_pt = out_time_pt.get_shape().as_list()[0]
+        K_out_time_pt = K.concatenate([K.zeros(1), out_time_pt], 0)
 
         # process initialization
         if 'init' not in kwargs.keys() or kwargs['init'] == 'zero':
-            disp0 = vec*0
+            disp0 = vec*0  # initial displacement is 0
         else:
             raise ValueError('non-zero init for ode method not implemented')
 
         # compute integration with tf.contrib.integrate.odeint
         if 'ode_args' not in kwargs.keys(): kwargs['ode_args'] = {}
         disp = tf.contrib.integrate.odeint(fn, disp0, K_out_time_pt, **kwargs['ode_args'])
-        disp = K.permute_dimensions(disp[1:len(out_time_pt)+1, :], [*range(1,len(disp.shape)), 0])
+        disp = K.permute_dimensions(disp[1:len_out_time_pt+1, :], [*range(1,len(disp.shape)), 0])
 
         # return
-        if single_out_time_pt: 
+        if len_out_time_pt == 1: 
             disp = disp[...,0]
 
     return disp
