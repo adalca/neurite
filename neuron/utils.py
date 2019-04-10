@@ -380,7 +380,7 @@ def integrate_vec(vec, time_dep=False, method='ss', **kwargs):
         out_time_pt = kwargs['out_time_pt'] if 'out_time_pt' in kwargs.keys() else 1
         single_out_time_pt = not isinstance(out_time_pt, (list, tuple))
         if single_out_time_pt: out_time_pt = [out_time_pt]
-        K_out_time_pt = K.variable([0, *out_time_pt])
+        K_out_time_pt = K.concatenate([K.zeros(1), K.variable(out_time_pt)], 0)
 
         # process initialization
         if 'init' not in kwargs.keys() or kwargs['init'] == 'zero':
