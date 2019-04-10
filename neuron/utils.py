@@ -378,7 +378,7 @@ def integrate_vec(vec, time_dep=False, method='ss', **kwargs):
 
         # process time point.
         out_time_pt = kwargs['out_time_pt'] if 'out_time_pt' in kwargs.keys() else 1
-        out_time_pt = K.flatten(K.variable(out_time_pt))
+        out_time_pt = K.flatten(out_time_pt)
         len_out_time_pt = out_time_pt.get_shape().as_list()[0]
         K_out_time_pt = K.concatenate([K.zeros(1), out_time_pt], 0)
 
