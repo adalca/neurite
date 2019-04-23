@@ -378,9 +378,10 @@ def integrate_vec(vec, time_dep=False, method='ss', **kwargs):
 
         # process time point.
         out_time_pt = kwargs['out_time_pt'] if 'out_time_pt' in kwargs.keys() else 1
-        out_time_pt = K.flatten(out_time_pt)
+        out_time_pt = tf.cast(K.flatten(out_time_pt), tf.float32)
         len_out_time_pt = out_time_pt.get_shape().as_list()[0]
-        K_out_time_pt = K.concatenate([K.zeros(1), out_time_pt], 0)
+        z = out_time_pt[0:1]*0.0  # initializing with something like tf.zeros(1) gives a control flow issue.
+        K_out_time_pt = K.concatenate([z, out_time_pt], 0)
 
         # process initialization
         if 'init' not in kwargs.keys() or kwargs['init'] == 'zero':
