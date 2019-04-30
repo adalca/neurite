@@ -383,15 +383,20 @@ def integrate_vec(vec, time_dep=False, method='ss', **kwargs):
         z = out_time_pt[0:1]*0.0  # initializing with something like tf.zeros(1) gives a control flow issue.
         K_out_time_pt = K.concatenate([z, out_time_pt], 0)
 
+        # enable a new integration function than tf.contrib.integrate.odeint
+        odeint_fn = tf.contrib.integrate.odeint
+        if 'odeint_fn' in kwargs.keys():
+            odeint = kwargs['odeint_fn']
+
         # process initialization
         if 'init' not in kwargs.keys() or kwargs['init'] == 'zero':
             disp0 = vec*0  # initial displacement is 0
         else:
             raise ValueError('non-zero init for ode method not implemented')
 
-        # compute integration with tf.contrib.integrate.odeint
+        # compute integration with odeint
         if 'ode_args' not in kwargs.keys(): kwargs['ode_args'] = {}
-        disp = tf.contrib.integrate.odeint(fn, disp0, K_out_time_pt, **kwargs['ode_args'])
+        disp = odeint_fn(fn, disp0, K_out_time_pt, **kwargs['ode_args'])
         disp = K.permute_dimensions(disp[1:len_out_time_pt+1, :], [*range(1,len(disp.shape)), 0])
 
         # return
