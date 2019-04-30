@@ -385,8 +385,8 @@ def integrate_vec(vec, time_dep=False, method='ss', **kwargs):
 
         # enable a new integration function than tf.contrib.integrate.odeint
         odeint_fn = tf.contrib.integrate.odeint
-        if 'odeint_fn' in kwargs.keys():
-            odeint = kwargs['odeint_fn']
+        if 'odeint_fn' in kwargs.keys() and kwargs['odeint_fn'] is not None:
+            odeint_fn = kwargs['odeint_fn']
 
         # process initialization
         if 'init' not in kwargs.keys() or kwargs['init'] == 'zero':

@@ -178,7 +178,7 @@ class VecInt(Layer):
       MICCAI 2018.
     """
 
-    def __init__(self, indexing='ij', method='ss', int_steps=7, out_time_pt=1, **kwargs):
+    def __init__(self, indexing='ij', method='ss', int_steps=7, out_time_pt=1, odeint_fn=None, **kwargs):
         """        
         Parameters:
             method can be any of the methods in neuron.utils.integrate_vec
@@ -193,6 +193,7 @@ class VecInt(Layer):
         self.int_steps = int_steps
         self.inshape = None
         self.out_time_pt = out_time_pt
+        self.odeint_fn = odeint_fn  # if none then will use a tensorflow function
         super(self.__class__, self).__init__(**kwargs)
 
     def build(self, input_shape):
@@ -228,7 +229,8 @@ class VecInt(Layer):
         return integrate_vec(vel, method=self.method,
                       nb_steps=self.int_steps,
                       ode_args={'rtol':1e-6, 'atol':1e-12},
-                      out_time_pt=self.out_time_pt)
+                      out_time_pt=self.out_time_pt,
+                      odeint_fn=self.odeint_fn)
        
 
 class Resize(Layer):
