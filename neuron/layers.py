@@ -204,18 +204,24 @@ class VecInt(Layer):
     def build(self, input_shape):
         # confirm built
         self.built = True
-        self.inshape = input_shape
+        
+        trf_shape = input_shape
+        if isinstance(input_shape[0], (list, tuple)):
+            trf_shape = input_shape[0]
+        self.inshape = trf_shape
 
-        if input_shape[-1] != len(input_shape) - 2:
+        if trf_shape[-1] != len(trf_shape) - 2:
             raise Exception('transform ndims %d does not match expected ndims %d' \
-                % (input_shape[-1], len(input_shape) - 2))
+                % (trf_shape[-1], len(trf_shape) - 2))
 
     def call(self, inputs):
-        loc_shift = inputs
+        if not isinstance(inputs, (list, tuple)):
+            inputs = [inputs]
+        loc_shift = inputs[0]
 
         # necessary for multi_gpu models...
         loc_shift = K.reshape(loc_shift, [-1, *self.inshape[1:]])
-        loc_shift._keras_shape = inputs._keras_shape
+        loc_shift._keras_shape = inputs[0]._keras_shape
         
         # prepare location shift
         if self.indexing == 'xy':  # shift the first two dimensions
@@ -223,18 +229,24 @@ class VecInt(Layer):
             loc_shift_lst = [loc_shift_split[1], loc_shift_split[0], *loc_shift_split[2:]]
             loc_shift = tf.concat(loc_shift_lst, -1)
 
+        if len(inputs) > 1:
+            assert self.out_time_pt is None, 'out_time_pt should be None if providing batch_based out_time_pt'
+
         # map transform across batch
-        out = tf.map_fn(self._single_int, loc_shift, dtype=tf.float32)
-        out._keras_shape = inputs._keras_shape
+        out = tf.map_fn(self._single_int, [loc_shift] + inputs[1:], dtype=tf.float32)
+        out._keras_shape = inputs[0]._keras_shape
         return out
 
     def _single_int(self, inputs):
 
-        vel = inputs
+        vel = inputs[0]
+        out_time_pt = self.out_time_pt
+        if len(inputs) == 2:
+            out_time_pt = inputs[1]
         return integrate_vec(vel, method=self.method,
                       nb_steps=self.int_steps,
                       ode_args=self.ode_args,
-                      out_time_pt=self.out_time_pt,
+                      out_time_pt=out_time_pt,
                       odeint_fn=self.odeint_fn)
        
 
