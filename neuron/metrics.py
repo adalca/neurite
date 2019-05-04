@@ -329,7 +329,7 @@ class MeanSquaredError():
 class Mix():
     """ a mix of several losses """
 
-    def __init__(self, losses, loss_wts=None):
+    def __init__(self, losses, loss_weights=None):
         self.losses = losses
         self.loss_wts = loss_wts
         if loss_wts is None:
@@ -338,7 +338,7 @@ class Mix():
     def loss(self, y_true, y_pred):
         total_loss = K.variable(0)
         for idx, loss in enumerate(self.losses):
-            total_loss += self.loss_wts[idx] * loss(y_true, y_pred)
+            total_loss += self.loss_weights[idx] * loss(y_true, y_pred)
         return total_loss
 
 

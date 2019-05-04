@@ -3,15 +3,14 @@
 # general imports
 import sys
 import os
+import zipfile
 
 # third party imports
 import numpy as np
 import nibabel as nib
 import scipy
-from keras.utils import np_utils 
 import keras
-import keras.preprocessing
-import keras.preprocessing.image
+from keras.utils import np_utils 
 from keras.models import Model
 
 # local packages
@@ -898,59 +897,6 @@ def vol_sr_slices(volpath,
                 yield (input_batch, output_batch)
    
 
-def max_patch_in_vol_cat(volpaths,
-                         patch_size,
-                         patch_stride,
-                         model,
-                         tst_model,
-                         out_layer,
-                         name='max_patch_in_vol_cat', # name, optional
-                         **kwargs): # named arguments for vol_cat(...)
-    """
-    given a model by reference
-    goes to the next volume and, given a patch_size, finds
-    the highest prediction of out_layer_name, and yields that patch index to the model
-
-    TODO: this doesn't work if called while training, something about running through the graph
-    perhaps need to do a different tf session?
-    """
-
-    # strategy: call vol_cat on full volume
-    vol_cat_gen = vol_cat(volpaths, **kwargs)
-
-    # need to make a deep copy:
-    #model_tmp = Model(inputs=model.inputs, outputs=model.get_layer(out_layer).output)
-    # nrn_models.copy_weights(model_tmp, tst_model)
-    #nrn_models.copy_weights(tst_model, tst_model)
-    #asdasd
-    tst_model = model
-
-    while 1:
-        # get next volume
-        try:
-            sample = next(vol_cat_gen)
-        except:
-            print("Failed loading file. Skipping", file=sys.stderr)
-            continue
-        sample_vol = np.squeeze(sample[0])
-        patch_gen = patch(sample_vol, patch_size, patch_stride=patch_stride)
-
-        # go through its patches
-        max_resp = -np.infty
-        max_idx = np.nan
-        max_out = None
-        for idx, ptc in enumerate(patch_gen):
-            # predict
-            res = np.squeeze(tst_model.predict(ptc))[1]
-            if res > max_resp:
-                max_ptc = ptc
-                max_out = sample[1]
-                max_idx = idx
-
-        # yield the right patch
-        yield (max_ptc, max_out)
-
-
 def img_seg(volpath,
             segpath,
             batch_size=1,
@@ -1085,10 +1031,6 @@ def _relabel(vol_data, labels, forcecheck=False):
     
     return new_vol_data
 
-
-
-
-import zipfile
 
 def _npz_headers(npz, namelist=None):
     """
