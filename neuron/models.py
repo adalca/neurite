@@ -472,7 +472,8 @@ def conv_dec(nb_features,
     ndims = len(input_shape) - 1
     input_shape = tuple(input_shape)
     if isinstance(pool_size, int):
-        pool_size = (pool_size,) * ndims
+        if ndims > 1:
+            pool_size = (pool_size,) * ndims
 
     # prepare layers
     convL = getattr(KL, 'Conv%dD' % ndims)
