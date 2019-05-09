@@ -32,6 +32,8 @@ def slices(slices_in,           # the 2D slices
     '''
 
     # input processing
+    if type(slices_in) == np.ndarray:
+        slices_in = [slices_in]
     nb_plots = len(slices_in)
     for si, slice_in in enumerate(slices_in):
         if len(slice_in.shape) != 2:
