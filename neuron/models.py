@@ -716,7 +716,10 @@ def single_ae(enc_size,
         # encoding layer
         if ae_type == 'dense':
             name = '%s_ae_sigma_enc_dense_%s' % (prefix, enc_size_str)
-            last_tensor = KL.Dense(enc_size[0], name=name)(pre_enc_layer)
+            last_tensor = KL.Dense(enc_size[0], name=name,
+                                #    kernel_initializer=keras.initializers.RandomNormal(mean=0.0, stddev=1e-5),
+                                #    bias_initializer=keras.initializers.RandomNormal(mean=-5.0, stddev=1e-5)
+                                   )(pre_enc_layer)
 
         else:
             if list(enc_size)[:-1] != list(input_shape)[:-1] and \
