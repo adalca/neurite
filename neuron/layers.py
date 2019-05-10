@@ -295,6 +295,12 @@ class Resize(Layer):
         # set up number of dimensions
         self.ndims = len(input_shape) - 2
         self.inshape = input_shape
+        if not isinstance(self.zoom_factor, (list, tuple)):
+            self.zoom_factor = [self.zoom_factor] * self.ndims
+        else:
+            assert len(self.zoom_factor) == self.ndims, \
+                'zoom factor length {} does not match number of dimensions {}'\
+                    .format(len(self.zoom_factor), self.ndims)
 
         # confirm built
         self.built = True
@@ -322,8 +328,9 @@ class Resize(Layer):
         return tf.map_fn(self._single_resize, vol, dtype=tf.float32)
 
     def compute_output_shape(self, input_shape):
+        
         output_shape = [input_shape[0]]
-        output_shape += [int(f * self.zoom_factor) for f in input_shape[1:-1]]
+        output_shape += [int(input_shape[1:-1][f] * self.zoom_factor[f]) for f in range(self.ndims)]
         output_shape += [input_shape[-1]]
         return tuple(output_shape)
 
