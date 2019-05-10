@@ -703,7 +703,7 @@ def single_ae(enc_size,
             all([f is not None for f in input_shape[:-1]]) and \
             all([f is not None for f in enc_size[:-1]]): 
 
-            assert len(enc_size) - 1 == 2, "Sorry, I have not yet implemented non-2D resizing -- need to check out interpn!"
+            # assert len(enc_size) - 1 == 2, "Sorry, I have not yet implemented non-2D resizing -- need to check out interpn!"
             name = '%s_ae_mu_enc_conv' % (prefix)
             last_tensor = convL(enc_size[-1], conv_size, name=name, **conv_kwargs)(pre_enc_layer)
 
@@ -820,8 +820,10 @@ def single_ae(enc_size,
             all([f is not None for f in enc_size[:-1]]): 
 
             name = '%s_ae_mu_dec' % (prefix)
-            resize_fn = lambda x: tf.image.resize_bilinear(x, input_shape[:-1])
-            last_tensor = KL.Lambda(resize_fn, name=name)(last_tensor)
+            zf = [last_tensor.shape.as_list()[1:-1][f]/enc_size[:-1][f] for f in range(len(enc_size)-1)]
+            last_tensor = layers.Resize(zoom_factor=zf, name=name)(last_tensor)
+            # resize_fn = lambda x: tf.image.resize_bilinear(x, input_shape[:-1])
+            # last_tensor = KL.Lambda(resize_fn, name=name)(last_tensor)
 
         name = '%s_ae_%s_dec' % (prefix, ae_type)
         last_tensor = convL(input_nb_feats, conv_size, name=name, **conv_kwargs)(last_tensor)
