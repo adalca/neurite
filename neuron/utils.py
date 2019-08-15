@@ -294,6 +294,32 @@ def transform(vol, loc_shift, interp_method='linear', indexing='ij'):
     return interpn(vol, loc, interp_method=interp_method)
 
 
+def compose(disp_1, disp_2, indexing='ij'):
+    """
+    compose two dense deformations specified by their displacements
+
+    We have two fields
+        A --> B (so field is in space of B)
+        and
+        B --> C (so field is in the space of C)
+    this function gives a new warp field
+        A --> C (so field is in the sapce of C)
+
+    Parameters:
+        disp_1: first displacement (A-->B) with size [*vol_shape, ndims]
+        disp_2: second  displacement (B-->C) with size [*vol_shape, ndims]
+        indexing (default: 'ij'): 'ij' (matrix) or 'xy' (cartesian).
+            In general, prefer to leave this 'ij'
+
+    Returns:
+        composed field disp_3 which takes data from A to C
+    """
+
+    assert indexing == 'ij', "currently only ij indexing is implemented in compose"
+
+    return disp_2 + transform(disp_1, disp_2, interp_method='linear', indexing=indexing)
+
+
 def integrate_vec(vec, time_dep=False, method='ss', **kwargs):
     """
     Integrate (stationary of time-dependent) vector field (N-D Tensor) in tensorflow
@@ -731,10 +757,18 @@ def mod_submodel(orig_model,
             dct[layer] is a list of lists of layers.
         """
 
-        out_layers = orig_model.output_layers
-        out_node_idx = orig_model.output_layers_node_indices
+        if hasattr(orig_model, 'output_layers'):
+            out_layers = orig_model.output_layers
+            out_node_idx = orig_model.output_layers_node_indices
+            node_list = [ol._inbound_nodes[out_node_idx[i]] for i, ol in enumerate(out_layers)]
 
-        node_list = [ol._inbound_nodes[out_node_idx[i]] for i, ol in enumerate(out_layers)]
+        else:
+            out_layers = orig_model._output_layers
+            
+            node_list = []
+            for i, ol in enumerate(orig_model._output_layers):
+                node_list += ol._inbound_nodes
+            node_list  = list(set(node_list ))
             
         dct = {}
         dct_node_idx = {}
