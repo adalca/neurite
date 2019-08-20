@@ -179,14 +179,10 @@ def resize(vol, zoom_factor, interp_method='linear'):
     new_shape = [vol_shape[f] * zoom_factor[f] for f in range(ndims)]
     new_shape = [int(f) for f in new_shape]
 
-    # get grid for new shape
-    grid = volshape_to_ndgrid(new_shape)
-    grid = [tf.cast(f, 'float32') for f in grid]
-    offset = [grid[f] / zoom_factor[f] - grid[f] for f in range(ndims)]
-    offset = tf.stack(offset, ndims)
+    lin = [tf.linspace(0., vol_shape[d]-1., new_shape[d]) for d in range(ndims)]
+    grid = ndgrid(*lin)
 
-    # transform
-    return transform(vol, offset, interp_method)
+    return interpn(vol, grid, interp_method=interp_method)
 
 
 zoom = resize
