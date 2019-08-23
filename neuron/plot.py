@@ -157,6 +157,7 @@ def flow(slices_in,           # the 2D slices
          img_indexing=True,   # whether to match the image view, i.e. flip y axis
          grid=False,          # option to plot the images in a grid or a single row
          show=True,            # option to actually show the plot (plt.show())
+         quiver_width=None,
          scale=1):             # note quiver essentially draws quiver length = 1/scale
     '''
     plot a grid of flows (2d+2 images)
@@ -236,6 +237,7 @@ def flow(slices_in,           # the 2D slices
                   color=colormap(norm(colors).flatten()),
                   angles='xy',
                   units='xy',
+                  width=quiver_width,
                   scale=scale[i])
         ax.axis('equal')
     
