@@ -392,8 +392,38 @@ def latent_stats_plots(model, gen, nb_reps=100, dim_1=0, dim_2=1, figsize=(15, 7
 
     z = mu_data.shape[0]
     colors = np.linspace(0, 1, z)
-    print('colors:', colors.shape)
+    x = np.arange(mu_data.shape[1])
     print('VAE plots: colors represent sample index')
+
+
+    print('Sample plots (colors represent sample index)')
+    datapoints = np.zeros(data['mu'].shape)
+    for di, mu in tqdm(enumerate(data['mu']), leave=False):
+        logvar = data['logvar'][di,...]
+        eps = np.random.normal(loc=0, scale=1, size=(data['mu'].shape[-1]))
+        datapoints[di, ...] = mu + np.exp(logvar / 2) * eps
+    plt.figure(figsize=figsize)
+    plt.subplot(1, 2, 1)
+    plt.scatter(datapoints[:, dim_1], datapoints[:, dim_2], c=np.linspace(0, 1, datapoints.shape[0]))
+    plt.title('sample dist. nb_reps=%d. colors = sample idx.' % nb_reps)
+    plt.xlabel('dim %d' % dim_1)
+    plt.ylabel('dim %d' % dim_2)
+
+    plt.subplot(1, 2, 2)
+    d_mean = np.mean(datapoints, 0)
+    d_idx = np.argsort(d_mean)
+    d_mean_sort = d_mean[d_idx]
+    d_std_sort = np.std(datapoints, 0)[d_idx]
+    plt.scatter(x, d_mean_sort, c=colors[d_idx])
+    plt.plot(x, d_mean_sort + d_std_sort, 'k')
+    plt.plot(x, d_mean_sort - d_std_sort, 'k')
+    plt.title('mean sample z. nb_reps=%d. colors = sorted dim.' % nb_reps)
+    plt.xlabel('sorted dims')
+    plt.ylabel('mean sample z')
+
+
+
+
 
     # plot
     plt.figure(figsize=figsize)
@@ -404,7 +434,7 @@ def latent_stats_plots(model, gen, nb_reps=100, dim_1=0, dim_2=1, figsize=(15, 7
     plt.ylabel('dim %d' % dim_2)
     plt.subplot(1, 2, 2)
     plt.scatter(logvar_data[:, dim_1], logvar_data[:, dim_2], c=colors)
-    plt.title('std dist. nb_reps=%d. colors = sample idx.' % nb_reps)
+    plt.title('logvar_data dist. nb_reps=%d. colors = sample idx.' % nb_reps)
     plt.xlabel('dim %d' % dim_1)
     plt.ylabel('dim %d' % dim_2)
     plt.show()
@@ -412,7 +442,6 @@ def latent_stats_plots(model, gen, nb_reps=100, dim_1=0, dim_2=1, figsize=(15, 7
     # plot means and variances
     z = mu_data.shape[1]
     colors = np.linspace(0, 1, z)
-    x = np.arange(z)
 
     plt.figure(figsize=figsize)
     plt.subplot(1, 2, 1)
@@ -438,6 +467,9 @@ def latent_stats_plots(model, gen, nb_reps=100, dim_1=0, dim_2=1, figsize=(15, 7
     plt.xlabel('sorted dims (diff than mu)')
     plt.ylabel('mean std')
     plt.show()
+
+
+
 
     return data
 
