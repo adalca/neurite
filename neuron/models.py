@@ -758,13 +758,15 @@ def single_ae(enc_size,
                 all([f is not None for f in input_shape[:-1]]) and \
                 all([f is not None for f in enc_size[:-1]]): 
 
-                assert len(enc_size) - 1 == 2, "Sorry, I have not yet implemented non-2D resizing..."
+                # assert len(enc_size) - 1 == 2, "Sorry, I have not yet implemented non-2D resizing..."
                 name = '%s_ae_sigma_enc_conv' % (prefix)
                 last_tensor = convL(enc_size[-1], conv_size, name=name, **conv_kwargs)(pre_enc_layer)
 
                 name = '%s_ae_sigma_enc' % (prefix)
-                resize_fn = lambda x: tf.image.resize_bilinear(x, enc_size[:-1])
-                last_tensor = KL.Lambda(resize_fn, name=name)(last_tensor)
+                zf = [enc_size[:-1][f]/last_tensor.shape.as_list()[1:-1][f] for f in range(len(enc_size)-1)]
+                last_tensor = layers.Resize(zoom_factor=zf, name=name)(last_tensor)
+                # resize_fn = lambda x: tf.image.resize_bilinear(x, enc_size[:-1])
+                # last_tensor = KL.Lambda(resize_fn, name=name)(last_tensor)
 
             elif enc_size[-1] is None:  # convolutional, but won't tell us bottleneck
                 name = '%s_ae_sigma_enc' % (prefix)
@@ -820,7 +822,7 @@ def single_ae(enc_size,
             all([f is not None for f in enc_size[:-1]]): 
 
             name = '%s_ae_mu_dec' % (prefix)
-            zf = [last_tensor.shape.as_list()[1:-1][f]/enc_size[:-1][f] for f in range(len(enc_size)-1)]
+            zf = [input_shape[:-1][f]/enc_size[:-1][f] for f in range(len(enc_size)-1)]
             last_tensor = layers.Resize(zoom_factor=zf, name=name)(last_tensor)
             # resize_fn = lambda x: tf.image.resize_bilinear(x, input_shape[:-1])
             # last_tensor = KL.Lambda(resize_fn, name=name)(last_tensor)
