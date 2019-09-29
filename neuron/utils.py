@@ -658,23 +658,30 @@ def gaussian_kernel(sigma, windowsize=None, indexing='ij'):
 
 
 
-
-def sub2ind(siz, subs, **kwargs):
+def _softmax(x, axis=-1, alpha=1):
     """
-    assumes column-order major
+    building on keras implementation, with additional alpha parameter
+
+    Softmax activation function.
+    # Arguments
+        x : Tensor.
+        axis: Integer, axis along which the softmax normalization is applied.
+        alpha: a value to multiply all x
+    # Returns
+        Tensor, output of softmax transformation.
+    # Raises
+        ValueError: In case `dim(x) == 1`.
     """
-    # subs is a list
-    assert len(siz) == len(subs), 'found inconsistent siz and subs: %d %d' % (len(siz), len(subs))
-
-    k = np.cumprod(siz[::-1])
-
-    ndx = subs[-1]
-    for i, v in enumerate(subs[:-1][::-1]):
-        ndx = ndx + v * k[i]
-
-    return ndx
-
-
+    x = alpha * x
+    ndim = K.ndim(x)
+    if ndim == 2:
+        return K.softmax(x)
+    elif ndim > 2:
+        e = K.exp(x - K.max(x, axis=axis, keepdims=True))
+        s = K.sum(e, axis=axis, keepdims=True)
+        return e / s
+    else:
+        raise ValueError('Cannot apply softmax to a tensor that is 1D')
 
 
 
@@ -1255,6 +1262,28 @@ def next_vol_pred(model, data_generator, verbose=False):
         data = (sample[0][0], sample[1], pred, sample[0][1])
 
     return data
+
+
+
+
+
+
+
+def sub2ind(siz, subs, **kwargs):
+    """
+    assumes column-order major
+    """
+    # subs is a list
+    assert len(siz) == len(subs), \
+        'found inconsistent siz and subs: %d %d' % (len(siz), len(subs))
+
+    k = np.cumprod(siz[::-1])
+
+    ndx = subs[-1]
+    for i, v in enumerate(subs[:-1][::-1]):
+        ndx = ndx + v * k[i]
+
+    return ndx
 
 
 
