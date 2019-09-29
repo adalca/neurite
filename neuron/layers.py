@@ -24,21 +24,10 @@ from keras.legacy import interfaces
 from keras.layers import Layer, InputLayer, Input
 from tensorflow.python.keras.engine import base_layer
 from keras.engine.topology import Node
-
-# mostly necessary for the LocalParam Layer
-from tensorflow.python.distribute import distribution_strategy_context
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
-from tensorflow.python.keras.distribute import distributed_training_utils
-from tensorflow.python.keras.engine import base_layer
-from keras.engine.topology import Node
-from tensorflow.python.keras.utils import tf_utils
-
 
 # local
 from .utils import transform, resize, integrate_vec, affine_to_shift
-
-
 
 
 class Negate(Layer):
