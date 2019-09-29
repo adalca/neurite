@@ -22,7 +22,17 @@ import tensorflow as tf
 from keras import backend as K
 from keras.legacy import interfaces
 from keras.layers import Layer, InputLayer, Input
+from tensorflow.python.keras.engine import base_layer
 from keras.engine.topology import Node
+
+# mostly necessary for the LocalParam Layer
+from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.keras import backend
+from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.engine import base_layer
+from keras.engine.topology import Node
+from tensorflow.python.keras.utils import tf_utils
 
 
 # local
@@ -530,122 +540,6 @@ class LocalBias(Layer):
         return input_shape
 
 
-class LocalParam_new(Layer):
-
-    def __init__(self,
-                 shape,
-                 my_initializer='RandomNormal',
-                 name=None,
-                 mult=1.0,
-                 **kwargs):
-        
-        self.shape = tuple([1, *shape])
-        self.my_initializer = my_initializer
-        self.mult = mult
-
-        super(LocalParam_new, self).__init__(**kwargs)
-
-    def build(self, input_shape):
-
-        # Create a trainable weight variable for this layer.
-        self.kernel = self.add_weight(name='kernel', 
-                                      shape=tuple(self.shape[1:]),
-                                      initializer='uniform',
-                                      trainable=True)
-        super(LocalParam_new, self).build(input_shape)  # Be sure to call this at the end
-
-    def call(self, _):
-        # make sure it has a shape
-        if self.shape is not None:
-            self.kernel = tf.reshape(self.kernel, self.shape)
-        return self.kernel
-
-    def compute_output_shape(self, input_shape):
-        if self.shape is None:
-            return input_shape
-        else:
-            return self.shape
-
-
-class LocalParam(Layer):
-    """ 
-    Local Parameter layer: each pixel/voxel has its own parameter (one parameter)
-    out[v] = b
-
-    using code from 
-    https://github.com/YerevaNN/R-NET-in-Keras/blob/master/layers/SharedWeight.py
-    and
-    https://github.com/keras-team/keras/blob/ee02d256611b17d11e37b86bd4f618d7f2a37d84/keras/engine/input_layer.py
-    """
-
-    def __init__(self,
-                 shape,
-                 my_initializer='RandomNormal',
-                 name=None,
-                 mult=1.0,
-                 **kwargs):
-        self.shape = [1, *shape]
-        self.my_initializer = my_initializer
-        self.mult = mult
-
-        if not name:
-            prefix = 'param'
-            name = '%s_%d' % (prefix, K.get_uid(prefix))
-        Layer.__init__(self, name=name, **kwargs)
-
-        # Create a trainable weight variable for this layer.
-        with K.name_scope(self.name):
-            self.kernel = self.add_weight(name='kernel', 
-                                            shape=self.shape,
-                                            initializer=self.my_initializer,
-                                            trainable=True)
-
-        # prepare output tensor, which is essentially the kernel.
-        output_tensor = self.kernel * self.mult
-        output_tensor._keras_shape = self.shape
-        output_tensor._uses_learning_phase = False
-        output_tensor._keras_history = (self, 0, 0)
-        output_tensor._batch_input_shape = self.shape
-
-        self.trainable = True
-        self.built = True    
-        self.is_placeholder = False
-
-        # create new node
-        Node(self,
-            inbound_layers=[],
-            node_indices=[],
-            tensor_indices=[],
-            input_tensors=[],
-            output_tensors=[output_tensor],
-            input_masks=[],
-            output_masks=[None],
-            input_shapes=[],
-            output_shapes=[self.shape])
-
-    def get_config(self):
-        config = {
-            '_batch_input_shape': self.shape,
-            '_keras_shape': self.shape,
-            'name': self.name
-        }
-        return config
-
-    def call(self, _):
-        z = self.get_output()
-        return tf.reshape(z, self.shape)
-
-    def compute_output_shape(self, input_shape):
-        return tuple(self.shape)
-
-    def get_output(self):  # call() would force inputs
-        outputs = self._inbound_nodes[0].output_tensors
-        if len(outputs) == 1:
-            return outputs[0]
-        else:
-            return outputs
-
-
 class LocalLinear(Layer):
     """ 
     Local linear layer: each pixel/voxel has its own linear operation (two parameters)
@@ -962,6 +856,146 @@ class LocallyConnected3D(Layer):
         else:
             output = K.permute_dimensions(output, (3, 0, 1, 2, 4))
         return output
+
+
+class LocalParamLayer(Layer):
+    """ 
+    Local Parameter layer: each pixel/voxel has its own parameter (one parameter)
+    out[v] = b
+
+    using code from 
+    https://github.com/YerevaNN/R-NET-in-Keras/blob/master/layers/SharedWeight.py
+    and
+    https://github.com/keras-team/keras/blob/ee02d256611b17d11e37b86bd4f618d7f2a37d84/keras/engine/input_layer.py
+    """
+
+    def __init__(self,
+                 shape,
+                 my_initializer='RandomNormal',
+                 dtype=None,
+                 name=None,
+                 mult=1.0,
+                 **kwargs):
+
+        
+        # some input checking
+        if not name:
+            prefix = 'local_param'
+            name = prefix + '_' + str(backend.get_uid(prefix))
+            
+        if not dtype:
+            dtype = backend.floatx()
+        
+        self.shape = [1, *shape]
+        self.my_initializer = my_initializer
+        self.mult = mult
+
+        if not name:
+            prefix = 'param'
+            name = '%s_%d' % (prefix, K.get_uid(prefix))
+        Layer.__init__(self, name=name, **kwargs)
+
+        # Create a trainable weight variable for this layer.
+        with K.name_scope(self.name):
+            self.kernel = self.add_weight(name='kernel', 
+                                            shape=shape,
+                                            initializer=self.my_initializer,
+                                            dtype=dtype,
+                                            trainable=True)
+
+        # prepare output tensor, which is essentially the kernel.
+        output_tensor = K.expand_dims(self.kernel, 0) * self.mult
+        output_tensor._keras_shape = self.shape
+        output_tensor._uses_learning_phase = False
+        output_tensor._keras_history = base_layer.KerasHistory(self, 0, 0)
+        output_tensor._batch_input_shape = self.shape
+
+        self.trainable = True
+        self.built = True    
+        self.is_placeholder = False
+
+        # create new node
+        Node(self,
+            inbound_layers=[],
+            node_indices=[],
+            tensor_indices=[],
+            input_tensors=[],
+            output_tensors=[output_tensor],
+            input_masks=[],
+            output_masks=[None],
+            input_shapes=[],
+            output_shapes=self.shape)
+
+    def get_config(self):
+        config = {
+                'dtype': self.dtype,
+                'sparse': self.sparse,
+                'name': self.name
+        }
+        return config
+
+
+def LocalParam(    # pylint: disable=invalid-name
+        shape,
+        batch_size=None,
+        name=None,
+        dtype=None,
+        **kwargs):
+    """
+    `LocalParam()` is used to instantiate a Keras tensor.
+    A Keras tensor is a tensor object from the underlying backend
+    (Theano or TensorFlow), which we augment with certain
+    attributes that allow us to build a Keras model
+    just by knowing the inputs and outputs of the model.
+    For instance, if a, b and c are Keras tensors,
+    it becomes possible to do:
+    `model = Model(input=[a, b], output=c)`
+    The added Keras attribute is:
+            `_keras_history`: Last layer applied to the tensor.
+                    the entire layer graph is retrievable from that layer,
+                    recursively.
+    Arguments:
+            shape: A shape tuple (integers), not including the batch size.
+                    For instance, `shape=(32,)` indicates that the expected input
+                    will be batches of 32-dimensional vectors. Elements of this tuple
+                    can be None; 'None' elements represent dimensions where the shape is
+                    not known.
+            batch_size: optional static batch size (integer).
+            name: An optional name string for the layer.
+                    Should be unique in a model (do not reuse the same name twice).
+                    It will be autogenerated if it isn't provided.
+            dtype: The data type expected by the input, as a string
+                    (`float32`, `float64`, `int32`...)
+            **kwargs: deprecated arguments support.
+    Returns:
+        A `tensor`.
+    Example:
+    ```python
+    # this is a logistic regression in Keras
+    x = Input(shape=(32,))
+    y = Dense(16, activation='softmax')(x)
+    model = Model(x, y)
+    ```
+    Note that even if eager execution is enabled,
+    `Input` produces a symbolic tensor (i.e. a placeholder).
+    This symbolic tensor can be used with other
+    TensorFlow ops, as such:
+    ```python
+    x = Input(shape=(32,))
+    y = tf.square(x)
+    ```
+    Raises:
+        ValueError: in case of invalid arguments.
+    """   
+    input_layer = LocalParamLayer(shape, name=name, dtype=dtype)
+
+    # Return tensor including `_keras_history`.
+    # Note that in this case train_output and test_output are the same pointer.
+    outputs = input_layer._inbound_nodes[0].output_tensors
+    if len(outputs) == 1:
+        return outputs[0]
+    else:
+        return outputs
 
 
 ##########################################
