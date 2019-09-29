@@ -29,6 +29,140 @@ from keras.engine.topology import Node
 from .utils import transform, resize, integrate_vec, affine_to_shift
 
 
+
+
+class Negate(Layer):
+    """ 
+    Keras Layer: negative of the input
+    """
+
+    def __init__(self, **kwargs):
+        super(Negate, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        super(Negate, self).build(input_shape)  # Be sure to call this somewhere!
+
+    def call(self, x):
+        return -x
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+
+class RescaleValues(Layer):
+    """ 
+    Very simple Keras layer to rescale data values (e.g. intensities) by fixed factor
+    """
+
+    def __init__(self, resize, **kwargs):
+        self.resize = resize
+        super(RescaleValues, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        super(RescaleValues, self).build(input_shape)  # Be sure to call this somewhere!
+
+    def call(self, x):
+        return x * self.resize 
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+
+class Resize(Layer):
+    """
+    N-D Resize Tensorflow / Keras Layer
+    Note: this is not re-shaping an existing volume, but resizing, like scipy's "Zoom"
+
+    If you find this function useful, please cite:
+        Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation,Dalca AV, Guttag J, Sabuncu MR
+        CVPR 2018  
+
+    Since then, we've re-written the code to be generalized to any 
+    dimensions, and along the way wrote grid and interpolation functions
+    """
+
+    def __init__(self,
+                 zoom_factor,
+                 interp_method='linear',
+                 **kwargs):
+        """
+        Parameters: 
+            interp_method: 'linear' or 'nearest'
+                'xy' indexing will have the first two entries of the flow 
+                (along last axis) flipped compared to 'ij' indexing
+        """
+        self.zoom_factor = zoom_factor
+        self.interp_method = interp_method
+        self.ndims = None
+        self.inshape = None
+        super(Resize, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        """
+        input_shape should be an element of list of one inputs:
+        input1: volume
+                should be a *vol_shape x N
+        """
+
+        if isinstance(input_shape[0], (list, tuple)) and len(input_shape) > 1:
+            raise Exception('Resize must be called on a list of length 1.')
+
+        if isinstance(input_shape[0], (list, tuple)):
+            input_shape = input_shape[0]
+
+        # set up number of dimensions
+        self.ndims = len(input_shape) - 2
+        self.inshape = input_shape
+        if not isinstance(self.zoom_factor, (list, tuple)):
+            self.zoom_factor = [self.zoom_factor] * self.ndims
+        else:
+            assert len(self.zoom_factor) == self.ndims, \
+                'zoom factor length {} does not match number of dimensions {}'\
+                    .format(len(self.zoom_factor), self.ndims)
+
+        # confirm built
+        self.built = True
+
+        super(Resize, self).build(input_shape)  # Be sure to call this somewhere!
+
+
+    def call(self, inputs):
+        """
+        Parameters
+            inputs: volume of list with one volume
+        """
+
+        # check shapes
+        if isinstance(inputs, (list, tuple)):
+            assert len(inputs) == 1, "inputs has to be len 1. found: %d" % len(inputs)
+            vol = inputs[0]
+        else:
+            vol = inputs
+
+        # necessary for multi_gpu models...
+        vol = K.reshape(vol, [-1, *self.inshape[1:]])
+
+        # map transform across batch
+        return tf.map_fn(self._single_resize, vol, dtype=tf.float32)
+
+    def compute_output_shape(self, input_shape):
+        
+        output_shape = [input_shape[0]]
+        output_shape += [int(input_shape[1:-1][f] * self.zoom_factor[f]) for f in range(self.ndims)]
+        output_shape += [input_shape[-1]]
+        return tuple(output_shape)
+
+    def _single_resize(self, inputs):
+        return resize(inputs, self.zoom_factor, interp_method=self.interp_method)
+
+# Zoom naming of resize, to match scipy's naming
+Zoom = Resize
+
+
+#########################################################
+# Vector fields and spatial transforms
+#########################################################
+
 class SpatialTransformer(Layer):
     """
     N-D Spatial Transformer Tensorflow / Keras Layer
@@ -250,96 +384,13 @@ class VecInt(Layer):
                       odeint_fn=self.odeint_fn)
        
 
-class Resize(Layer):
-    """
-    N-D Resize Tensorflow / Keras Layer
-    Note: this is not re-shaping an existing volume, but resizing, like scipy's "Zoom"
-
-    If you find this function useful, please cite:
-        Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation,Dalca AV, Guttag J, Sabuncu MR
-        CVPR 2018  
-
-    Since then, we've re-written the code to be generalized to any 
-    dimensions, and along the way wrote grid and interpolation functions
-    """
-
-    def __init__(self,
-                 zoom_factor,
-                 interp_method='linear',
-                 **kwargs):
-        """
-        Parameters: 
-            interp_method: 'linear' or 'nearest'
-                'xy' indexing will have the first two entries of the flow 
-                (along last axis) flipped compared to 'ij' indexing
-        """
-        self.zoom_factor = zoom_factor
-        self.interp_method = interp_method
-        self.ndims = None
-        self.inshape = None
-        super(Resize, self).__init__(**kwargs)
-
-    def build(self, input_shape):
-        """
-        input_shape should be an element of list of one inputs:
-        input1: volume
-                should be a *vol_shape x N
-        """
-
-        if isinstance(input_shape[0], (list, tuple)) and len(input_shape) > 1:
-            raise Exception('Resize must be called on a list of length 1.')
-
-        if isinstance(input_shape[0], (list, tuple)):
-            input_shape = input_shape[0]
-
-        # set up number of dimensions
-        self.ndims = len(input_shape) - 2
-        self.inshape = input_shape
-        if not isinstance(self.zoom_factor, (list, tuple)):
-            self.zoom_factor = [self.zoom_factor] * self.ndims
-        else:
-            assert len(self.zoom_factor) == self.ndims, \
-                'zoom factor length {} does not match number of dimensions {}'\
-                    .format(len(self.zoom_factor), self.ndims)
-
-        # confirm built
-        self.built = True
-
-        super(Resize, self).build(input_shape)  # Be sure to call this somewhere!
+# full wording.
+VecIntegration = VecInt
 
 
-    def call(self, inputs):
-        """
-        Parameters
-            inputs: volume of list with one volume
-        """
-
-        # check shapes
-        if isinstance(inputs, (list, tuple)):
-            assert len(inputs) == 1, "inputs has to be len 1. found: %d" % len(inputs)
-            vol = inputs[0]
-        else:
-            vol = inputs
-
-        # necessary for multi_gpu models...
-        vol = K.reshape(vol, [-1, *self.inshape[1:]])
-
-        # map transform across batch
-        return tf.map_fn(self._single_resize, vol, dtype=tf.float32)
-
-    def compute_output_shape(self, input_shape):
-        
-        output_shape = [input_shape[0]]
-        output_shape += [int(input_shape[1:-1][f] * self.zoom_factor[f]) for f in range(self.ndims)]
-        output_shape += [input_shape[-1]]
-        return tuple(output_shape)
-
-    def _single_resize(self, inputs):
-        return resize(inputs, self.zoom_factor, interp_method=self.interp_method)
-
-# Zoom naming of resize, to match scipy's naming
-Zoom = Resize
-
+#########################################################
+# Sparse layers
+#########################################################
 
 class SpatiallySparse_Dense(Layer):
     """ 
@@ -447,8 +498,6 @@ class SpatiallySparse_Dense(Layer):
             return (input_shape[0][0], self.output_len)
         else:
             return (input_shape[0], *self.orig_input_shape)
-
-
 
 
 #########################################################
@@ -915,35 +964,8 @@ class LocallyConnected3D(Layer):
         return output
 
 
-# class LocalParam(InputLayer):
-
-#     def __init__(self, shape, mult=1, my_initializer='RandomNormal', **kwargs):
-#         super(LocalParam, self).__init__(input_shape=shape, **kwargs)       
-       
-#         # Create a trainable weight variable for this layer.
-#         self.kernel = self.add_weight(name='kernel', 
-#                                       shape=tuple(shape),
-#                                       initializer=my_initializer,
-#                                       trainable=True)
-        
-#         outputs = self._inbound_nodes[0].output_tensors
-#         z = Input(tensor=K.expand_dims(self.kernel, 0)*mult)
-#         if len(outputs) == 1:
-#             self._inbound_nodes[0].output_tensors[0] = z
-#         else:
-#             self._inbound_nodes[0].output_tensors = z
-      
-#     def get_output(self):  # call() would force inputs
-#             outputs = self._inbound_nodes[0].output_tensors
-#             if len(outputs) == 1:
-#                 return outputs[0]
-#             else:
-#                 return outputs
-
-
-
 ##########################################
-## Stream
+## Stream layers
 ##########################################
 
 
@@ -1078,3 +1100,46 @@ def _mean_update(pre_mean, pre_count, x, pre_cap=None):
     new_mean = pre_mean * (1-alpha) + (this_sum/this_bs) * alpha
 
     return (new_mean, new_count)
+
+
+##########################################
+## Stochastic Sampling layers
+##########################################
+
+class Sample(Layer):
+    """ 
+    Keras Layer: Gaussian sample given mean and log_variance
+    
+    inputs: list of Tensors [mu, log_var]
+    outputs: Tensor sample from N(mu, sigma^2)
+    """
+
+    def __init__(self, **kwargs):
+        super(Sample, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        super(Sample, self).build(input_shape)  # Be sure to call this somewhere!
+
+    def call(self, x):
+        return self._sample(x)
+
+    def compute_output_shape(self, input_shape):
+        return input_shape[0]
+
+    def _sample(self, args):
+        """
+        sample from a normal distribution
+
+        args should be [mu, log_var], where log_var is the log of the squared sigma
+
+        This is probably equivalent to 
+            K.random_normal(shape, args[0], exp(args[1]/2.0))
+        """
+        mu, log_var = args
+
+        # sample from N(0, 1)
+        noise = tf.random_normal(tf.shape(mu), 0, 1, dtype=tf.float32)
+
+        # make it a sample from N(mu, sigma^2)
+        z = mu + tf.exp(log_var/2.0) * noise
+        return z
