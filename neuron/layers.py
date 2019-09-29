@@ -1106,7 +1106,7 @@ def _mean_update(pre_mean, pre_count, x, pre_cap=None):
 ## Stochastic Sampling layers
 ##########################################
 
-class Sample(Layer):
+class SampleNormalLogVar(Layer):
     """ 
     Keras Layer: Gaussian sample given mean and log_variance
     
@@ -1115,10 +1115,10 @@ class Sample(Layer):
     """
 
     def __init__(self, **kwargs):
-        super(Sample, self).__init__(**kwargs)
+        super(SampleNormalLogVar, self).__init__(**kwargs)
 
     def build(self, input_shape):
-        super(Sample, self).build(input_shape)  # Be sure to call this somewhere!
+        super(SampleNormalLogVar, self).build(input_shape)
 
     def call(self, x):
         return self._sample(x)
