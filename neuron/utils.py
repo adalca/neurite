@@ -127,7 +127,7 @@ def interpn(vol, loc, interp_method='linear'):
             # if c[d] is 0 --> want weight = 1 - (pt - floor[pt]) = diff_loc1
             # if c[d] is 1 --> want weight = pt - floor[pt] = diff_loc0
             wts_lst = [weights_loc[c[d]][d] for d in range(nb_dims)]
-            # tf stacking is slow, we we will use prod_n()
+            # tf stacking is slow, we will use prod_n()
             # wlm = tf.stack(wts_lst, axis=0)
             # wt = tf.reduce_prod(wlm, axis=0)
             wt = prod_n(wts_lst)
@@ -429,6 +429,10 @@ def integrate_vec(vec, time_dep=False, method='ss', **kwargs):
     return disp
 
 
+
+
+
+
 def volshape_to_ndgrid(volshape, **kwargs):
     """
     compute Tensor ndgrid from a volume size
@@ -589,26 +593,13 @@ def flatten(v):
 
     
 def prod_n(lst):
+    """
+    Alternative to tf.stacking and prod, since tf.stacking can be slow
+    """
     prod = lst[0]
     for p in lst[1:]:
         prod *= p
     return prod
-
-
-def sub2ind(siz, subs, **kwargs):
-    """
-    assumes column-order major
-    """
-    # subs is a list
-    assert len(siz) == len(subs), 'found inconsistent siz and subs: %d %d' % (len(siz), len(subs))
-
-    k = np.cumprod(siz[::-1])
-
-    ndx = subs[-1]
-    for i, v in enumerate(subs[:-1][::-1]):
-        ndx = ndx + v * k[i]
-
-    return ndx
 
 
 
@@ -666,6 +657,22 @@ def gaussian_kernel(sigma, windowsize=None, indexing='ij'):
 
 
 
+
+
+def sub2ind(siz, subs, **kwargs):
+    """
+    assumes column-order major
+    """
+    # subs is a list
+    assert len(siz) == len(subs), 'found inconsistent siz and subs: %d %d' % (len(siz), len(subs))
+
+    k = np.cumprod(siz[::-1])
+
+    ndx = subs[-1]
+    for i, v in enumerate(subs[:-1][::-1]):
+        ndx = ndx + v * k[i]
+
+    return ndx
 
 
 
