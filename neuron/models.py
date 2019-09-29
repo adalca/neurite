@@ -319,9 +319,6 @@ def ae(nb_features,
         return (dec_model, mid_ae_model, enc_model)
 
 
-
-
-
 def add_prior(input_model,
               prior_shape,
               name='prior_model',
@@ -594,7 +591,7 @@ def single_ae(enc_size,
 
 
 ###############################################################################
-# High dimensional --> small output
+# Encoders, decoders, etc.
 ###############################################################################
 
 
