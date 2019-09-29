@@ -1,7 +1,7 @@
 """
-tensorflow/keras plot utilities for the neuron project
+plot utilities for the neuron project
 
-If you use this code, please cite 
+If you use this code, please cite the first paper this was built for:
 Dalca AV, Guttag J, Sabuncu MR
 Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation, 
 CVPR 2018
