@@ -984,6 +984,64 @@ def arcsinh(x, alpha=1):
     return tf.asinh(x * alpha) / alpha
 
 
+def logistic(x, x0=0., alpha=1., L=1.):
+    """
+    returns L/(1+exp(-alpha * (x-x0)))
+    """
+    assert L > 0, 'L (height of logistic) should be > 0'
+    assert alpha > 0, 'alpha (slope) of logistic should be > 0'
+    
+    return L / (1 + tf.exp(-alpha * (x-x0)))
+
+def sigmoid(x):
+    return logistic(x, x0=0., alpha=1., L=1.)
+
+def logistic_fixed_ends(x, start=-1., end=1., L=1., **kwargs):
+    """
+    f is logistic with fixed ends, so that f(start) = 0, and f(end) = L.
+    this is currently done a bit heuristically: it's a sigmoid, with a linear function added to correct the ends.
+    """
+    assert end > start, 'End of fixed points should be greater than start'
+    # tf.assert_greater(end, start, message='assert')
+    
+    # clip to start and end
+    x = tf.clip_by_value(x, start, end)
+    
+    # logistic function
+    xv = logistic(x, L=L, **kwargs)
+    
+    # ends of linear corrective function
+    sv = logistic(start, L=L, **kwargs)
+    ev = logistic(end, L=L, **kwargs)
+    
+    # corrective function
+    df = end - start
+    linear_corr = (end-x)/df * (- sv) + (x-start)/df * (-ev + L)
+    
+    # return fixed logistic
+    return xv + linear_corr
+
+def sigmoid_fixed_ends(x, start=-1., end=1., L=1., **kwargs):
+    return logistic_fixed_ends(x, start=-1., end=1., L=1., x0=0., alpha=1.)
+
+def soft_round(x, alpha=25):
+    fx = tf.floor(x)
+    xd = x - fx
+    return fx + logistic_fixed_ends(xd, start=0., end=1., x0=0.5, alpha=alpha)
+
+def soft_delta(x, x0=0., alpha=100, reg='l1'):
+    """
+    recommended defaults:
+    alpha = 100 for l1
+    alpha = 1000 for l2
+    """
+    if reg == 'l1':
+        xa = tf.abs(x - x0)
+    else:
+        assert reg == 'l2'
+        xa = tf.square(x - x0)
+    return (1 - logistic(xa, alpha=alpha)) * 2
+
 
 
 
