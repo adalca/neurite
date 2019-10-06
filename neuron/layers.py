@@ -535,8 +535,8 @@ class LocalLinear(Layer):
     out[v] = a * in[v] + b
     """
 
-    def __init__(self, my_initializer='RandomNormal', **kwargs):
-        self.initializer = my_initializer
+    def __init__(self, initializer='RandomNormal', **kwargs):
+        self.initializer = initializer
         super(LocalLinear, self).__init__(**kwargs)
 
     def build(self, input_shape):
