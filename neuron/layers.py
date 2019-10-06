@@ -16,10 +16,13 @@ Contact: adalca [at] csail [dot] mit [dot] edu
 License: GPLv3
 """
 
+import sys
+
 # third party
 import numpy as np
 import tensorflow as tf
 from keras import backend as K
+import keras.initializers
 from keras.legacy import interfaces
 from keras.layers import Layer, InputLayer, Input
 from tensorflow.python.keras.engine import base_layer
@@ -847,6 +850,78 @@ class LocallyConnected3D(Layer):
         return output
 
 
+class LocalCrossLinear(keras.layers.Layer):
+    """ 
+    Local cross mult layer
+
+    input: [batch_size, *vol_size, nb_feats_1]
+    output: [batch_size, *vol_size, nb_feats_2]
+    
+    at each spatial voxel, there is a different linear relation learned.
+    """
+
+    def __init__(self, output_features, 
+                 mult_initializer=None,
+                 bias_initializer=None,
+                 mult_regularizer=None,
+                 bias_regularizer=None,
+                 use_bias=True,
+                 **kwargs):
+        
+        self.output_features = output_features
+        self.mult_initializer = mult_initializer
+        self.bias_initializer = bias_initializer
+        self.mult_regularizer = mult_regularizer
+        self.bias_regularizer = bias_regularizer
+        self.use_bias = use_bias
+        
+        super(LocalCrossLinear, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        # Create a trainable weight variable for this layer.
+        mult_shape = [1] + list(input_shape)[1:] + [self.output_features]
+        
+        
+        # verify initializer
+        if self.mult_initializer is None:
+            mean = 1/input_shape[-1]
+            stddev = 0.01
+            self.mult_initializer = keras.initializers.RandomNormal(mean=mean, stddev=stddev)
+        
+        self.mult = self.add_weight(name='mult-kernel', 
+                                      shape=mult_shape,
+                                      initializer=self.mult_initializer,
+                                      regularizer=self.mult_regularizer,
+                                      trainable=True)
+
+        if self.use_bias:
+            if self.bias_initializer is None:
+                mean = 1/input_shape[-1]
+                stddev = 0.01
+                self.bias_initializer = keras.initializers.RandomNormal(mean=mean, stddev=stddev)
+            
+            bias_shape = [1] + list(input_shape)[1:-1] + [self.output_features]
+            self.bias = self.add_weight(name='bias-kernel', 
+                                          shape=bias_shape,
+                                          initializer=self.bias_initializer,
+                                          regularizer=self.bias_regularizer,
+                                          trainable=True)
+        super(LocalCrossLinear, self).build(input_shape)
+
+    def call(self, x):
+        x = K.expand_dims(x, -2)
+        y = tf.matmul(x, self.mult)[...,0,:]
+        
+        if self.use_bias:
+            y = y + self.bias
+        
+        return y
+
+    def compute_output_shape(self, input_shape):
+        return tuple(list(input_shape)[:-1] + [self.output_features])
+ 
+
+
 class LocalParamLayer(Layer):
     """ 
     Local Parameter layer: each pixel/voxel has its own parameter (one parameter)
@@ -1123,6 +1198,100 @@ def _mean_update(pre_mean, pre_count, x, pre_cap=None):
     new_mean = pre_mean * (1-alpha) + (this_sum/this_bs) * alpha
 
     return (new_mean, new_count)
+
+##########################################
+## FFT Layers
+##########################################
+
+class FFT(Layer):
+    """
+    fft layer, assuming the real/imag are input/output via two features
+    Input: tf.complex of size [batch_size, ..., nb_feats]
+    Output: tf.complex of size [batch_size, ..., nb_feats]
+    """
+
+    def __init__(self, **kwargs):
+        super(FFT, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        # some input checking
+        self.ndims = len(input_shape) - 2
+        assert self.ndims in [1, 2, 3], 'only 1D, 2D or 3D supported'
+
+        # super
+        super(FFT, self).build(input_shape)
+
+    def call(self, inputx):
+        
+        if not inputx.dtype in [tf.complex64, tf.complex128]:
+            print('Warning: inputx is not complex. Converting.', file=sys.stderr)
+        
+            # if inputx is float, this will assume 0 imag channel
+            inputx = tf.cast(inputx, tf.complex64)
+
+        # get the right fft
+        if self.ndims == 1:
+            fft = tf.fft
+        elif self.ndims == 2:
+            fft = tf.fft2d
+        else:
+            fft = tf.fft3d
+
+        perm_dims = [0, self.ndims + 1] + list(range(1, self.ndims + 1))
+        invert_perm_ndims = [0] + list(range(2, self.ndims + 2)) + [1]
+        
+        perm_inputx = K.permute_dimensions(inputx, perm_dims)  # [batch_size, nb_features, *vol_size]
+        fft_inputx = fft(perm_inputx)
+        return K.permute_dimensions(fft_inputx, invert_perm_ndims)
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+
+class IFFT(Layer):
+    """
+    ifft layer, assuming the real/imag are input/output via two features
+    Input: tf.complex of size [batch_size, ..., nb_feats]
+    Output: tf.complex of size [batch_size, ..., nb_feats]
+    """
+
+    def __init__(self, **kwargs):
+        super(IFFT, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        # some input checking
+        self.ndims = len(input_shape) - 2
+        assert self.ndims in [1, 2, 3], 'only 1D, 2D or 3D supported'
+
+        # super
+        super(IFFT, self).build(input_shape)
+
+    def call(self, inputx):
+        
+        if not inputx.dtype in [tf.complex64, tf.complex128]:
+            print('Warning: inputx is not complex. Converting.', file=sys.stderr)
+        
+            # if inputx is float, this will assume 0 imag channel
+            inputx = tf.cast(inputx, tf.complex64)
+        
+        # get the right fft
+        if self.ndims == 1:
+            ifft = tf.ifft
+        elif self.ndims == 2:
+            ifft = tf.ifft2d
+        else:
+            ifft = tf.ifft3d
+
+        perm_dims = [0, self.ndims + 1] + list(range(1, self.ndims + 1))
+        invert_perm_ndims = [0] + list(range(2, self.ndims + 2)) + [1]
+        
+        perm_inputx = K.permute_dimensions(inputx, perm_dims)  # [batch_size, nb_features, *vol_size]
+        ifft_inputx = ifft(perm_inputx)
+        return K.permute_dimensions(ifft_inputx, invert_perm_ndims)
+
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
 
 
 ##########################################
