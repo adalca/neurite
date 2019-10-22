@@ -233,11 +233,15 @@ class Dice(object):
             y_pred_op = y_pred
             y_true_op = y_true
 
+        # reshape data to [batch_size, nb_voxels, nb_labels]
+        flat_shape = tf.stack([-1, K.prod(K.shape(y_true_op)[1:-1]), K.shape(y_true_op)[-1]])
+        y_true_op = K.reshape(y_true_op, flat_shape)
+        y_pred_op = K.reshape(y_pred_op, flat_shape)
+
         # compute dice for each entry in batch.
         # dice will now be [batch_size, nb_labels]
-        sum_dim = 1
-        top = 2 * K.sum(y_true_op * y_pred_op, sum_dim)
-        bottom = K.sum(K.square(y_true_op), sum_dim) + K.sum(K.square(y_pred_op), sum_dim)
+        top = 2 * K.sum(y_true_op * y_pred_op, 1)
+        bottom = K.sum(K.square(y_true_op), 1) + K.sum(K.square(y_pred_op), 1)
         # make sure we have no 0s on the bottom. K.epsilon()
         bottom = K.maximum(bottom, self.area_reg)
         return top / bottom
