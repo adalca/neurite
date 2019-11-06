@@ -1046,15 +1046,15 @@ def soft_delta(x, x0=0., alpha=100, reg='l1'):
     return (1 - logistic(xa, alpha=alpha)) * 2
 
 
-def odd_shifted_relu(x, shift=0.5):
+def odd_shifted_relu(x, shift=-0.5, scale=2.0):
     """
     Odd shifted ReLu
     Essentially in x > 0, it is a shifted ReLu, and in x < 0 it's a negative mirror. 
     """
-    assert shift > 0., 'shift should be > 0'
-    assert shift < 1., 'shift should be < 1'
+
     shift = float(shift)
-    return (1/shift) * K.relu(x - shift)  - (1/shift) * K.relu(- x - shift)
+    scale = float(scale)
+    return scale * K.relu(x - shift)  - scale * K.relu(- x - shift)
 
 
 
