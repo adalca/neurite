@@ -211,7 +211,6 @@ class SpatialTransformer(Layer):
 
         super(self.__class__, self).__init__(**kwargs)
 
-
     def build(self, input_shape):
         """
         input_shape should be a list for two inputs:
@@ -909,17 +908,125 @@ class LocalCrossLinear(keras.layers.Layer):
         super(LocalCrossLinear, self).build(input_shape)
 
     def call(self, x):
-        x = K.expand_dims(x, -2)
-        y = tf.matmul(x, self.mult)[...,0,:]
+        map_fn = lambda z: self._single_matmul(z, self.mult[0, ...])
+        y = tf.stack(tf.map_fn(map_fn, x, dtype=tf.float32), 0)
         
         if self.use_bias:
             y = y + self.bias
         
         return y
 
+    def _single_matmul(self, x, mult):
+        x = K.expand_dims(x, -2)
+        y = tf.matmul(x, mult)[...,0,:]
+        return y
+
     def compute_output_shape(self, input_shape):
         return tuple(list(input_shape)[:-1] + [self.output_features])
  
+
+
+class LocalCrossLinearTrf(keras.layers.Layer):
+    """ 
+    Local cross mult layer with transform
+
+    input: [batch_size, *vol_size, nb_feats_1]
+    output: [batch_size, *vol_size, nb_feats_2]
+    
+    at each spatial voxel, there is a different linear relation learned.
+    """
+
+    def __init__(self, output_features, 
+                 mult_initializer=None,
+                 bias_initializer=None,
+                 mult_regularizer=None,
+                 bias_regularizer=None,
+                 use_bias=True,
+                 **kwargs):
+        
+        self.output_features = output_features
+        self.mult_initializer = mult_initializer
+        self.bias_initializer = bias_initializer
+        self.mult_regularizer = mult_regularizer
+        self.bias_regularizer = bias_regularizer
+        self.use_bias = use_bias
+        self.interp_method = 'linear'
+        
+        super(LocalCrossLinearTrf, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        # Create a trainable weight variable for this layer.
+        mult_shape = list(input_shape)[1:] + [self.output_features]
+        ndims = len(list(input_shape)[1:-1])
+        
+        
+        # verify initializer
+        if self.mult_initializer is None:
+            mean = 1/input_shape[-1]
+            stddev = 0.01
+            self.mult_initializer = keras.initializers.RandomNormal(mean=mean, stddev=stddev)
+        
+        self.mult = self.add_weight(name='mult-kernel', 
+                                      shape=mult_shape,
+                                      initializer=self.mult_initializer,
+                                      regularizer=self.mult_regularizer,
+                                      trainable=True)
+
+        self.trf = self.add_weight(name='def-kernel', 
+                                      shape=mult_shape + [ndims],
+                                      initializer=keras.initializers.RandomNormal(mean=0, stddev=0.001),
+                                      trainable=True)
+
+        if self.use_bias:
+            if self.bias_initializer is None:
+                mean = 1/input_shape[-1]
+                stddev = 0.01
+                self.bias_initializer = keras.initializers.RandomNormal(mean=mean, stddev=stddev)
+            
+            bias_shape = list(input_shape)[1:-1] + [self.output_features]
+            self.bias = self.add_weight(name='bias-kernel', 
+                                          shape=bias_shape,
+                                          initializer=self.bias_initializer,
+                                          regularizer=self.bias_regularizer,
+                                          trainable=True)
+        
+        super(LocalCrossLinearTrf, self).build(input_shape)
+
+    def call(self, x):
+        
+
+        # for each element in the batch
+        y = tf.map_fn(self._single_batch_trf, x, dtype=tf.float32)
+        
+        return y
+    
+    def _single_batch_trf(self, vol):
+        # vol should be vol_shape + [nb_features]
+        # self.trf should be vol_shape + [nb_features] + [ndims]
+
+        vol_shape = vol.shape.as_list()
+        nb_input_dims = vol_shape[-1]
+
+        # this is inefficient...
+        new_vols = [None] * self.output_features
+        for j in range(self.output_features):
+            new_vols[j] = tf.zeros(vol_shape[:-1], dtype=tf.float32)
+            for i in range(nb_input_dims):
+                trf_vol = transform(vol[..., i], self.trf[..., i, j, :], interp_method=self.interp_method)
+                trf_vol = tf.reshape(trf_vol, vol_shape[:-1])
+                new_vols[j] += trf_vol * self.mult[..., i, j]
+
+                if self.use_bias:
+                    new_vols[j] += self.bias[..., j]
+        
+        return tf.stack(new_vols, -1)
+
+
+    def compute_output_shape(self, input_shape):
+        return tuple(list(input_shape)[:-1] + [self.output_features])
+ 
+
+
 
 class LocalParamLayer(Layer):
     """ 
@@ -1288,9 +1395,50 @@ class IFFT(Layer):
         ifft_inputx = ifft(perm_inputx)
         return K.permute_dimensions(ifft_inputx, invert_perm_ndims)
 
-
     def compute_output_shape(self, input_shape):
         return input_shape
+
+
+class ComplexToChannels(Layer):
+
+    def __init__(self, **kwargs):
+        super(ComplexToChannels, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        # super
+        super(ComplexToChannels, self).build(input_shape)
+
+    def call(self, inputx):
+        
+        assert inputx.dtype in [tf.complex64, tf.complex128], 'inputx is not complex.'
+        
+        return tf.concat([tf.real(inputx), tf.imag(inputx)], -1)
+
+    def compute_output_shape(self, input_shape):
+        i_s = list(input_shape)
+        i_s[-1] *= 2
+        return tuple(i_s)
+
+
+
+class ChannelsToComplex(Layer):
+
+    def __init__(self, **kwargs):
+        super(ChannelsToComplex, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        # super
+        super(ChannelsToComplex, self).build(input_shape)
+
+    def call(self, inputx):
+        nb_channels = inputx.shape[-1] // 2
+        return tf.complex(inputx[...,:nb_channels], inputx[...,nb_channels:])
+        
+    def compute_output_shape(self, input_shape):
+        i_s = list(input_shape)
+        i_s[-1] = i_s[-1] // 2
+        return tuple(i_s)
+
 
 
 ##########################################
