@@ -238,7 +238,7 @@ class SpatialTransformer(Layer):
         # it's a 2D Tensor and shape == [N+1, N+1]. 
         #   [dense with N=1, which is the only one that could have a transform shape of 2, would be of size Mx1]
         self.is_affine = len(trf_shape) == 1 or \
-                         (len(trf_shape) == 2 and all([f == (self.ndims+1) for f in trf_shape]))
+                         (len(trf_shape) == 2 and all([trf_shape[0] == self.ndims, trf_shape[1] == self.ndims+1]))
 
         # check sizes
         if self.is_affine and len(trf_shape) == 1:
@@ -942,6 +942,7 @@ class LocalCrossLinearTrf(keras.layers.Layer):
                  mult_regularizer=None,
                  bias_regularizer=None,
                  use_bias=True,
+                 trf_mult=1,
                  **kwargs):
         
         self.output_features = output_features
@@ -950,6 +951,7 @@ class LocalCrossLinearTrf(keras.layers.Layer):
         self.mult_regularizer = mult_regularizer
         self.bias_regularizer = bias_regularizer
         self.use_bias = use_bias
+        self.trf_mult = trf_mult
         self.interp_method = 'linear'
         
         super(LocalCrossLinearTrf, self).__init__(**kwargs)
@@ -1012,7 +1014,7 @@ class LocalCrossLinearTrf(keras.layers.Layer):
         for j in range(self.output_features):
             new_vols[j] = tf.zeros(vol_shape[:-1], dtype=tf.float32)
             for i in range(nb_input_dims):
-                trf_vol = transform(vol[..., i], self.trf[..., i, j, :], interp_method=self.interp_method)
+                trf_vol = transform(vol[..., i], self.trf[..., i, j, :] * self.trf_mult, interp_method=self.interp_method)
                 trf_vol = tf.reshape(trf_vol, vol_shape[:-1])
                 new_vols[j] += trf_vol * self.mult[..., i, j]
 
