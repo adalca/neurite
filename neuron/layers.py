@@ -28,6 +28,7 @@ from keras.layers import Layer, InputLayer, Input
 from tensorflow.python.keras.engine import base_layer
 from keras.engine.topology import Node
 from tensorflow.python.keras import backend
+from tensorflow.python import roll as _roll
 
 # local
 from .utils import transform, resize, integrate_vec, affine_to_shift
@@ -1422,7 +1423,6 @@ class ComplexToChannels(Layer):
         return tuple(i_s)
 
 
-
 class ChannelsToComplex(Layer):
 
     def __init__(self, **kwargs):
@@ -1440,6 +1440,103 @@ class ChannelsToComplex(Layer):
         i_s = list(input_shape)
         i_s[-1] = i_s[-1] // 2
         return tuple(i_s)
+
+
+class FFTShift(Layer):
+    """
+    fftshift for keras tensors (so only inner dimensions get shifted)
+
+    modified from
+    https://gist.github.com/Gurpreetsingh9465/f76cc9e53107c29fd76515d64c294d3f
+
+    Shift the zero-frequency component to the center of the spectrum.
+    This function swaps half-spaces for all axes listed (defaults to all).
+    Note that ``y[0]`` is the Nyquist component only if ``len(x)`` is even.
+    Parameters
+    ----------
+    x : array_like, Tensor
+        Input array.
+    axes : int or shape tuple, optional
+        Axes over which to shift.  Default is None, which shifts all axes.
+    Returns
+    -------
+    y : Tensor.
+    """
+
+    def __init__(self, axes=None, **kwargs):
+        self.axes = axes
+        super(FFTShift, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        # some input checking
+        self.ndims = len(input_shape) - 2
+        assert self.ndims in [1, 2, 3], 'only 1D, 2D or 3D supported'
+
+        # super
+        super(FFTShift, self).build(input_shape)
+
+    def call(self, x):
+        axes = self.axes
+        if axes is None:
+            axes = tuple(range(K.ndim(x)))
+            shift = [0] + [dim // 2 for dim in x.shape] + [0]
+        elif isinstance(axes, int):
+            shift = x.shape[axes] // 2
+        else:
+            shift = [x.shape[ax] // 2 for ax in axes]
+
+        return _roll(x, shift, axes)
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+
+class IFFTShift(Layer):
+    """
+    ifftshift for keras tensors (so only inner dimensions get shifted)
+
+    modified from
+    https://gist.github.com/Gurpreetsingh9465/f76cc9e53107c29fd76515d64c294d3f
+
+    The inverse of `fftshift`. Although identical for even-length `x`, the
+    functions differ by one sample for odd-length `x`.
+    Parameters
+    ----------
+    x : array_like, Tensor.
+    axes : int or shape tuple, optional
+        Axes over which to calculate.  Defaults to None, which shifts all axes.
+    Returns
+    -------
+    y : Tensor.
+    """
+
+    def __init__(self, axes=None, **kwargs):
+        self.axes = axes
+        super(IFFTShift, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        # some input checking
+        self.ndims = len(input_shape) - 2
+        assert self.ndims in [1, 2, 3], 'only 1D, 2D or 3D supported'
+
+        # super
+        super(IFFTShift, self).build(input_shape)
+
+    def call(self, x):
+        axes = self.axes
+        if axes is None:
+            axes = tuple(range(K.ndim(x)))
+            shift = [0] + [-(dim // 2) for dim in x.shape.as_list()[1:-1]] + [0]
+        elif isinstance(axes, int):
+            shift = -(x.shape[axes] // 2)
+        else:
+            shift = [-(x.shape[ax] // 2) for ax in axes]
+
+        return _roll(x, shift, axes)
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
 
 
 
