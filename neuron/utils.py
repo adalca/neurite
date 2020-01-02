@@ -228,7 +228,7 @@ def affine_to_shift(affine_matrix, volshape, shift_center=True, indexing='ij'):
         raise Exception('Affine matrix shape should match'
                         '%d+1 x %d+1 or ' % (nb_dims, nb_dims) + \
                         '%d x %d+1.' % (nb_dims, nb_dims) + \
-                        'Got: ' + str(volshape))
+                        'Got: ' + str(affine_matrix.shape))
 
     # list of volume ndgrid
     # N-long list, each entry of shape volshape
