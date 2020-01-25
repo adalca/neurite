@@ -21,14 +21,15 @@ import sys
 # third party
 import numpy as np
 import tensorflow as tf
-from keras import backend as K
-import keras.initializers
-from keras.legacy import interfaces
-from keras.layers import Layer, InputLayer, Input
+from tensorflow import keras
+from tensorflow.keras import backend as K
+import tensorflow.keras.initializers
+from tensorflow.keras.layers import Layer, InputLayer, Input
 from tensorflow.python.keras.engine import base_layer
-from keras.engine.topology import Node
+
 from tensorflow.python.keras import backend
 from tensorflow.python import roll as _roll
+# from tensorflow.python.keras.engine.base_layer import Node
 
 # local
 from .utils import transform, resize, integrate_vec, affine_to_shift
@@ -640,7 +641,8 @@ class LocallyConnected3D(Layer):
         `rows` and `cols` values might have changed due to padding.
     """
 
-    @interfaces.legacy_conv3d_support
+    # from tensorflow.keras.legacy import interfaces
+    # @interfaces.legacy_conv3d_support
     def __init__(self, filters,
                  kernel_size,
                  strides=(1, 1, 1),
@@ -1088,7 +1090,7 @@ class LocalParamLayer(Layer):
         self.is_placeholder = False
 
         # create new node
-        Node(self,
+        tensorflow.python.keras.engine.base_layer.node_module.Node(self,
             inbound_layers=[],
             node_indices=[],
             tensor_indices=[],
