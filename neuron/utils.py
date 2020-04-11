@@ -32,9 +32,9 @@ import pynd.ndutils as nd
 
 # often changed file
 from imp import reload
-import keras
-import keras.backend as K
 import tensorflow as tf
+from tensorflow import keras
+import tensorflow.keras.backend as K
 reload(pl)
 
 def interpn(vol, loc, interp_method='linear'):
@@ -228,7 +228,7 @@ def affine_to_shift(affine_matrix, volshape, shift_center=True, indexing='ij'):
         raise Exception('Affine matrix shape should match'
                         '%d+1 x %d+1 or ' % (nb_dims, nb_dims) + \
                         '%d x %d+1.' % (nb_dims, nb_dims) + \
-                        'Got: ' + str(volshape))
+                        'Got: ' + str(affine_matrix.shape))
 
     # list of volume ndgrid
     # N-long list, each entry of shape volshape
@@ -1046,15 +1046,15 @@ def soft_delta(x, x0=0., alpha=100, reg='l1'):
     return (1 - logistic(xa, alpha=alpha)) * 2
 
 
-def odd_shifted_relu(x, shift=0.5):
+def odd_shifted_relu(x, shift=-0.5, scale=2.0):
     """
     Odd shifted ReLu
     Essentially in x > 0, it is a shifted ReLu, and in x < 0 it's a negative mirror. 
     """
-    assert shift > 0., 'shift should be > 0'
-    assert shift < 1., 'shift should be < 1'
+
     shift = float(shift)
-    return (1/shift) * K.relu(x - shift)  - (1/shift) * K.relu(- x - shift)
+    scale = float(scale)
+    return scale * K.relu(x - shift)  - scale * K.relu(- x - shift)
 
 
 

@@ -6,20 +6,19 @@ from tempfile import NamedTemporaryFile
 # third party imports
 import tensorflow as tf
 import numpy as np
-import keras
+from tensorflow import keras
 import matplotlib.pyplot as plt
-from keras import backend as K
+from tensorflow.keras import backend as K
 from tqdm import tqdm as tqdm
-from keras import layers as KL
+from tensorflow.keras import layers as KL
 from sklearn import decomposition
 from sklearn.decomposition import PCA
-from keras.utils import plot_model
+from tensorflow.keras.utils import plot_model
 from IPython.display import display, Image
 
 
 # project imports
-import neuron.utils as nrn_utils
-import neuron.plot as nrn_plt
+import neuron as ne
 
 
 def extract_z_dec(model, sample_layer_name, vis=False, wt_chk=False):
@@ -42,7 +41,7 @@ def extract_z_dec(model, sample_layer_name, vis=False, wt_chk=False):
     # assumes z was first input.
     new_inputs = [new_z_input, *model.inputs[1:]]
     input_layers = [sample_layer_name, *model.input_layers[1:]]
-    z_dec_model_outs = nrn_utils.mod_submodel(tmp_model,
+    z_dec_model_outs = ne.utils.mod_submodel(tmp_model,
                                               new_input_nodes=new_inputs,
                                               input_layers=input_layers)
 
@@ -327,7 +326,7 @@ def model_output_pca(pre_mu_model, generator, nb_samples, nb_components,
 
     # make sure we can recover
     if vis:
-        nrn_plt.pca(pca, x, y)
+        ne.plt.pca(pca, x, y)
 
     """ 
     Test pca model assaignment:

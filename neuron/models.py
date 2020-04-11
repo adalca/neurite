@@ -17,11 +17,11 @@ from . import layers
 # third party
 import numpy as np
 import tensorflow as tf
-import keras
-import keras.layers as KL
-from keras.models import Model
-import keras.backend as K
-from keras.constraints import maxnorm
+from tensorflow import keras
+import tensorflow.keras.layers as KL
+from tensorflow.keras.models import Model
+import tensorflow.keras.backend as K
+from tensorflow.python.keras.constraints import maxnorm
 
 
 ###############################################################################
@@ -365,7 +365,7 @@ def add_prior(input_model,
     if final_pred_activation == 'softmax':
         assert use_logp, 'cannot do softmax when adding prior via P()'
         print("using final_pred_activation %s for %s" % (final_pred_activation, model_name))
-        softmax_lambda_fcn = lambda x: keras.activations.softmax(x, axis=-1)
+        softmax_lambda_fcn = lambda x: tensorflow.keras.activations.softmax(x, axis=-1)
         pred_tensor = KL.Lambda(softmax_lambda_fcn, name=pred_name)(post_tensor)
 
     else:
@@ -499,8 +499,8 @@ def single_ae(enc_size,
         if ae_type == 'dense':
             name = '%s_ae_sigma_enc_dense_%s' % (prefix, enc_size_str)
             last_tensor = KL.Dense(enc_size[0], name=name,
-                                #    kernel_initializer=keras.initializers.RandomNormal(mean=0.0, stddev=1e-5),
-                                #    bias_initializer=keras.initializers.RandomNormal(mean=-5.0, stddev=1e-5)
+                                #    kernel_initializer=tensorflow.keras.initializers.RandomNormal(mean=0.0, stddev=1e-5),
+                                #    bias_initializer=tensorflow.keras.initializers.RandomNormal(mean=-5.0, stddev=1e-5)
                                    )(pre_enc_layer)
 
         else:
@@ -835,7 +835,7 @@ def conv_dec(nb_features,
     if final_pred_activation == 'softmax':
         print("using final_pred_activation %s for %s" % (final_pred_activation, model_name))
         name = '%s_prediction' % prefix
-        softmax_lambda_fcn = lambda x: keras.activations.softmax(x, axis=ndims + 1)
+        softmax_lambda_fcn = lambda x: tensorflow.keras.activations.softmax(x, axis=ndims + 1)
         pred_tensor = KL.Lambda(softmax_lambda_fcn, name=name)(last_tensor)
 
     # otherwise create a layer that does nothing.
