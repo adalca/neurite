@@ -429,6 +429,57 @@ def integrate_vec(vec, time_dep=False, method='ss', **kwargs):
     return disp
 
 
+def tf_map_fn_axis(fn, elems, axis, **kwargs):
+    """
+    apply map_fn along a specific axis
+    
+    if elems is a Tensor, axis is an int
+    if elems is a list, axis is a list of same length
+    """
+    
+    # determine lists
+    islist = isinstance(elems, (tuple, list))
+    if not islist:
+        elems = [elems]
+        assert not isinstance(axis, (tuple, list)), 'axis cannot be list if elements are not list'
+        axis = [axis]
+        
+        
+    elems_perm = []
+    for xi, x in enumerate(elems):
+        a = axis[xi]
+        s = len(x.get_shape().as_list())
+        if a == -1: a = s - 1
+
+        # move channels to front, so x will be [axis, ...]
+        perm = [a] + list(range(0, a)) + list(range(a + 1, s))
+        elems_perm.append(K.permute_dimensions(x, perm))
+
+    # compute sptial deformation regularization for this channel
+    if not islist:
+        elems_perm = elems_perm[0]
+        
+    x_perm_trf = tf.map_fn(fn, elems_perm, **kwargs)
+    if not islist:
+        x_perm_trf = [x_perm_trf]
+        
+
+    # move in_channels back to end
+    elems_trf = []
+    for xi, x in enumerate(x_perm_trf):
+        a = axis[xi]
+        s = len(x.get_shape().as_list())
+        if a == -1: a = s - 1
+            
+        perm = list(range(1, a + 1)) + [0] + list(range(a + 1, s))
+        elems_trf.append(K.permute_dimensions(x, perm))
+        
+    if not islist:
+        elems_trf = elems_trf[0]
+    
+    return elems_trf
+
+
 
 
 
@@ -784,25 +835,31 @@ def mod_submodel(orig_model,
         dct_node_idx = {}
         while len(node_list) > 0:
             node = node_list.pop(0)
+            node_input_layers = node.inbound_layers
+            node_indices = node.node_indices
+            if not isinstance(node_input_layers, (list, tuple)):
+                node_input_layers = [node_input_layers]
+                node_indices = [node_indices]
                 
             add = True
             # if not empty. we need to check that we're not adding the same layers through the same node.
             if len(dct.setdefault(node.outbound_layer, [])) > 0:
                 for li, layers in enumerate(dct[node.outbound_layer]):
                     if layers == node.inbound_layers and \
-                        dct_node_idx[node.outbound_layer][li] == node.node_indices:
+                        dct_node_idx[node.outbound_layer][li] == node_indices:
                         add = False
                         break
             if add:
-                dct[node.outbound_layer].append(node.inbound_layers)
-                dct_node_idx.setdefault(node.outbound_layer, []).append(node.node_indices)
+                dct[node.outbound_layer].append(node_input_layers)
+                dct_node_idx.setdefault(node.outbound_layer, []).append(node_indices)
             # append is in place
 
             # add new node
-            for li, layer in enumerate(node.inbound_layers):
+            
+            for li, layer in enumerate(node_input_layers):
                 if hasattr(layer, '_inbound_nodes'):
-                    node_list.append(layer._inbound_nodes[node.node_indices[li]])
-
+                    node_list.append(layer._inbound_nodes[node_indices[li]])
+            
         return dct
 
     def _get_new_layer_output(layer, new_layer_outputs, inp_layers):
@@ -845,7 +902,8 @@ def mod_submodel(orig_model,
     #   instead, the outbound nodes of the layers will be the input nodes
     #   computed below or passed in
     if input_layers is None: # if none provided, search for them
-        InputLayerClass = keras.engine.topology.InputLayer
+        # InputLayerClass = keras.engine.topology.InputLayer
+        InputLayerClass = type(tf.keras.layers.InputLayer())
         input_layers = [l for l in orig_model.layers if isinstance(l, InputLayerClass)]
 
     else:
@@ -861,7 +919,7 @@ def mod_submodel(orig_model,
         input_nodes = list(orig_model.inputs)
     else:
         input_nodes = new_input_nodes
-    assert len(input_nodes) == len(input_layers)
+    assert len(input_nodes) == len(input_layers), 'input_nodes (%d) and input_layers (%d) have to match' % (len(input_nodes), len(input_layers))
 
     # initialize dictionary of layer:new_output_node
     #   note: the input layers are not called, instead their outbound nodes
