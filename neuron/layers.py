@@ -1221,7 +1221,7 @@ class MeanStream(Layer):
 
         # prep for broadcasting :(
         p = tf.concat((K.reshape(this_bs_int, (1,)), K.shape(self.mean)), 0)
-        z = K.ones(p)
+        z = tf.ones(p)
         
         # the first few 1000 should not matter that much towards this cost
         return K.minimum(1., new_count/self.cap) * (z * K.expand_dims(new_mean, 0))
@@ -1288,7 +1288,7 @@ class CovStream(Layer):
 
         # prep for broadcasting :(
         p = tf.concat((K.reshape(this_bs_int, (1,)), K.shape(self.cov)), 0)
-        z = K.ones(p)
+        z = tf.ones(p)
 
         return K.minimum(1., new_count/self.cap) * (z * K.expand_dims(new_cov, 0))
 
