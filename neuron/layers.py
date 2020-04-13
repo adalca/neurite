@@ -1033,8 +1033,6 @@ class LocalCrossLinearTrf(keras.layers.Layer):
         return tuple(list(input_shape)[:-1] + [self.output_features])
  
 
-
-
 class LocalParamLayer(Layer):
     """ 
     Local Parameter layer: each pixel/voxel has its own parameter (one parameter)
