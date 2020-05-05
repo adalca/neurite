@@ -77,7 +77,7 @@ def interpn(vol, loc, interp_method='linear'):
     # flatten and float location Tensors
     loc = tf.cast(loc, 'float32')
     
-    if isinstance(vol.shape, (tf.Dimension, tf.TensorShape)):
+    if isinstance(vol.shape, (tf.TensorShape,)):  # tf.Dimension
         volshape = vol.shape.as_list()
     else:
         volshape = vol.shape
@@ -209,7 +209,7 @@ def affine_to_shift(affine_matrix, volshape, shift_center=True, indexing='ij'):
         allow affine_matrix to be a vector of size nb_dims * (nb_dims + 1)
     """
 
-    if isinstance(volshape, (tf.Dimension, tf.TensorShape)):
+    if isinstance(volshape, (tf.TensorShape, )): # tf.Dimension
         volshape = volshape.as_list()
     
     if affine_matrix.dtype != 'float32':
@@ -276,7 +276,7 @@ def transform(vol, loc_shift, interp_method='linear', indexing='ij'):
     """
 
     # parse shapes
-    if isinstance(loc_shift.shape, (tf.Dimension, tf.TensorShape)):
+    if isinstance(loc_shift.shape, (tf.TensorShape, )): # tf.Dimension
         volshape = loc_shift.shape[:-1].as_list()
     else:
         volshape = loc_shift.shape[:-1]
@@ -1462,6 +1462,77 @@ def model_diagram(model):
     plot_model(model, to_file=outfile, show_shapes=True)
     Image(outfile, width=100)
 
+
+
+
+
+
+def perlin_vol(vol_shape, min_scale=0, max_scale=None, interp_method='linear', wt_type='monotonic'):
+    """
+    generate perlin noise ND volume 
+
+    rough algorithm:
+    
+    vol = zeros
+    for scale in scales:
+        rand = generate random uniform noise at given scale
+        vol += wt * upsampled rand to vol_shape 
+        
+
+    Parameters
+    ----------
+    vol_shape: list indicating input shape.
+    min_scale: higher min_scale = less high frequency noise
+      the minimum rescale vol_shape/(2**min_scale), min_scale of 0 (default) 
+      means start by not rescaling, and go down.
+    max_scale: maximum scale, if None computes such that smallest volume shape is [1]
+    interp_order: interpolation (upscale) order, as used in ne.utils.zoom
+    wt_type: the weight type between volumes. default: monotonically decreasing with image size.
+      options: 'monotonic', 'random'
+    
+    https://github.com/adalca/matlib/blob/master/matlib/visual/perlin.m
+    loosely inspired from http://nullprogram.com/blog/2007/11/20
+    """
+
+    # input handling
+    assert wt_type in ['monotonic', 'random'], \
+        "wt_type should be in 'monotonic', 'random', got: %s"  % wt_type
+
+    if max_scale is None:
+        max_width = np.max(vol_shape)
+        max_scale = np.ceil(np.log2(max_width)).astype('int')
+
+    # decide on scales:
+    scale_shapes = []
+    wts = []
+    for i in range(min_scale, max_scale + 1):
+        scale_shapes.append(np.ceil([f / (2**i) for f in vol_shape]).astype('int'))
+    
+        # determine weight
+        if wt_type == 'monotonic':
+            wts.append(i + 1)  # larger images (so more high frequencies) get lower weight
+        else:
+            wts.append(K.random_uniform([1])[0])
+
+    wts = K.stack(wts)/K.sum(wts)
+    wts = tf.cast(wts, tf.float32)
+
+
+    # get perlin volume
+    vol = K.zeros(vol_shape)
+    for sci, sc in enumerate(scale_shapes):
+
+        # get a small random volume
+        rand_vol = K.random_uniform(sc)
+        
+        # interpolated rand volume to upper side
+        reshape_factor = [vol_shape[d]/sc[d] for d in range(len(vol_shape))]
+        interp_vol = zoom(rand_vol, reshape_factor, interp_method=interp_method)[..., 0]
+
+        # add to existing volume
+        vol = vol + wts[sci] * interp_vol
+        
+    return vol
 
 
 ###############################################################################
