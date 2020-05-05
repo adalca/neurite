@@ -14,8 +14,8 @@ import sys
 
 # third party
 import numpy as np
-import keras.backend as K
-from keras import losses
+import tensorflow.keras.backend as K
+from tensorflow.keras import losses
 import tensorflow as tf
 
 # local
