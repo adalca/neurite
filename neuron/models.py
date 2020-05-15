@@ -365,7 +365,7 @@ def add_prior(input_model,
     if final_pred_activation == 'softmax':
         assert use_logp, 'cannot do softmax when adding prior via P()'
         print("using final_pred_activation %s for %s" % (final_pred_activation, model_name))
-        softmax_lambda_fcn = lambda x: tensorflow.keras.activations.softmax(x, axis=-1)
+        softmax_lambda_fcn = lambda x: tf.keras.activations.softmax(x, axis=-1)
         pred_tensor = KL.Lambda(softmax_lambda_fcn, name=pred_name)(post_tensor)
 
     else:
@@ -499,8 +499,8 @@ def single_ae(enc_size,
         if ae_type == 'dense':
             name = '%s_ae_sigma_enc_dense_%s' % (prefix, enc_size_str)
             last_tensor = KL.Dense(enc_size[0], name=name,
-                                #    kernel_initializer=tensorflow.keras.initializers.RandomNormal(mean=0.0, stddev=1e-5),
-                                #    bias_initializer=tensorflow.keras.initializers.RandomNormal(mean=-5.0, stddev=1e-5)
+                                #    kernel_initializer=tf.keras.initializers.RandomNormal(mean=0.0, stddev=1e-5),
+                                #    bias_initializer=tf.keras.initializers.RandomNormal(mean=-5.0, stddev=1e-5)
                                    )(pre_enc_layer)
 
         else:
@@ -754,6 +754,8 @@ def conv_dec(nb_features,
     if isinstance(pool_size, int):
         if ndims > 1:
             pool_size = (pool_size,) * ndims
+    if ndims == 1 and isinstance(pool_size, tuple):
+        pool_size = pool_size[0]  # 1D upsampling takes int not tuple
 
     # prepare layers
     convL = getattr(KL, 'Conv%dD' % ndims)
@@ -835,13 +837,16 @@ def conv_dec(nb_features,
     if final_pred_activation == 'softmax':
         print("using final_pred_activation %s for %s" % (final_pred_activation, model_name))
         name = '%s_prediction' % prefix
-        softmax_lambda_fcn = lambda x: tensorflow.keras.activations.softmax(x, axis=ndims + 1)
+        softmax_lambda_fcn = lambda x: tf.keras.activations.softmax(x, axis=ndims + 1)
         pred_tensor = KL.Lambda(softmax_lambda_fcn, name=name)(last_tensor)
 
     # otherwise create a layer that does nothing.
     else:
         name = '%s_prediction' % prefix
-        pred_tensor = KL.Activation('linear', name=name)(like_tensor)
+        if final_pred_activation is None:
+            pred_tensor = KL.Activation('linear', name=name)(like_tensor)
+        else:
+            pred_tensor = KL.Activation(final_pred_activation, name=name)(like_tensor)
 
     # create the model and retun
     model = Model(inputs=input_tensor, outputs=pred_tensor, name=model_name)
@@ -1003,6 +1008,92 @@ def design_dnn(nb_features, input_shape, nb_levels, conv_size, nb_labels,
     model = Model(inputs=[enc_tensors['%s_input' % prefix]], outputs=[last_tensor], name=model_name)
     return model
 
+
+
+def classnet(nb_features,
+             input_shape,
+             nb_levels,
+             conv_size,
+             name=None,
+             prefix=None,
+             feat_mult=1,
+             pool_size=2,
+             dilation_rate_mult=1,
+             padding='same',
+             activation='elu',
+             layer_nb_feats=None,
+             use_residuals=False,
+             nb_conv_per_level=2,
+             conv_dropout=0,
+             dense_size=256,
+             nb_labels=2,
+             final_activation = None,
+             batch_norm=None):
+    """
+    Fully Convolutional Encoder-based classifer
+    if nb_labels is 0 assume it is a regression net and use linear activation
+    (if None specified)
+    """
+
+    # allocate the encoder arm
+    enc_model = conv_enc(nb_features,
+                         input_shape,
+                         nb_levels,
+                         conv_size,
+                         name=name,
+                         feat_mult=feat_mult,
+                         pool_size=pool_size,
+                         padding=padding,
+                         activation=activation,
+                         use_residuals=use_residuals,
+                         nb_conv_per_level=nb_conv_per_level,
+                         conv_dropout=conv_dropout,
+                         batch_norm=batch_norm)
+
+    # run the encoder outputs through a dense layer
+    flat = KL.Flatten()(enc_model.outputs[0])
+    dense = KL.Dense(dense_size, name='dense')(flat)
+
+    if nb_labels <= 0:  # if labels <=0 assume a regression net
+        nb_labels = 1
+        if (final_activation is None):
+            final_activation = 'linear'
+    else:  # if labels>=1 assume a classification net
+        if (final_activation is None):
+            final_activation = 'softmax'
+
+    out = KL.Dense(nb_labels, name='output_dense', activation=final_activation)(dense)
+    model = keras.models.Model(inputs=enc_model.inputs, outputs=out)
+    
+    return model
+
+
+def densenet(inshape, layer_sizes, nb_labels=2, activation='relu', final_activation='softmax', dropout=None, batch_norm=None):
+    """
+    A densenet that connects a set of dense layers to  a classification
+    output. 
+    if nb_labels is 0 assume it is a regression net and use linear activation
+    (if None specified)
+    """
+    inputs = KL.Input(shape=inshape, name='input')
+    prev_layer = KL.Flatten(name='flat_inputs')(inputs)
+    # to prevent overfitting include some kernel and bias regularization
+    kreg = keras.regularizers.l1_l2(l1=1e-5, l2=1e-4)
+    breg = keras.regularizers.l2(1e-4)
+
+    # connect the list of dense layers to each other
+    for lno, layer_size in enumerate(layer_sizes):
+        prev_layer = KL.Dense(layer_size, name='dense%d' % lno, activation=activation,kernel_regularizer=kreg, bias_regularizer=breg)(prev_layer)
+        if dropout is not None:
+            prev_layer = KL.Dropout(dropout, name='dropout%d'%lno)(prev_layer)
+        if batch_norm is not None:
+            prev_layer = KL.BatchNormalization(name='BatchNorm%d'%lno)(prev_layer)
+            
+    # tie the previous dense layer to a onehot encoded output layer
+    last_layer = KL.Dense(nb_labels, name='last_dense', activation=final_activation)(prev_layer)
+
+    model = keras.models.Model(inputs=inputs, outputs=last_layer)
+    return(model)
 
 
 ###############################################################################
