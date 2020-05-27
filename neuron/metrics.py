@@ -14,8 +14,8 @@ import sys
 
 # third party
 import numpy as np
-import keras.backend as K
-from keras import losses
+import tensorflow.keras.backend as K
+from tensorflow.keras import losses
 import tensorflow as tf
 
 # local
@@ -162,6 +162,7 @@ class Dice(object):
                  approx_hard_max=True,
                  vox_weights=None,
                  crop_indices=None,
+                 re_norm=False,
                  area_reg=0.1):  # regularization for bottom of Dice coeff
         """
         input_type is 'prob', or 'max_label'
@@ -183,6 +184,7 @@ class Dice(object):
         self.approx_hard_max = approx_hard_max
         self.area_reg = area_reg
         self.crop_indices = crop_indices
+        self.re_norm = re_norm
 
         if self.crop_indices is not None and vox_weights is not None:
             self.vox_weights = utils.batch_gather(self.vox_weights, self.crop_indices)
@@ -198,11 +200,13 @@ class Dice(object):
 
         if self.input_type == 'prob':
             # We assume that y_true is probabilistic, but just in case:
-            y_true /= K.sum(y_true, axis=-1, keepdims=True)
+            if self.re_norm:
+                y_true = tf.div_no_nan(y_true, K.sum(y_true, axis=-1, keepdims=True))
             y_true = K.clip(y_true, K.epsilon(), 1)
 
             # make sure pred is a probability
-            y_pred /= K.sum(y_pred, axis=-1, keepdims=True)
+            if self.re_norm:
+                y_pred = tf.div_no_nan(y_pred, K.sum(y_pred, axis=-1, keepdims=True))
             y_pred = K.clip(y_pred, K.epsilon(), 1)
 
         # Prepare the volumes to operate on
