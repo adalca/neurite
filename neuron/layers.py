@@ -163,6 +163,24 @@ class Resize(Layer):
 Zoom = Resize
 
 
+class MSE(Layer):
+    """ 
+    Keras Layer: mean squared error
+    """
+
+    def __init__(self, **kwargs):
+        super(MSE, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        super(MSE, self).build(input_shape)  # Be sure to call this somewhere!
+
+    def call(self, x):
+        return K.mean(K.batch_flatten(K.square(x[0] - x[1])), -1)
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0][0], )
+
+
 #########################################################
 # Vector fields and spatial transforms
 #########################################################
