@@ -11,7 +11,6 @@ License: GPLv3
 """
 
 import sys
-
 from . import layers
 
 # third party
@@ -298,7 +297,7 @@ def ae(nb_features,
                          padding=padding,
                          activation=activation,
                          use_residuals=use_residuals,
-                         final_pred_activation='linear',
+                         final_pred_activation=final_pred_activation,
                          nb_conv_per_level=nb_conv_per_level,
                          batch_norm=batch_norm,
                          conv_dropout=conv_dropout,
@@ -659,6 +658,11 @@ def conv_enc(nb_features,
                 # conv dropout along feature space only
                 name = '%s_dropout_downarm_%d_%d' % (prefix, level, conv)
                 noise_shape = [None, *[1]*ndims, nb_lvl_feats]
+                versions = tf.__version__.split('.')
+                ver = int(versions[0])
+                rev = int(versions[1])
+                if ver < 2 or (ver == 2 and rev < 2): # < 2.2
+                    noise_shape=None
                 last_tensor = KL.Dropout(conv_dropout, noise_shape=noise_shape)(last_tensor)
 
         if use_residuals:
@@ -677,6 +681,11 @@ def conv_enc(nb_features,
                 if conv_dropout > 0:
                     name = '%s_dropout_down_merge_%d_%d' % (prefix, level, conv)
                     noise_shape = [None, *[1]*ndims, nb_lvl_feats]
+                    versions = tf.__version__.split('.')
+                    ver = int(versions[0])
+                    rev = int(versions[1])
+                    if ver < 2 or (ver == 2 and rev < 2): # < 2.2
+                        noise_shape=None
                     last_tensor = KL.Dropout(conv_dropout, noise_shape=noise_shape)(last_tensor)
 
             name = '%s_res_down_merge_%d' % (prefix, level)
@@ -798,6 +807,11 @@ def conv_dec(nb_features,
             if conv_dropout > 0:
                 name = '%s_dropout_uparm_%d_%d' % (prefix, level, conv)
                 noise_shape = [None, *[1]*ndims, nb_lvl_feats]
+                versions = tf.__version__.split('.')
+                ver = int(versions[0])
+                rev = int(versions[1])
+                if ver < 2 or (ver == 2 and rev < 2): # < 2.2
+                    noise_shape=None
                 last_tensor = KL.Dropout(conv_dropout, noise_shape=noise_shape)(last_tensor)
 
         # residual block
@@ -1010,29 +1024,34 @@ def design_dnn(nb_features, input_shape, nb_levels, conv_size, nb_labels,
 
 
 
-def classnet(nb_features,
-             input_shape,
-             nb_levels,
-             conv_size,
-             name=None,
-             prefix=None,
-             feat_mult=1,
-             pool_size=2,
-             dilation_rate_mult=1,
-             padding='same',
-             activation='elu',
-             layer_nb_feats=None,
-             use_residuals=False,
-             nb_conv_per_level=2,
-             conv_dropout=0,
-             dense_size=256,
-             nb_labels=2,
-             final_activation = None,
-             batch_norm=None):
+def EncoderNet(nb_features,
+               input_shape,
+               nb_levels,
+               conv_size,
+               name=None,
+               prefix=None,
+               feat_mult=1,
+               pool_size=2,
+               dilation_rate_mult=1,
+               padding='same',
+               activation='elu',
+               layer_nb_feats=None,
+               use_residuals=False,
+               nb_conv_per_level=2,
+               conv_dropout=0,
+               dense_size=256,
+               nb_labels=2,
+               final_activation=None,
+               rescale=None,
+               dropout=None, 
+               batch_norm=None):
     """
     Fully Convolutional Encoder-based classifer
     if nb_labels is 0 assume it is a regression net and use linear activation
     (if None specified)
+    The end of the encoders/downsampling is flattened and attached to a dense
+    layer with dense_size units, then to the nb_labels output nodes. For other
+    parameters see conv_env documentation
     """
 
     # allocate the encoder arm
@@ -1052,7 +1071,11 @@ def classnet(nb_features,
 
     # run the encoder outputs through a dense layer
     flat = KL.Flatten()(enc_model.outputs[0])
+    if dropout is not None and dropout > 0:
+        flat = KL.Dropout(dropout, name='dropout_flat')(flat)
     dense = KL.Dense(dense_size, name='dense')(flat)
+    if dropout is not None and dropout > 0:
+        dense = KL.Dropout(dropout, name='dropout_dense')(dense)
 
     if nb_labels <= 0:  # if labels <=0 assume a regression net
         nb_labels = 1
@@ -1062,13 +1085,15 @@ def classnet(nb_features,
         if (final_activation is None):
             final_activation = 'softmax'
 
+    if (rescale is not None):
+        dense = layers.RescaleValues(rescale)(dense)
     out = KL.Dense(nb_labels, name='output_dense', activation=final_activation)(dense)
     model = keras.models.Model(inputs=enc_model.inputs, outputs=out)
     
     return model
 
 
-def densenet(inshape, layer_sizes, nb_labels=2, activation='relu', final_activation='softmax', dropout=None, batch_norm=None):
+def DenseLayerNet(inshape, layer_sizes, nb_labels=2, activation='relu', final_activation='softmax', dropout=None, batch_norm=None):
     """
     A densenet that connects a set of dense layers to  a classification
     output. 
