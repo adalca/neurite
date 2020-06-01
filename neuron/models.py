@@ -220,6 +220,8 @@ def ae(nb_features,
        include_mu_shift_layer=False,
        single_model=False, # whether to return a single model, or a tuple of models that can be stacked.
        final_pred_activation='softmax',
+       src=None,
+       src_input=None,
        do_vae=False):
     """
     Convolutional Auto-Encoder.
@@ -259,7 +261,9 @@ def ae(nb_features,
                          use_residuals=use_residuals,
                          nb_conv_per_level=nb_conv_per_level,
                          conv_dropout=conv_dropout,
-                         batch_norm=batch_norm)
+                         batch_norm=batch_norm,
+                         src=src,
+                         src_input=src_input)
 
     # middle AE structure
     if single_model:
@@ -610,7 +614,10 @@ def conv_enc(nb_features,
              use_residuals=False,
              nb_conv_per_level=2,
              conv_dropout=0,
-             batch_norm=None):
+             batch_norm=None,
+             convL=None,  # conv layer function
+             src=None,
+             src_input=None):
     """
     Fully Convolutional Encoder
     """
@@ -627,14 +634,21 @@ def conv_enc(nb_features,
         pool_size = (pool_size,) * ndims
 
     # prepare layers
-    convL = getattr(KL, 'Conv%dD' % ndims)
+    if convL is None:
+        convL = getattr(KL, 'Conv%dD' % ndims)
     conv_kwargs = {'padding': padding, 'activation': activation}
     maxpool = getattr(KL, 'MaxPooling%dD' % ndims)
 
     # first layer: input
-    name = '%s_input' % prefix
-    last_tensor = KL.Input(shape=input_shape, name=name)
-    input_tensor = last_tensor
+    if src is None:
+        name = '%s_input' % prefix
+        last_tensor = KL.Input(shape=input_shape, name=name)
+        input_tensor = last_tensor
+    else:
+        assert src_input is not None, 'need to provide src_input if given src'
+        input_tensor = src_input
+        last_tensor = src
+
 
     # down arm:
     # add nb_levels of conv + ReLu + conv + ReLu. Pool after each of first nb_levels - 1 layers
@@ -718,6 +732,7 @@ def conv_dec(nb_features,
              layer_nb_feats=None,
              batch_norm=None,
              conv_dropout=0,
+             convL=None,
              input_model=None):
     """
     Fully Convolutional Decoder
@@ -756,7 +771,8 @@ def conv_dec(nb_features,
             pool_size = (pool_size,) * ndims
 
     # prepare layers
-    convL = getattr(KL, 'Conv%dD' % ndims)
+    if convL is None:
+        convL = getattr(KL, 'Conv%dD' % ndims)
     conv_kwargs = {'padding': padding, 'activation': activation}
     upsample = getattr(KL, 'UpSampling%dD' % ndims)
 
@@ -835,7 +851,7 @@ def conv_dec(nb_features,
     if final_pred_activation == 'softmax':
         print("using final_pred_activation %s for %s" % (final_pred_activation, model_name))
         name = '%s_prediction' % prefix
-        softmax_lambda_fcn = lambda x: tensorflow.keras.activations.softmax(x, axis=ndims + 1)
+        softmax_lambda_fcn = lambda x: tf.keras.activations.softmax(x, axis=ndims + 1)
         pred_tensor = KL.Lambda(softmax_lambda_fcn, name=name)(last_tensor)
 
     # otherwise create a layer that does nothing.
