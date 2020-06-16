@@ -37,7 +37,7 @@ from tensorflow import keras
 import tensorflow.keras.backend as K
 reload(pl)
 
-def interpn(vol, loc, interp_method='linear'):
+def interpn(vol, loc, interp_method='linear', fill_value=None):
     """
     N-D gridded interpolation in tensorflow
 
@@ -50,6 +50,8 @@ def interpn(vol, loc, interp_method='linear'):
             each tensor has to have the same size (but not nec. same size as vol)
             or a tensor of size [*new_vol_shape, D]
         interp_method: interpolation type 'linear' (default) or 'nearest'
+        fill_value: value to use for points outside the domain. If None, the nearest
+            neighbors will be used (default).
 
     Returns:
         new interpolated volume of the same size as the entries in loc
@@ -77,17 +79,22 @@ def interpn(vol, loc, interp_method='linear'):
     # flatten and float location Tensors
     loc = tf.cast(loc, 'float32')
     
-    if isinstance(vol.shape, (tf.Dimension, tf.TensorShape)):
+    if isinstance(vol.shape, (tf.TensorShape,)):  # tf.Dimension
         volshape = vol.shape.as_list()
     else:
         volshape = vol.shape
+
+    max_loc = [d - 1 for d in vol.get_shape().as_list()]
+    if fill_value is not None:
+        below = [tf.less(loc[...,d], 0) for d in range(nb_dims)]
+        above = [tf.greater(loc[...,d], max_loc[d]) for d in range(nb_dims)]
+        out_of_bounds = tf.reduce_any(tf.stack(below + above, axis=-1), axis=-1, keepdims=True)
 
     # interpolate
     if interp_method == 'linear':
         loc0 = tf.floor(loc)
 
         # clip values
-        max_loc = [d - 1 for d in vol.get_shape().as_list()]
         clipped_loc = [tf.clip_by_value(loc[...,d], 0, max_loc[d]) for d in range(nb_dims)]
         loc0lst = [tf.clip_by_value(loc0[...,d], 0, max_loc[d]) for d in range(nb_dims)]
 
@@ -139,9 +146,6 @@ def interpn(vol, loc, interp_method='linear'):
     else:
         assert interp_method == 'nearest'
         roundloc = tf.cast(tf.round(loc), 'int32')
-
-        # clip values
-        max_loc = [tf.cast(d - 1, 'int32') for d in vol.shape]
         roundloc = [tf.clip_by_value(roundloc[...,d], 0, max_loc[d]) for d in range(nb_dims)]
 
         # get values
@@ -150,6 +154,11 @@ def interpn(vol, loc, interp_method='linear'):
         # interp_vol = tf.gather_nd(vol, roundloc)
         idx = sub2ind(vol.shape[:-1], roundloc)
         interp_vol = tf.gather(tf.reshape(vol, [-1, vol.shape[-1]]), idx) 
+
+    if fill_value is not None:
+        fill_value = tf.constant(fill_value, dtype='float32')
+        interp_vol *= tf.cast(tf.logical_not(out_of_bounds), dtype='float32')
+        interp_vol += tf.cast(out_of_bounds, dtype='float32') * fill_value
 
     return interp_vol
 
@@ -209,7 +218,7 @@ def affine_to_shift(affine_matrix, volshape, shift_center=True, indexing='ij'):
         allow affine_matrix to be a vector of size nb_dims * (nb_dims + 1)
     """
 
-    if isinstance(volshape, (tf.Dimension, tf.TensorShape)):
+    if isinstance(volshape, (tf.TensorShape, )): # tf.Dimension
         volshape = volshape.as_list()
     
     if affine_matrix.dtype != 'float32':
@@ -253,7 +262,7 @@ def affine_to_shift(affine_matrix, volshape, shift_center=True, indexing='ij'):
     return loc - tf.stack(mesh, axis=nb_dims)
 
 
-def transform(vol, loc_shift, interp_method='linear', indexing='ij'):
+def transform(vol, loc_shift, interp_method='linear', indexing='ij', fill_value=None):
     """
     transform (interpolation N-D volumes (features) given shifts at each location in tensorflow
 
@@ -267,6 +276,8 @@ def transform(vol, loc_shift, interp_method='linear', indexing='ij'):
         interp_method (default:'linear'): 'linear', 'nearest'
         indexing (default: 'ij'): 'ij' (matrix) or 'xy' (cartesian).
             In general, prefer to leave this 'ij'
+        fill_value (default: None): value to use for points outside the domain.
+            If None, the nearest neighbors will be used.
     
     Return:
         new interpolated volumes in the same size as loc_shift[0]
@@ -276,7 +287,7 @@ def transform(vol, loc_shift, interp_method='linear', indexing='ij'):
     """
 
     # parse shapes
-    if isinstance(loc_shift.shape, (tf.Dimension, tf.TensorShape)):
+    if isinstance(loc_shift.shape, (tf.TensorShape, )): # tf.Dimension
         volshape = loc_shift.shape[:-1].as_list()
     else:
         volshape = loc_shift.shape[:-1]
@@ -287,7 +298,7 @@ def transform(vol, loc_shift, interp_method='linear', indexing='ij'):
     loc = [tf.cast(mesh[d], 'float32') + loc_shift[..., d] for d in range(nb_dims)]
 
     # test single
-    return interpn(vol, loc, interp_method=interp_method)
+    return interpn(vol, loc, interp_method=interp_method, fill_value=fill_value)
 
 
 def compose(disp_1, disp_2, indexing='ij'):
@@ -1462,6 +1473,77 @@ def model_diagram(model):
     plot_model(model, to_file=outfile, show_shapes=True)
     Image(outfile, width=100)
 
+
+
+
+
+
+def perlin_vol(vol_shape, min_scale=0, max_scale=None, interp_method='linear', wt_type='monotonic'):
+    """
+    generate perlin noise ND volume 
+
+    rough algorithm:
+    
+    vol = zeros
+    for scale in scales:
+        rand = generate random uniform noise at given scale
+        vol += wt * upsampled rand to vol_shape 
+        
+
+    Parameters
+    ----------
+    vol_shape: list indicating input shape.
+    min_scale: higher min_scale = less high frequency noise
+      the minimum rescale vol_shape/(2**min_scale), min_scale of 0 (default) 
+      means start by not rescaling, and go down.
+    max_scale: maximum scale, if None computes such that smallest volume shape is [1]
+    interp_order: interpolation (upscale) order, as used in ne.utils.zoom
+    wt_type: the weight type between volumes. default: monotonically decreasing with image size.
+      options: 'monotonic', 'random'
+    
+    https://github.com/adalca/matlib/blob/master/matlib/visual/perlin.m
+    loosely inspired from http://nullprogram.com/blog/2007/11/20
+    """
+
+    # input handling
+    assert wt_type in ['monotonic', 'random'], \
+        "wt_type should be in 'monotonic', 'random', got: %s"  % wt_type
+
+    if max_scale is None:
+        max_width = np.max(vol_shape)
+        max_scale = np.ceil(np.log2(max_width)).astype('int')
+
+    # decide on scales:
+    scale_shapes = []
+    wts = []
+    for i in range(min_scale, max_scale + 1):
+        scale_shapes.append(np.ceil([f / (2**i) for f in vol_shape]).astype('int'))
+    
+        # determine weight
+        if wt_type == 'monotonic':
+            wts.append(i + 1)  # larger images (so more high frequencies) get lower weight
+        else:
+            wts.append(K.random_uniform([1])[0])
+
+    wts = K.stack(wts)/K.sum(wts)
+    wts = tf.cast(wts, tf.float32)
+
+
+    # get perlin volume
+    vol = K.zeros(vol_shape)
+    for sci, sc in enumerate(scale_shapes):
+
+        # get a small random volume
+        rand_vol = K.random_uniform(sc)
+        
+        # interpolated rand volume to upper side
+        reshape_factor = [vol_shape[d]/sc[d] for d in range(len(vol_shape))]
+        interp_vol = zoom(rand_vol, reshape_factor, interp_method=interp_method)[..., 0]
+
+        # add to existing volume
+        vol = vol + wts[sci] * interp_vol
+        
+    return vol
 
 
 ###############################################################################
