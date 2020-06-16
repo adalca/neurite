@@ -163,6 +163,24 @@ class Resize(Layer):
 Zoom = Resize
 
 
+class MSE(Layer):
+    """ 
+    Keras Layer: mean squared error
+    """
+
+    def __init__(self, **kwargs):
+        super(MSE, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        super(MSE, self).build(input_shape)  # Be sure to call this somewhere!
+
+    def call(self, x):
+        return K.mean(K.batch_flatten(K.square(x[0] - x[1])), -1)
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0][0], )
+
+
 #########################################################
 # Vector fields and spatial transforms
 #########################################################
@@ -194,6 +212,7 @@ class SpatialTransformer(Layer):
                  interp_method='linear',
                  indexing='ij',
                  single_transform=False,
+                 fill_value=None,
                  **kwargs):
         """
         Parameters: 
@@ -202,8 +221,11 @@ class SpatialTransformer(Layer):
             indexing (default: 'ij'): 'ij' (matrix) or 'xy' (cartesian)
                 'xy' indexing will have the first two entries of the flow 
                 (along last axis) flipped compared to 'ij' indexing
+            fill_value (default: None): value to use for points outside the domain.
+                If None, the nearest neighbors will be used.
         """
         self.interp_method = interp_method
+        self.fill_value = fill_value
         self.ndims = None
         self.inshape = None
         self.single_transform = single_transform
@@ -298,7 +320,7 @@ class SpatialTransformer(Layer):
         return affine_to_shift(trf, volshape, shift_center=True)
 
     def _single_transform(self, inputs):
-        return transform(inputs[0], inputs[1], interp_method=self.interp_method)
+        return transform(inputs[0], inputs[1], interp_method=self.interp_method, fill_value=self.fill_value)
 
 
 class VecInt(Layer):
@@ -1033,8 +1055,6 @@ class LocalCrossLinearTrf(keras.layers.Layer):
         return tuple(list(input_shape)[:-1] + [self.output_features])
  
 
-
-
 class LocalParamLayer(Layer):
     """ 
     Local Parameter layer: each pixel/voxel has its own parameter (one parameter)
@@ -1221,7 +1241,7 @@ class MeanStream(Layer):
 
         # prep for broadcasting :(
         p = tf.concat((K.reshape(this_bs_int, (1,)), K.shape(self.mean)), 0)
-        z = K.ones(p)
+        z = tf.ones(p)
         
         # the first few 1000 should not matter that much towards this cost
         return K.minimum(1., new_count/self.cap) * (z * K.expand_dims(new_mean, 0))
@@ -1288,7 +1308,7 @@ class CovStream(Layer):
 
         # prep for broadcasting :(
         p = tf.concat((K.reshape(this_bs_int, (1,)), K.shape(self.cov)), 0)
-        z = K.ones(p)
+        z = tf.ones(p)
 
         return K.minimum(1., new_count/self.cap) * (z * K.expand_dims(new_cov, 0))
 
