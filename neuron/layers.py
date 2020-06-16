@@ -212,6 +212,7 @@ class SpatialTransformer(Layer):
                  interp_method='linear',
                  indexing='ij',
                  single_transform=False,
+                 fill_value=None,
                  **kwargs):
         """
         Parameters: 
@@ -220,8 +221,11 @@ class SpatialTransformer(Layer):
             indexing (default: 'ij'): 'ij' (matrix) or 'xy' (cartesian)
                 'xy' indexing will have the first two entries of the flow 
                 (along last axis) flipped compared to 'ij' indexing
+            fill_value (default: None): value to use for points outside the domain.
+                If None, the nearest neighbors will be used.
         """
         self.interp_method = interp_method
+        self.fill_value = fill_value
         self.ndims = None
         self.inshape = None
         self.single_transform = single_transform
@@ -316,7 +320,7 @@ class SpatialTransformer(Layer):
         return affine_to_shift(trf, volshape, shift_center=True)
 
     def _single_transform(self, inputs):
-        return transform(inputs[0], inputs[1], interp_method=self.interp_method)
+        return transform(inputs[0], inputs[1], interp_method=self.interp_method, fill_value=self.fill_value)
 
 
 class VecInt(Layer):
