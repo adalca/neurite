@@ -62,6 +62,11 @@ class RescaleValues(Layer):
         self.resize = resize
         super(RescaleValues, self).__init__(**kwargs)
 
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({'resize': self.resize})
+        return config
+
     def build(self, input_shape):
         super(RescaleValues, self).build(input_shape)  # Be sure to call this somewhere!
 
@@ -100,6 +105,14 @@ class Resize(Layer):
         self.ndims = None
         self.inshape = None
         super(Resize, self).__init__(**kwargs)
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'zoom_factor': self.zoom_factor,
+            'interp_method': self.interp_method,
+        })
+        return config
 
     def build(self, input_shape):
         """
@@ -235,6 +248,16 @@ class SpatialTransformer(Layer):
 
         super(self.__class__, self).__init__(**kwargs)
 
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'interp_method': self.interp_method,
+            'indexing': self.indexing,
+            'single_transform': self.single_transform,
+            'fill_value': self.fill_value,
+        })
+        return config
+
     def build(self, input_shape):
         """
         input_shape should be a list for two inputs:
@@ -359,6 +382,18 @@ class VecInt(Layer):
         if ode_args is None:
             self.ode_args = {'rtol':1e-6, 'atol':1e-12}
         super(self.__class__, self).__init__(**kwargs)
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'indexing': self.indexing,
+            'method': self.method,
+            'int_steps': self.int_steps,
+            'out_time_pt': self.out_time_pt,
+            'ode_args': self.ode_args,
+            'odeint_fn': self.odeint_fn,
+        })
+        return config
 
     def build(self, input_shape):
         # confirm built
