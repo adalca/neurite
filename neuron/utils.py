@@ -157,9 +157,10 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
         interp_vol = tf.gather(tf.reshape(vol, [-1, vol.shape[-1]]), idx) 
 
     if fill_value is not None:
-        fill_value = tf.constant(fill_value, dtype='float32')
-        interp_vol *= tf.cast(tf.logical_not(out_of_bounds), dtype='float32')
-        interp_vol += tf.cast(out_of_bounds, dtype='float32') * fill_value
+        out_type = interp_vol.dtype
+        fill_value = tf.constant(fill_value, dtype=out_type)
+        interp_vol *= tf.cast(tf.logical_not(out_of_bounds), dtype=out_type)
+        interp_vol += tf.cast(out_of_bounds, dtype=out_type) * fill_value
 
     return interp_vol
 
