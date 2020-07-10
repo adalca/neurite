@@ -86,10 +86,6 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
         volshape = vol.shape
 
     max_loc = [d - 1 for d in vol.get_shape().as_list()]
-    if fill_value is not None:
-        below = [tf.less(loc[...,d], 0) for d in range(nb_dims)]
-        above = [tf.greater(loc[...,d], max_loc[d]) for d in range(nb_dims)]
-        out_of_bounds = tf.reduce_any(tf.stack(below + above, axis=-1), axis=-1, keepdims=True)
 
     # interpolate
     if interp_method == 'linear':
@@ -159,6 +155,9 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
     if fill_value is not None:
         out_type = interp_vol.dtype
         fill_value = tf.constant(fill_value, dtype=out_type)
+        below = [tf.less(loc[...,d], 0) for d in range(nb_dims)]
+        above = [tf.greater(loc[...,d], max_loc[d]) for d in range(nb_dims)]
+        out_of_bounds = tf.reduce_any(tf.stack(below + above, axis=-1), axis=-1, keepdims=True)
         interp_vol *= tf.cast(tf.logical_not(out_of_bounds), dtype=out_type)
         interp_vol += tf.cast(out_of_bounds, dtype=out_type) * fill_value
 
