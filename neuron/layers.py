@@ -206,7 +206,7 @@ class SpatialTransformer(Layer):
     Both transforms are meant to give a 'shift' from the current position.
     Therefore, a dense transform gives displacements (not absolute locations) at each voxel,
     and an affine transform gives the *difference* of the affine matrix from 
-    the identity matrix.
+    the identity matrix (unless specified otherwise).
 
     If you find this function useful, please cite:
       Unsupervised Learning for Fast Probabilistic Diffeomorphic Registration
@@ -226,6 +226,7 @@ class SpatialTransformer(Layer):
                  indexing='ij',
                  single_transform=False,
                  fill_value=None,
+                 add_identity=True,
                  **kwargs):
         """
         Parameters: 
@@ -236,9 +237,12 @@ class SpatialTransformer(Layer):
                 (along last axis) flipped compared to 'ij' indexing
             fill_value (default: None): value to use for points outside the domain.
                 If None, the nearest neighbors will be used.
+            add_identity (default: True): whether the identity matrix is added
+                to affine transforms.
         """
         self.interp_method = interp_method
         self.fill_value = fill_value
+        self.add_identity = add_identity
         self.ndims = None
         self.inshape = None
         self.single_transform = single_transform
@@ -255,6 +259,7 @@ class SpatialTransformer(Layer):
             'indexing': self.indexing,
             'single_transform': self.single_transform,
             'fill_value': self.fill_value,
+            'add_identity': self.add_identity,
         })
         return config
 
@@ -325,7 +330,8 @@ class SpatialTransformer(Layer):
                 nrows += 1
             if len(trf.shape[1:]) == 1:
                 trf = tf.reshape(trf, shape=(-1, nrows, ncols))
-            trf += tf.eye(nrows, ncols, batch_shape=(tf.shape(trf)[0],))
+            if self.add_identity:
+                trf += tf.eye(nrows, ncols, batch_shape=(tf.shape(trf)[0],))
             fun = lambda x: affine_to_shift(x, vol.shape[1:-1], shift_center=True)
             trf = tf.map_fn(fun, trf, dtype=tf.float32)
 
