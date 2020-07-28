@@ -227,6 +227,7 @@ class SpatialTransformer(Layer):
                  single_transform=False,
                  fill_value=None,
                  add_identity=True,
+                 shift_center=True,
                  **kwargs):
         """
         Parameters: 
@@ -239,10 +240,13 @@ class SpatialTransformer(Layer):
                 If None, the nearest neighbors will be used.
             add_identity (default: True): whether the identity matrix is added
                 to affine transforms.
+            shift_center (default: True): whether the grid is shifted to the center
+                of the image when converting affine transforms to warp fields.
         """
         self.interp_method = interp_method
         self.fill_value = fill_value
         self.add_identity = add_identity
+        self.shift_center = shift_center
         self.ndims = None
         self.inshape = None
         self.single_transform = single_transform
@@ -260,6 +264,7 @@ class SpatialTransformer(Layer):
             'single_transform': self.single_transform,
             'fill_value': self.fill_value,
             'add_identity': self.add_identity,
+            'shift_center': self.shift_center,
         })
         return config
 
@@ -332,7 +337,7 @@ class SpatialTransformer(Layer):
                 trf = tf.reshape(trf, shape=(-1, nrows, ncols))
             if self.add_identity:
                 trf += tf.eye(nrows, ncols, batch_shape=(tf.shape(trf)[0],))
-            fun = lambda x: affine_to_shift(x, vol.shape[1:-1], shift_center=True)
+            fun = lambda x: affine_to_shift(x, vol.shape[1:-1], shift_center=self.shift_center)
             trf = tf.map_fn(fun, trf, dtype=tf.float32)
 
         # prepare location shift
