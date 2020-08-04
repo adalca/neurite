@@ -37,7 +37,7 @@ from tensorflow import keras
 import tensorflow.keras.backend as K
 reload(pl)
 
-def interpn(vol, loc, interp_method='linear'):
+def interpn(vol, loc, interp_method='linear', fill_value=None):
     """
     N-D gridded interpolation in tensorflow
 
@@ -50,6 +50,8 @@ def interpn(vol, loc, interp_method='linear'):
             each tensor has to have the same size (but not nec. same size as vol)
             or a tensor of size [*new_vol_shape, D]
         interp_method: interpolation type 'linear' (default) or 'nearest'
+        fill_value: value to use for points outside the domain. If None, the nearest
+            neighbors will be used (default).
 
     Returns:
         new interpolated volume of the same size as the entries in loc
@@ -77,17 +79,19 @@ def interpn(vol, loc, interp_method='linear'):
     # flatten and float location Tensors
     loc = tf.cast(loc, 'float32')
     
-    if isinstance(vol.shape, (tf.TensorShape,)):  # tf.Dimension
+
+    if isinstance(vol.shape, (tf.compat.v1.Dimension, tf.TensorShape)):
         volshape = vol.shape.as_list()
     else:
         volshape = vol.shape
+
+    max_loc = [d - 1 for d in vol.get_shape().as_list()]
 
     # interpolate
     if interp_method == 'linear':
         loc0 = tf.floor(loc)
 
         # clip values
-        max_loc = [d - 1 for d in vol.get_shape().as_list()]
         clipped_loc = [tf.clip_by_value(loc[...,d], 0, max_loc[d]) for d in range(nb_dims)]
         loc0lst = [tf.clip_by_value(loc0[...,d], 0, max_loc[d]) for d in range(nb_dims)]
 
@@ -139,9 +143,6 @@ def interpn(vol, loc, interp_method='linear'):
     else:
         assert interp_method == 'nearest'
         roundloc = tf.cast(tf.round(loc), 'int32')
-
-        # clip values
-        max_loc = [tf.cast(d - 1, 'int32') for d in vol.shape]
         roundloc = [tf.clip_by_value(roundloc[...,d], 0, max_loc[d]) for d in range(nb_dims)]
 
         # get values
@@ -150,6 +151,15 @@ def interpn(vol, loc, interp_method='linear'):
         # interp_vol = tf.gather_nd(vol, roundloc)
         idx = sub2ind(vol.shape[:-1], roundloc)
         interp_vol = tf.gather(tf.reshape(vol, [-1, vol.shape[-1]]), idx) 
+
+    if fill_value is not None:
+        out_type = interp_vol.dtype
+        fill_value = tf.constant(fill_value, dtype=out_type)
+        below = [tf.less(loc[...,d], 0) for d in range(nb_dims)]
+        above = [tf.greater(loc[...,d], max_loc[d]) for d in range(nb_dims)]
+        out_of_bounds = tf.reduce_any(tf.stack(below + above, axis=-1), axis=-1, keepdims=True)
+        interp_vol *= tf.cast(tf.logical_not(out_of_bounds), dtype=out_type)
+        interp_vol += tf.cast(out_of_bounds, dtype=out_type) * fill_value
 
     return interp_vol
 
@@ -209,7 +219,8 @@ def affine_to_shift(affine_matrix, volshape, shift_center=True, indexing='ij'):
         allow affine_matrix to be a vector of size nb_dims * (nb_dims + 1)
     """
 
-    if isinstance(volshape, (tf.TensorShape, )): # tf.Dimension
+
+    if isinstance(volshape, (tf.compat.v1.Dimension, tf.TensorShape)):
         volshape = volshape.as_list()
     
     if affine_matrix.dtype != 'float32':
@@ -253,7 +264,7 @@ def affine_to_shift(affine_matrix, volshape, shift_center=True, indexing='ij'):
     return loc - tf.stack(mesh, axis=nb_dims)
 
 
-def transform(vol, loc_shift, interp_method='linear', indexing='ij'):
+def transform(vol, loc_shift, interp_method='linear', indexing='ij', fill_value=None):
     """
     transform (interpolation N-D volumes (features) given shifts at each location in tensorflow
 
@@ -267,6 +278,8 @@ def transform(vol, loc_shift, interp_method='linear', indexing='ij'):
         interp_method (default:'linear'): 'linear', 'nearest'
         indexing (default: 'ij'): 'ij' (matrix) or 'xy' (cartesian).
             In general, prefer to leave this 'ij'
+        fill_value (default: None): value to use for points outside the domain.
+            If None, the nearest neighbors will be used.
     
     Return:
         new interpolated volumes in the same size as loc_shift[0]
@@ -276,7 +289,15 @@ def transform(vol, loc_shift, interp_method='linear', indexing='ij'):
     """
 
     # parse shapes
-    if isinstance(loc_shift.shape, (tf.TensorShape, )): # tf.Dimension
+
+    
+    
+    
+    
+    
+    
+
+    if isinstance(loc_shift.shape, (tf.compat.v1.Dimension, tf.TensorShape)):
         volshape = loc_shift.shape[:-1].as_list()
     else:
         volshape = loc_shift.shape[:-1]
@@ -287,7 +308,7 @@ def transform(vol, loc_shift, interp_method='linear', indexing='ij'):
     loc = [tf.cast(mesh[d], 'float32') + loc_shift[..., d] for d in range(nb_dims)]
 
     # test single
-    return interpn(vol, loc, interp_method=interp_method)
+    return interpn(vol, loc, interp_method=interp_method, fill_value=fill_value)
 
 
 def compose(disp_1, disp_2, indexing='ij'):
