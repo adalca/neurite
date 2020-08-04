@@ -17,19 +17,20 @@ License: GPLv3
 """
 
 import sys
+import itertools
 
 # third party
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import backend as K
-import tensorflow.keras.initializers
 from tensorflow.keras.layers import Layer, InputLayer, Input
 from tensorflow.python.keras.engine import base_layer
-
+from tensorflow.python.keras.utils import conv_utils
+from tensorflow.python.keras.engine.input_spec import InputSpec
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras import backend
 from tensorflow.python import roll as _roll
-# from tensorflow.python.keras.engine.base_layer import Node
 
 # local
 from .utils import transform, resize, integrate_vec, affine_to_shift
@@ -206,7 +207,7 @@ class SpatialTransformer(Layer):
     Both transforms are meant to give a 'shift' from the current position.
     Therefore, a dense transform gives displacements (not absolute locations) at each voxel,
     and an affine transform gives the *difference* of the affine matrix from 
-    the identity matrix.
+    the identity matrix (unless specified otherwise).
 
     If you find this function useful, please cite:
       Unsupervised Learning for Fast Probabilistic Diffeomorphic Registration
@@ -226,6 +227,8 @@ class SpatialTransformer(Layer):
                  indexing='ij',
                  single_transform=False,
                  fill_value=None,
+                 add_identity=True,
+                 shift_center=True,
                  **kwargs):
         """
         Parameters: 
@@ -236,9 +239,15 @@ class SpatialTransformer(Layer):
                 (along last axis) flipped compared to 'ij' indexing
             fill_value (default: None): value to use for points outside the domain.
                 If None, the nearest neighbors will be used.
+            add_identity (default: True): whether the identity matrix is added
+                to affine transforms.
+            shift_center (default: True): whether the grid is shifted to the center
+                of the image when converting affine transforms to warp fields.
         """
         self.interp_method = interp_method
         self.fill_value = fill_value
+        self.add_identity = add_identity
+        self.shift_center = shift_center
         self.ndims = None
         self.inshape = None
         self.single_transform = single_transform
@@ -255,6 +264,8 @@ class SpatialTransformer(Layer):
             'indexing': self.indexing,
             'single_transform': self.single_transform,
             'fill_value': self.fill_value,
+            'add_identity': self.add_identity,
+            'shift_center': self.shift_center,
         })
         return config
 
@@ -282,10 +293,10 @@ class SpatialTransformer(Layer):
 
         # the transform is an affine iff:
         # it's a 1D Tensor [dense transforms need to be at least ndims + 1]
-        # it's a 2D Tensor and shape == [N+1, N+1]. 
+        # it's a 2D Tensor and shape == [N+1, N+1] or [N, N+1]
         #   [dense with N=1, which is the only one that could have a transform shape of 2, would be of size Mx1]
-        self.is_affine = len(trf_shape) == 1 or \
-                         (len(trf_shape) == 2 and all([trf_shape[0] == self.ndims, trf_shape[1] == self.ndims+1]))
+        self.is_affine = len(trf_shape) == 1 or (len(trf_shape) == 2 and \
+            trf_shape[0] in (self.ndims, self.ndims+1) and trf_shape[1] == self.ndims+1)
 
         # check sizes
         if self.is_affine and len(trf_shape) == 1:
@@ -317,9 +328,18 @@ class SpatialTransformer(Layer):
         vol = K.reshape(vol, [-1, *self.inshape[0][1:]])
         trf = K.reshape(trf, [-1, *self.inshape[1][1:]])
 
-        # go from affine
+        # convert matrix to warp field
         if self.is_affine:
-            trf = tf.map_fn(lambda x: self._single_aff_to_shift(x, vol.shape[1:-1]), trf, dtype=tf.float32)
+            ncols = self.ndims + 1
+            nrows = self.ndims
+            if np.prod(trf.shape.as_list()[1:]) == (self.ndims + 1) ** 2:
+                nrows += 1
+            if len(trf.shape[1:]) == 1:
+                trf = tf.reshape(trf, shape=(-1, nrows, ncols))
+            if self.add_identity:
+                trf += tf.eye(nrows, ncols, batch_shape=(tf.shape(trf)[0],))
+            fun = lambda x: affine_to_shift(x, vol.shape[1:-1], shift_center=self.shift_center)
+            trf = tf.map_fn(fun, trf, dtype=tf.float32)
 
         # prepare location shift
         if self.indexing == 'xy':  # shift the first two dimensions
@@ -333,14 +353,6 @@ class SpatialTransformer(Layer):
             return tf.map_fn(fn, vol, dtype=tf.float32)
         else:
             return tf.map_fn(self._single_transform, [vol, trf], dtype=tf.float32)
-
-    def _single_aff_to_shift(self, trf, volshape):
-        if len(trf.shape) == 1:  # go from vector to matrix
-            trf = tf.reshape(trf, [self.ndims, self.ndims + 1])
-
-        # note this is unnecessarily extra graph since at every batch entry we have a tf.eye graph
-        trf += tf.eye(self.ndims+1)[:self.ndims,:]  # add identity, hence affine is a shift from identitiy
-        return affine_to_shift(trf, volshape, shift_center=True)
 
     def _single_transform(self, inputs):
         return transform(inputs[0], inputs[1], interp_method=self.interp_method, fill_value=self.fill_value)
@@ -623,86 +635,107 @@ class LocalLinear(Layer):
 
 class LocallyConnected3D(Layer):
     """
-    code based on LocallyConnected3D from keras layers:
-    https://github.com/keras-team/keras/blob/master/keras/layers/local.py
+    Code based on LocallyConnected2D from TensorFLow/Keras:
+    https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/layers/local.py
 
-    Locally-connected layer for 3D inputs.
-    The `LocallyConnected3D` layer works similarly
-    to the `Conv3D` layer, except that weights are unshared,
-    that is, a different set of filters is applied at each
-    different patch of the input.
-    # Examples
-    ```python
-        # apply a 3x3x3 unshared weights convolution with 64 output filters on a 32x32x32 image
-        # with `data_format="channels_last"`:
-        model = Sequential()
-        model.add(LocallyConnected3D(64, (3, 3, 3), input_shape=(32, 32, 32, 1)))
-        # now model.output_shape == (None, 30, 30, 30, 64)
-        # notice that this layer will consume (30*30*30)*(3*3*3*1*64) + (30*30*30)*64 parameters
-        # add a 3x3x3 unshared weights convolution on top, with 32 output filters:
-        model.add(LocallyConnected3D(32, (3, 3, 3)))
-        # now model.output_shape == (None, 28, 28, 28, 32)
-    ```
-    # Arguments
-        filters: Integer, the dimensionality of the output space
-            (i.e. the number of output filters in the convolution).
-        kernel_size: An integer or tuple/list of 2 integers, specifying the
-            width and height of the 3D convolution window.
-            Can be a single integer to specify the same value for
-            all spatial dimensions.
-        strides: An integer or tuple/list of 2 integers,
-            specifying the strides of the convolution along the width and height.
-            Can be a single integer to specify the same value for
-            all spatial dimensions.
-        padding: Currently only support `"valid"` (case-insensitive).
-            `"same"` will be supported in future.
-        data_format: A string,
-            one of `channels_last` (default) or `channels_first`.
-            The ordering of the dimensions in the inputs.
-            `channels_last` corresponds to inputs with shape
-            `(batch, height, width, channels)` while `channels_first`
-            corresponds to inputs with shape
-            `(batch, channels, height, width)`.
-            It defaults to the `image_data_format` value found in your
-            Keras config file at `~/.keras/keras.json`.
-            If you never set it, then it will be "channels_last".
-        activation: Activation function to use
-            (see [activations](../activations.md)).
-            If you don't specify anything, no activation is applied
-            (ie. "linear" activation: `a(x) = x`).
-        use_bias: Boolean, whether the layer uses a bias vector.
-        kernel_initializer: Initializer for the `kernel` weights matrix
-            (see [initializers](../initializers.md)).
-        bias_initializer: Initializer for the bias vector
-            (see [initializers](../initializers.md)).
-        kernel_regularizer: Regularizer function applied to
-            the `kernel` weights matrix
-            (see [regularizer](../regularizers.md)).
-        bias_regularizer: Regularizer function applied to the bias vector
-            (see [regularizer](../regularizers.md)).
-        activity_regularizer: Regularizer function applied to
-            the output of the layer (its "activation").
-            (see [regularizer](../regularizers.md)).
-        kernel_constraint: Constraint function applied to the kernel matrix
-            (see [constraints](../constraints.md)).
-        bias_constraint: Constraint function applied to the bias vector
-            (see [constraints](../constraints.md)).
-    # Input shape
-        4D tensor with shape:
-        `(samples, channels, rows, cols)` if data_format='channels_first'
-        or 4D tensor with shape:
-        `(samples, rows, cols, channels)` if data_format='channels_last'.
-    # Output shape
-        4D tensor with shape:
-        `(samples, filters, new_rows, new_cols)` if data_format='channels_first'
-        or 4D tensor with shape:
-        `(samples, new_rows, new_cols, filters)` if data_format='channels_last'.
-        `rows` and `cols` values might have changed due to padding.
-    """
+	Locally-connected layer for 3D inputs.
+	  The `LocallyConnected3D` layer works similarly
+	  to the `Conv3D` layer, except that weights are unshared,
+	  that is, a different set of filters is applied at each
+	  different patch of the input.
+	  Note: layer attributes cannot be modified after the layer has been called
+	  once (except the `trainable` attribute).
+	  Examples:
+	  ```python
+		  # apply a 3x3x3 unshared weights convolution with 64 output filters on a
+		  32x32x32 image
+		  # with `data_format="channels_last"`:
+		  model = Sequential()
+		  model.add(LocallyConnected3D(64, (3, 3, 3), input_shape=(32, 32, 32, 3)))
+		  # now model.output_shape == (None, 30, 30, 30, 64)
+		  # notice that this layer will consume (30*30*30)*(3*3*3*64) + (30*30*30)*64
+		  parameters
+		  # add a 3x3x3 unshared weights convolution on top, with 32 output filters:
+		  model.add(LocallyConnected3D(32, (3, 3, 3)))
+		  # now model.output_shape == (None, 28, 28, 28, 32)
+	  ```
+	  Arguments:
+		  filters: Integer, the dimensionality of the output space
+			  (i.e. the number of output filters in the convolution).
+		  kernel_size: An integer or tuple/list of 3 integers, specifying the
+			  width and height of the 3D convolution window.
+			  Can be a single integer to specify the same value for
+			  all spatial dimensions.
+		  strides: An integer or tuple/list of 3 integers,
+			  specifying the strides of the convolution along the width, height
+			  and depth. Can be a single integer to specify the same value for
+			  all spatial dimensions.
+		  padding: Currently only support `"valid"` (case-insensitive).
+			  `"same"` will be supported in future.
+			  `"valid"` means no padding.
+		  data_format: A string,
+			  one of `channels_last` (default) or `channels_first`.
+			  The ordering of the dimensions in the inputs.
+			  `channels_last` corresponds to inputs with shape
+			  `(batch, height, width, depth, channels)` while `channels_first`
+			  corresponds to inputs with shape
+			  `(batch, channels, height, width, height)`.
+			  It defaults to the `image_data_format` value found in your
+			  Keras config file at `~/.keras/keras.json`.
+			  If you never set it, then it will be "channels_last".
+		  activation: Activation function to use.
+			  If you don't specify anything, no activation is applied
+			  (ie. "linear" activation: `a(x) = x`).
+		  use_bias: Boolean, whether the layer uses a bias vector.
+		  kernel_initializer: Initializer for the `kernel` weights matrix.
+		  bias_initializer: Initializer for the bias vector.
+		  kernel_regularizer: Regularizer function applied to
+			  the `kernel` weights matrix.
+		  bias_regularizer: Regularizer function applied to the bias vector.
+		  activity_regularizer: Regularizer function applied to
+			  the output of the layer (its "activation").
+		  kernel_constraint: Constraint function applied to the kernel matrix.
+		  bias_constraint: Constraint function applied to the bias vector.
+		  implementation: implementation mode, either `1`, `2`, or `3`.
+			  `1` loops over input spatial locations to perform the forward pass.
+			  It is memory-efficient but performs a lot of (small) ops.
+			  `2` stores layer weights in a dense but sparsely-populated 2D matrix
+			  and implements the forward pass as a single matrix-multiply. It uses
+			  a lot of RAM but performs few (large) ops.
+			  `3` stores layer weights in a sparse tensor and implements the forward
+			  pass as a single sparse matrix-multiply.
+			  How to choose:
+			  `1`: large, dense models,
+			  `2`: small models,
+			  `3`: large, sparse models,
+			  where "large" stands for large input/output activations
+			  (i.e. many `filters`, `input_filters`, large `np.prod(input_size)`,
+			  `np.prod(output_size)`), and "sparse" stands for few connections
+			  between inputs and outputs, i.e. small ratio
+			  `filters * input_filters * np.prod(kernel_size) / (np.prod(input_size)
+			  * np.prod(strides))`, where inputs to and outputs of the layer are
+			  assumed to have shapes `input_size + (input_filters,)`,
+			  `output_size + (filters,)` respectively.
+			  It is recommended to benchmark each in the setting of interest to pick
+			  the most efficient one (in terms of speed and memory usage). Correct
+			  choice of implementation can lead to dramatic speed improvements (e.g.
+			  50X), potentially at the expense of RAM.
+			  Also, only `padding="valid"` is supported by `implementation=1`.
+	  Input shape:
+		  5D tensor with shape:
+		  `(samples, channels, rows, cols, z)` if data_format='channels_first'
+		  or 5D tensor with shape:
+		  `(samples, rows, cols, z, channels)` if data_format='channels_last'.
+	  Output shape:
+		  5D tensor with shape:
+		  `(samples, filters, new_rows, new_cols, new_z)` if data_format='channels_first'
+		  or 5D tensor with shape:
+		  `(samples, new_rows, new_cols, new_z, filters)` if data_format='channels_last'.
+		  `rows`, `cols` and `z` values might have changed due to padding.
+	"""
 
-    # from tensorflow.keras.legacy import interfaces
-    # @interfaces.legacy_conv3d_support
-    def __init__(self, filters,
+    def __init__(self,
+                 filters,
                  kernel_size,
                  strides=(1, 1, 1),
                  padding='valid',
@@ -716,67 +749,121 @@ class LocallyConnected3D(Layer):
                  activity_regularizer=None,
                  kernel_constraint=None,
                  bias_constraint=None,
+                 implementation=1,
                  **kwargs):
-        
         super(LocallyConnected3D, self).__init__(**kwargs)
         self.filters = filters
-        self.kernel_size = conv_utils.normalize_tuple(
-            kernel_size, 3, 'kernel_size')
+        self.kernel_size = conv_utils.normalize_tuple(kernel_size, 3, 'kernel_size')
         self.strides = conv_utils.normalize_tuple(strides, 3, 'strides')
         self.padding = conv_utils.normalize_padding(padding)
-        if self.padding != 'valid':
+        if self.padding != 'valid' and implementation == 1:
             raise ValueError('Invalid border mode for LocallyConnected3D '
-                             '(only "valid" is supported): ' + padding)
+                             '(only "valid" is supported if implementation is 1): '
+                             + padding)
         self.data_format = conv_utils.normalize_data_format(data_format)
-        self.activation = activations.get(activation)
+        self.activation = tf.keras.activations.get(activation)
         self.use_bias = use_bias
-        self.kernel_initializer = initializers.get(kernel_initializer)
-        self.bias_initializer = initializers.get(bias_initializer)
-        self.kernel_regularizer = regularizers.get(kernel_regularizer)
-        self.bias_regularizer = regularizers.get(bias_regularizer)
-        self.activity_regularizer = regularizers.get(activity_regularizer)
-        self.kernel_constraint = constraints.get(kernel_constraint)
-        self.bias_constraint = constraints.get(bias_constraint)
+        self.kernel_initializer = tf.keras.initializers.get(kernel_initializer)
+        self.bias_initializer = tf.keras.initializers.get(bias_initializer)
+        self.kernel_regularizer = tf.keras.regularizers.get(kernel_regularizer)
+        self.bias_regularizer = tf.keras.regularizers.get(bias_regularizer)
+        self.activity_regularizer = tf.keras.regularizers.get(activity_regularizer)
+        self.kernel_constraint = tf.keras.constraints.get(kernel_constraint)
+        self.bias_constraint = tf.keras.constraints.get(bias_constraint)
+        self.implementation = implementation
         self.input_spec = InputSpec(ndim=5)
 
+    @tf_utils.shape_type_conversion
     def build(self, input_shape):
-        
         if self.data_format == 'channels_last':
             input_row, input_col, input_z = input_shape[1:-1]
             input_filter = input_shape[4]
         else:
             input_row, input_col, input_z = input_shape[2:]
             input_filter = input_shape[1]
-        if input_row is None or input_col is None:
+        if input_row is None or input_col is None or input_z is None:
             raise ValueError('The spatial dimensions of the inputs to '
                              ' a LocallyConnected3D layer '
                              'should be fully-defined, but layer received '
                              'the inputs shape ' + str(input_shape))
-        output_row = conv_utils.conv_output_length(input_row, self.kernel_size[0],
-                                                   self.padding, self.strides[0])
-        output_col = conv_utils.conv_output_length(input_col, self.kernel_size[1],
-                                                   self.padding, self.strides[1])
-        output_z = conv_utils.conv_output_length(input_z, self.kernel_size[2],
-                                                   self.padding, self.strides[2])
+        output_row = conv_utils.conv_output_length(
+            input_row, self.kernel_size[0], self.padding, self.strides[0])
+        output_col = conv_utils.conv_output_length(
+            input_col, self.kernel_size[1], self.padding, self.strides[1])
+        output_z = conv_utils.conv_output_length(
+            input_z, self.kernel_size[2], self.padding, self.strides[2])
         self.output_row = output_row
         self.output_col = output_col
         self.output_z = output_z
-        self.kernel_shape = (output_row * output_col * output_z,
-                             self.kernel_size[0] *
-                             self.kernel_size[1] *
-                             self.kernel_size[2] * input_filter,
-                             self.filters)
-        self.kernel = self.add_weight(shape=self.kernel_shape,
-                                      initializer=self.kernel_initializer,
-                                      name='kernel',
-                                      regularizer=self.kernel_regularizer,
-                                      constraint=self.kernel_constraint)
+
+        if self.implementation == 1:
+            self.kernel_shape = (
+                output_row * output_col * output_z,
+                self.kernel_size[0] * self.kernel_size[1] * self.kernel_size[2] * input_filter,
+                self.filters)
+
+            self.kernel = self.add_weight(
+                shape=self.kernel_shape,
+                initializer=self.kernel_initializer,
+                name='kernel',
+                regularizer=self.kernel_regularizer,
+                constraint=self.kernel_constraint)
+
+        elif self.implementation == 2:
+            if self.data_format == 'channels_first':
+              self.kernel_shape = (input_filter, input_row, input_col, input_z,
+                                   self.filters, self.output_row, self.output_col, self.output_z)
+            else:
+              self.kernel_shape = (input_row, input_col, input_z, input_filter,
+                                   self.output_row, self.output_col, self.output_z, self.filters)
+
+            self.kernel = self.add_weight(shape=self.kernel_shape,
+                                          initializer=self.kernel_initializer,
+                                          name='kernel',
+                                          regularizer=self.kernel_regularizer,
+                                          constraint=self.kernel_constraint)
+
+            self.kernel_mask = LocallyConnected3D.get_locallyconnected_mask(
+                input_shape=(input_row, input_col, input_z),
+                kernel_shape=self.kernel_size,
+                strides=self.strides,
+                padding=self.padding,
+                data_format=self.data_format
+            )
+
+        elif self.implementation == 3:
+            self.kernel_shape = (self.output_row * self.output_col * self.output_z * self.filters,
+                                 input_row * input_col * input_z * input_filter)
+
+            self.kernel_idxs = sorted(
+                LocallyConnected3D.conv_kernel_idxs(
+                    input_shape=(input_row, input_col, input_z),
+                    kernel_shape=self.kernel_size,
+                    strides=self.strides,
+                    padding=self.padding,
+                    filters_in=input_filter,
+                    filters_out=self.filters,
+                    data_format=self.data_format)
+            )
+
+            self.kernel = self.add_weight(
+                shape=(len(self.kernel_idxs),),
+                initializer=self.kernel_initializer,
+                name='kernel',
+                regularizer=self.kernel_regularizer,
+                constraint=self.kernel_constraint)
+
+        else:
+            raise ValueError('Unrecognized implementation mode: %d.'
+                             % self.implementation)
+
         if self.use_bias:
-            self.bias = self.add_weight(shape=(output_row, output_col, output_z, self.filters),
-                                        initializer=self.bias_initializer,
-                                        name='bias',
-                                        regularizer=self.bias_regularizer,
-                                        constraint=self.bias_constraint)
+            self.bias = self.add_weight(
+                shape=(output_row, output_col, output_z, self.filters),
+                initializer=self.bias_initializer,
+                name='bias',
+                regularizer=self.bias_regularizer,
+                constraint=self.bias_constraint)
         else:
             self.bias = None
         if self.data_format == 'channels_first':
@@ -785,6 +872,7 @@ class LocallyConnected3D(Layer):
             self.input_spec = InputSpec(ndim=5, axes={-1: input_filter})
         self.built = True
 
+    @tf_utils.shape_type_conversion
     def compute_output_shape(self, input_shape):
         if self.data_format == 'channels_first':
             rows = input_shape[2]
@@ -795,12 +883,12 @@ class LocallyConnected3D(Layer):
             cols = input_shape[2]
             z = input_shape[3]
 
-        rows = conv_utils.conv_output_length(rows, self.kernel_size[0],
-                                             self.padding, self.strides[0])
-        cols = conv_utils.conv_output_length(cols, self.kernel_size[1],
-                                             self.padding, self.strides[1])
-        z = conv_utils.conv_output_length(z, self.kernel_size[2],
-                                             self.padding, self.strides[2])
+        rows = conv_utils.conv_output_length(
+            rows, self.kernel_size[0], self.padding, self.strides[0])
+        cols = conv_utils.conv_output_length(
+            cols, self.kernel_size[1], self.padding, self.strides[1])
+        z = conv_utils.conv_output_length(
+            z, self.kernel_size[2], self.padding, self.strides[2])
 
         if self.data_format == 'channels_first':
             return (input_shape[0], self.filters, rows, cols, z)
@@ -808,17 +896,26 @@ class LocallyConnected3D(Layer):
             return (input_shape[0], rows, cols, z, self.filters)
 
     def call(self, inputs):
-        
-        output = self.local_conv3d(inputs,
-                                self.kernel,
-                                self.kernel_size,
-                                self.strides,
-                                (self.output_row, self.output_col, self.output_z),
-                                self.data_format)
+        if self.implementation == 1:
+            output = LocallyConnected3D.local_conv(inputs, self.kernel,
+                self.kernel_size, self.strides,
+                (self.output_row, self.output_col, self.output_z), self.data_format)
+
+        elif self.implementation == 2:
+            output = LocallyConnected3D.local_conv_matmul(inputs, self.kernel,
+                self.kernel_mask, self.compute_output_shape(inputs.shape))
+
+        elif self.implementation == 3:
+            output = LocallyConnected3D.local_conv_sparse_matmul(inputs,
+                self.kernel, self.kernel_idxs, self.kernel_shape,
+                self.compute_output_shape(inputs.shape))
+
+        else:
+            raise ValueError('Unrecognized implementation mode: %d.'
+                             % self.implementation)
 
         if self.use_bias:
-            output = K.bias_add(output, self.bias,
-                                data_format=self.data_format)
+            output = K.bias_add(output, self.bias, data_format=self.data_format)
 
         output = self.activation(output)
         return output
@@ -830,88 +927,436 @@ class LocallyConnected3D(Layer):
             'strides': self.strides,
             'padding': self.padding,
             'data_format': self.data_format,
-            'activation': activations.serialize(self.activation),
+            'activation': tf.keras.activations.serialize(self.activation),
             'use_bias': self.use_bias,
-            'kernel_initializer': initializers.serialize(self.kernel_initializer),
-            'bias_initializer': initializers.serialize(self.bias_initializer),
-            'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
-            'bias_regularizer': regularizers.serialize(self.bias_regularizer),
-            'activity_regularizer': regularizers.serialize(self.activity_regularizer),
-            'kernel_constraint': constraints.serialize(self.kernel_constraint),
-            'bias_constraint': constraints.serialize(self.bias_constraint)
+            'kernel_initializer': tf.keras.initializers.serialize(self.kernel_initializer),
+            'bias_initializer': tf.keras.initializers.serialize(self.bias_initializer),
+            'kernel_regularizer': tf.keras.regularizers.serialize(self.kernel_regularizer),
+            'bias_regularizer': tf.keras.regularizers.serialize(self.bias_regularizer),
+            'activity_regularizer': tf.keras.regularizers.serialize(self.activity_regularizer),
+            'kernel_constraint': tf.keras.constraints.serialize(self.kernel_constraint),
+            'bias_constraint': tf.keras.constraints.serialize(self.bias_constraint),
+            'implementation': self.implementation
         }
-        base_config = super(
-            LocallyConnected3D, self).get_config()
+        base_config = super(LocallyConnected3D, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
-    def local_conv3d(self, inputs, kernel, kernel_size, strides, output_shape, data_format=None):
-        """Apply 3D conv with un-shared weights.
-        # Arguments
-            inputs: 4D tensor with shape:
-                    (batch_size, filters, new_rows, new_cols)
-                    if data_format='channels_first'
-                    or 4D tensor with shape:
-                    (batch_size, new_rows, new_cols, filters)
-                    if data_format='channels_last'.
-            kernel: the unshared weight for convolution,
-                    with shape (output_items, feature_dim, filters)
-            kernel_size: a tuple of 2 integers, specifying the
-                        width and height of the 3D convolution window.
-            strides: a tuple of 2 integers, specifying the strides
-                    of the convolution along the width and height.
-            output_shape: a tuple with (output_row, output_col)
-            data_format: the data format, channels_first or channels_last
-        # Returns
-            A 4d tensor with shape:
-            (batch_size, filters, new_rows, new_cols)
-            if data_format='channels_first'
-            or 4D tensor with shape:
-            (batch_size, new_rows, new_cols, filters)
+
+    @staticmethod
+    def local_conv(inputs,
+                   kernel,
+                   kernel_size,
+                   strides,
+                   output_shape,
+                   data_format=None):
+        """Apply N-D convolution with un-shared weights.
+        Arguments:
+            inputs: (N+2)-D tensor with shape
+                (batch_size, channels_in, d_in1, ..., d_inN)
+                if data_format='channels_first', or
+                (batch_size, d_in1, ..., d_inN, channels_in)
+                if data_format='channels_last'.
+            kernel: the unshared weight for N-D convolution,
+                with shape (output_items, feature_dim, channels_out), where
+                feature_dim = np.prod(kernel_size) * channels_in,
+                output_items = np.prod(output_shape).
+            kernel_size: a tuple of N integers, specifying the
+                spatial dimensions of the N-D convolution window.
+            strides: a tuple of N integers, specifying the strides
+                of the convolution along the spatial dimensions.
+            output_shape: a tuple of (d_out1, ..., d_outN) specifying the spatial
+                dimensionality of the output.
+            data_format: string, "channels_first" or "channels_last".
+        Returns:
+            An (N+2)-D tensor with shape:
+            (batch_size, channels_out) + output_shape
+            if data_format='channels_first', or:
+            (batch_size,) + output_shape + (channels_out,)
             if data_format='channels_last'.
-        # Raises
+        Raises:
             ValueError: if `data_format` is neither
-                        `channels_last` or `channels_first`.
+            `channels_last` nor `channels_first`.
         """
         if data_format is None:
-            data_format = K.image_data_format()
+            data_format = image_data_format()
         if data_format not in {'channels_first', 'channels_last'}:
             raise ValueError('Unknown data_format: ' + str(data_format))
 
-        stride_row, stride_col, stride_z = strides
-        output_row, output_col, output_z = output_shape
         kernel_shape = K.int_shape(kernel)
-        _, feature_dim, filters = kernel_shape
+        feature_dim = kernel_shape[1]
+        channels_out = kernel_shape[-1]
+        ndims = len(output_shape)
+        spatial_dimensions = list(range(ndims))
 
         xs = []
-        for i in range(output_row):
-            for j in range(output_col):
-                for k in range(output_z):
-                    slice_row = slice(i * stride_row,
-                                    i * stride_row + kernel_size[0])
-                    slice_col = slice(j * stride_col,
-                                    j * stride_col + kernel_size[1])
-                    slice_z = slice(k * stride_z,
-                                    k * stride_z + kernel_size[2])
-                    if data_format == 'channels_first':
-                        xs.append(K.reshape(inputs[:, :, slice_row, slice_col, slice_z],
-                                        (1, -1, feature_dim)))
-                    else:
-                        xs.append(K.reshape(inputs[:, slice_row, slice_col, slice_z, :],
-                                        (1, -1, feature_dim)))
+        output_axes_ticks = [range(axis_max) for axis_max in output_shape]
+        for position in itertools.product(*output_axes_ticks):
+            slices = [slice(None)]
+
+            if data_format == 'channels_first':
+                slices.append(slice(None))
+
+            slices.extend([slice(position[d] * strides[d],
+                                 position[d] * strides[d] + kernel_size[d])
+                           for d in spatial_dimensions])
+
+            if data_format == 'channels_last':
+                slices.append(slice(None))
+
+            xs.append(K.reshape(inputs[slices], (1, -1, feature_dim)))
 
         x_aggregate = K.concatenate(xs, axis=0)
         output = K.batch_dot(x_aggregate, kernel)
-        output = K.reshape(output,
-                        (output_row, output_col, output_z, -1, filters))
+        output = K.reshape(output, output_shape + (-1, channels_out))
 
         if data_format == 'channels_first':
-            output = K.permute_dimensions(output, (3, 4, 0, 1, 2))
+            permutation = [ndims, ndims + 1] + spatial_dimensions
         else:
-            output = K.permute_dimensions(output, (3, 0, 1, 2, 4))
+            permutation = [ndims] + spatial_dimensions + [ndims + 1]
+
+        return K.permute_dimensions(output, permutation)
+
+
+    @staticmethod
+    def get_locallyconnected_mask(input_shape,
+                                  kernel_shape,
+                                  strides,
+                                  padding,
+                                  data_format):
+        """Return a mask representing connectivity of a locally-connected operation.
+        This method returns a masking numpy array of 0s and 1s (of type `np.float32`)
+        that, when element-wise multiplied with a fully-connected weight tensor, masks
+        out the weights between disconnected input-output pairs and thus implements
+        local connectivity through a sparse fully-connected weight tensor.
+        Assume an unshared convolution with given parameters is applied to an input
+        having N spatial dimensions with `input_shape = (d_in1, ..., d_inN)`
+        to produce an output with spatial shape `(d_out1, ..., d_outN)` (determined
+        by layer parameters such as `strides`).
+        This method returns a mask which can be broadcast-multiplied (element-wise)
+        with a 2*(N+1)-D weight matrix (equivalent to a fully-connected layer between
+        (N+1)-D activations (N spatial + 1 channel dimensions for input and output)
+        to make it perform an unshared convolution with given `kernel_shape`,
+        `strides`, `padding` and `data_format`.
+        Arguments:
+          input_shape: tuple of size N: `(d_in1, ..., d_inN)`
+                       spatial shape of the input.
+          kernel_shape: tuple of size N, spatial shape of the convolutional kernel
+                        / receptive field.
+          strides: tuple of size N, strides along each spatial dimension.
+          padding: type of padding, string `"same"` or `"valid"`.
+          data_format: a string, `"channels_first"` or `"channels_last"`.
+        Returns:
+          a `np.float32`-type `np.ndarray` of shape
+          `(1, d_in1, ..., d_inN, 1, d_out1, ..., d_outN)`
+          if `data_format == `"channels_first"`, or
+          `(d_in1, ..., d_inN, 1, d_out1, ..., d_outN, 1)`
+          if `data_format == "channels_last"`.
+        Raises:
+          ValueError: if `data_format` is neither `"channels_first"` nor
+                      `"channels_last"`.
+        """
+        mask = conv_utils.conv_kernel_mask(
+            input_shape=input_shape,
+            kernel_shape=kernel_shape,
+            strides=strides,
+            padding=padding
+        )
+
+        ndims = int(mask.ndim / 2)
+
+        if data_format == 'channels_first':
+            mask = np.expand_dims(mask, 0)
+            mask = np.expand_dims(mask, -ndims - 1)
+
+        elif data_format == 'channels_last':
+            mask = np.expand_dims(mask, ndims)
+            mask = np.expand_dims(mask, -1)
+
+        else:
+            raise ValueError('Unrecognized data_format: ' + str(data_format))
+
+        return mask
+
+
+    @staticmethod
+    def local_conv_matmul(inputs, kernel, kernel_mask, output_shape):
+        """Apply N-D convolution with un-shared weights using a single matmul call.
+        This method outputs `inputs . (kernel * kernel_mask)`
+        (with `.` standing for matrix-multiply and `*` for element-wise multiply)
+        and requires a precomputed `kernel_mask` to zero-out weights in `kernel` and
+        hence perform the same operation as a convolution with un-shared
+        (the remaining entries in `kernel`) weights. It also does the necessary
+        reshapes to make `inputs` and `kernel` 2-D and `output` (N+2)-D.
+        Arguments:
+            inputs: (N+2)-D tensor with shape
+                `(batch_size, channels_in, d_in1, ..., d_inN)`
+                or
+                `(batch_size, d_in1, ..., d_inN, channels_in)`.
+            kernel: the unshared weights for N-D convolution,
+                an (N+2)-D tensor of shape:
+                `(d_in1, ..., d_inN, channels_in, d_out2, ..., d_outN, channels_out)`
+                or
+                `(channels_in, d_in1, ..., d_inN, channels_out, d_out2, ..., d_outN)`,
+                with the ordering of channels and spatial dimensions matching
+                that of the input.
+                Each entry is the weight between a particular input and
+                output location, similarly to a fully-connected weight matrix.
+            kernel_mask: a float 0/1 mask tensor of shape:
+                 `(d_in1, ..., d_inN, 1, d_out2, ..., d_outN, 1)`
+                 or
+                 `(1, d_in1, ..., d_inN, 1, d_out2, ..., d_outN)`,
+                 with the ordering of singleton and spatial dimensions
+                 matching that of the input.
+                 Mask represents the connectivity pattern of the layer and is
+                 precomputed elsewhere based on layer parameters: stride,
+                 padding, and the receptive field shape.
+            output_shape: a tuple of (N+2) elements representing the output shape:
+                `(batch_size, channels_out, d_out1, ..., d_outN)`
+                or
+                `(batch_size, d_out1, ..., d_outN, channels_out)`,
+                with the ordering of channels and spatial dimensions matching that of
+                the input.
+        Returns:
+            Output (N+2)-D tensor with shape `output_shape`.
+        """
+        inputs_flat = K.reshape(inputs, (K.shape(inputs)[0], -1))
+
+        kernel = kernel_mask * kernel
+        kernel = LocallyConnected3D.make_2d(kernel, split_dim=K.ndim(kernel) // 2)
+
+        output_flat = tf.linalg.matmul(inputs_flat, kernel, b_is_sparse=True)
+        output = K.reshape(output_flat,
+            [K.shape(output_flat)[0],] + output_shape.as_list()[1:])
         return output
 
 
-class LocalCrossLinear(tensorflow.keras.layers.Layer):
+    @staticmethod
+    def local_conv_sparse_matmul(inputs, kernel, kernel_idxs, kernel_shape,
+                                 output_shape):
+        """Apply N-D convolution with un-shared weights using a single sparse matmul.
+        This method outputs `inputs . tf.sparse.SparseTensor(indices=kernel_idxs,
+        values=kernel, dense_shape=kernel_shape)`, with `.` standing for
+        matrix-multiply. It also reshapes `inputs` to 2-D and `output` to (N+2)-D.
+        Arguments:
+            inputs: (N+2)-D tensor with shape `(batch_size, channels_in, d_in1, ...,
+              d_inN)` or `(batch_size, d_in1, ..., d_inN, channels_in)`.
+            kernel: a 1-D tensor with shape `(len(kernel_idxs),)` containing all the
+              weights of the layer.
+            kernel_idxs:  a list of integer tuples representing indices in a sparse
+              matrix performing the un-shared convolution as a matrix-multiply.
+            kernel_shape: a tuple `(input_size, output_size)`, where `input_size =
+              channels_in * d_in1 * ... * d_inN` and `output_size = channels_out *
+              d_out1 * ... * d_outN`.
+            output_shape: a tuple of (N+2) elements representing the output shape:
+              `(batch_size, channels_out, d_out1, ..., d_outN)` or `(batch_size,
+              d_out1, ..., d_outN, channels_out)`, with the ordering of channels and
+              spatial dimensions matching that of the input.
+        Returns:
+            Output (N+2)-D dense tensor with shape `output_shape`.
+        """
+        inputs_flat = K.reshape(inputs, (K.shape(inputs)[0], -1))
+        output_flat = backend.sparse_ops.sparse_tensor_dense_mat_mul(
+            kernel_idxs, kernel, kernel_shape, inputs_flat, adjoint_b=True)
+        output_flat_transpose = K.transpose(output_flat)
+
+        output_reshaped = K.reshape(
+            output_flat_transpose,
+            [K.shape(output_flat_transpose)[0],] + output_shape.as_list()[1:]
+        )
+        return output_reshaped
+
+
+    @staticmethod
+    def conv_kernel_idxs(input_shape, kernel_shape, strides, padding, filters_in,
+                         filters_out, data_format):
+        """Yields output-input tuples of indices in a CNN layer.
+        The generator iterates over all `(output_idx, input_idx)` tuples, where
+          `output_idx` is an integer index in a flattened tensor representing a single
+          output image of a convolutional layer that is connected (via the layer
+          weights) to the respective single input image at `input_idx`
+        Example:
+          >>> input_shape = (2, 2)
+          >>> kernel_shape = (2, 1)
+          >>> strides = (1, 1)
+          >>> padding = "valid"
+          >>> filters_in = 1
+          >>> filters_out = 1
+          >>> data_format = "channels_last"
+          >>> list(conv_kernel_idxs(input_shape, kernel_shape, strides, padding,
+          ...                       filters_in, filters_out, data_format))
+          [(0, 0), (0, 2), (1, 1), (1, 3)]
+        Args:
+          input_shape: tuple of size N: `(d_in1, ..., d_inN)`, spatial shape of the
+            input.
+          kernel_shape: tuple of size N, spatial shape of the convolutional kernel /
+            receptive field.
+          strides: tuple of size N, strides along each spatial dimension.
+          padding: type of padding, string `"same"` or `"valid"`.
+            `"valid"` means no padding. `"same"` results in padding evenly to
+            the left/right or up/down of the input such that output has the same
+            height/width dimension as the input.
+          filters_in: `int`, number if filters in the input to the layer.
+          filters_out: `int', number if filters in the output of the layer.
+          data_format: string, "channels_first" or "channels_last".
+        Yields:
+          The next tuple `(output_idx, input_idx)`, where
+          `output_idx` is an integer index in a flattened tensor representing a single
+          output image of a convolutional layer that is connected (via the layer
+          weights) to the respective single input image at `input_idx`.
+        Raises:
+            ValueError: if `data_format` is neither
+            `"channels_last"` nor `"channels_first"`, or if number of strides, input,
+            and kernel number of dimensions do not match.
+            NotImplementedError: if `padding` is neither `"same"` nor `"valid"`.
+        """
+        if padding not in ('same', 'valid'):
+             raise NotImplementedError('Padding type %s not supported. '
+                                      'Only "valid" and "same" '
+                                      'are implemented.' % padding)
+
+        in_dims = len(input_shape)
+        if isinstance(kernel_shape, int):
+            kernel_shape = (kernel_shape,) * in_dims
+        if isinstance(strides, int):
+            strides = (strides,) * in_dims
+
+        kernel_dims = len(kernel_shape)
+        stride_dims = len(strides)
+        if kernel_dims != in_dims or stride_dims != in_dims:
+            raise ValueError('Number of strides, input and kernel dimensions must all '
+                             'match. Received: %d, %d, %d.' %
+                             (stride_dims, in_dims, kernel_dims))
+
+        output_shape = LocallyConnected3D.conv_output_shape(input_shape,
+            kernel_shape, strides, padding)
+        output_axes_ticks = [range(dim) for dim in output_shape]
+
+        if data_format == 'channels_first':
+            concat_idxs = lambda spatial_idx, filter_idx: (filter_idx,) + spatial_idx
+        elif data_format == 'channels_last':
+            concat_idxs = lambda spatial_idx, filter_idx: spatial_idx + (filter_idx,)
+        else:
+            raise ValueError('Data format %s not recognized.'
+                             '`data_format` must be "channels_first" or '
+                             '"channels_last".' % data_format)
+
+        for output_position in itertools.product(*output_axes_ticks):
+            input_axes_ticks = LocallyConnected3D.conv_connected_inputs(input_shape,
+                kernel_shape, output_position, strides, padding)
+            for input_position in itertools.product(*input_axes_ticks):
+                for f_in in range(filters_in):
+                    for f_out in range(filters_out):
+                        out_idx = np.ravel_multi_index(
+                            multi_index=concat_idxs(output_position, f_out),
+                            dims=concat_idxs(output_shape, filters_out))
+                        in_idx = np.ravel_multi_index(
+                            multi_index=concat_idxs(input_position, f_in),
+                            dims=concat_idxs(input_shape, filters_in))
+                        yield (out_idx, in_idx)
+
+
+    @staticmethod
+    def conv_connected_inputs(input_shape, kernel_shape, output_position, strides,
+                              padding):
+        """Return locations of the input connected to an output position.
+        Assume a convolution with given parameters is applied to an input having N
+        spatial dimensions with `input_shape = (d_in1, ..., d_inN)`. This method
+        returns N ranges specifying the input region that was convolved with the
+        kernel to produce the output at position
+        `output_position = (p_out1, ..., p_outN)`.
+        Example:
+          >>> input_shape = (4, 4)
+          >>> kernel_shape = (2, 1)
+          >>> output_position = (1, 1)
+          >>> strides = (1, 1)
+          >>> padding = "valid"
+          >>> conv_connected_inputs(input_shape, kernel_shape, output_position,
+          ...                       strides, padding)
+          [range(1, 3), range(1, 2)]
+        Args:
+          input_shape: tuple of size N: `(d_in1, ..., d_inN)`, spatial shape of the
+            input.
+          kernel_shape: tuple of size N, spatial shape of the convolutional kernel /
+            receptive field.
+          output_position: tuple of size N: `(p_out1, ..., p_outN)`, a single position
+            in the output of the convolution.
+          strides: tuple of size N, strides along each spatial dimension.
+          padding: type of padding, string `"same"` or `"valid"`.
+            `"valid"` means no padding. `"same"` results in padding evenly to
+            the left/right or up/down of the input such that output has the same
+            height/width dimension as the input.
+        Returns:
+          N ranges `[[p_in_left1, ..., p_in_right1], ...,
+                    [p_in_leftN, ..., p_in_rightN]]` specifying the region in the
+          input connected to output_position.
+        """
+        ranges = []
+
+        ndims = len(input_shape)
+        for d in range(ndims):
+            left_shift = int(kernel_shape[d] / 2)
+            right_shift = kernel_shape[d] - left_shift
+            center = output_position[d] * strides[d]
+            if padding == 'valid':
+                center += left_shift
+            start = max(0, center - left_shift)
+            end = min(input_shape[d], center + right_shift)
+            ranges.append(range(start, end))
+
+        return ranges
+
+
+    @staticmethod
+    def conv_output_shape(input_shape, kernel_shape, strides, padding):
+        """Return the output shape of an N-D convolution.
+        Forces dimensions where input is empty (size 0) to remain empty.
+        Args:
+          input_shape: tuple of size N: `(d_in1, ..., d_inN)`, spatial shape of the
+            input.
+          kernel_shape: tuple of size N, spatial shape of the convolutional kernel /
+            receptive field.
+          strides: tuple of size N, strides along each spatial dimension.
+          padding: type of padding, string `"same"` or `"valid"`.
+            `"valid"` means no padding. `"same"` results in padding evenly to
+            the left/right or up/down of the input such that output has the same
+            height/width dimension as the input.
+        Returns:
+          tuple of size N: `(d_out1, ..., d_outN)`, spatial shape of the output.
+        """
+        dims = range(len(kernel_shape))
+        output_shape = [
+            conv_utils.conv_output_length(input_shape[d], kernel_shape[d], padding, strides[d])
+            for d in dims
+        ]
+        output_shape = tuple(
+            [0 if input_shape[d] == 0 else output_shape[d] for d in dims])
+        return output_shape
+
+
+    @staticmethod
+    def make_2d(tensor, split_dim):
+        """Reshapes an N-dimensional tensor into a 2D tensor.
+        Dimensions before (excluding) and after (including) `split_dim` are grouped
+        together.
+        Arguments:
+        tensor: a tensor of shape `(d0, ..., d(N-1))`.
+        split_dim: an integer from 1 to N-1, index of the dimension to group
+            dimensions before (excluding) and after (including).
+        Returns:
+        Tensor of shape
+        `(d0 * ... * d(split_dim-1), d(split_dim) * ... * d(N-1))`.
+        """
+        shape = K.shape(tensor)
+        in_dims = shape[:split_dim]
+        out_dims = shape[split_dim:]
+
+        in_size = tf.math.reduce_prod(in_dims)
+        out_size = tf.math.reduce_prod(out_dims)
+
+        return K.reshape(tensor, (in_size, out_size))
+
+
+class LocalCrossLinear(Layer):
     """ 
     Local cross mult layer
 
@@ -987,8 +1432,7 @@ class LocalCrossLinear(tensorflow.keras.layers.Layer):
         return tuple(list(input_shape)[:-1] + [self.output_features])
  
 
-
-class LocalCrossLinearTrf(keras.layers.Layer):
+class LocalCrossLinearTrf(Layer):
     """ 
     Local cross mult layer with transform
 
