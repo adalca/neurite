@@ -207,7 +207,7 @@ class SpatialTransformer(Layer):
     Both transforms are meant to give a 'shift' from the current position.
     Therefore, a dense transform gives displacements (not absolute locations) at each voxel,
     and an affine transform gives the *difference* of the affine matrix from 
-    the identity matrix.
+    the identity matrix (unless specified otherwise).
 
     If you find this function useful, please cite:
       Unsupervised Learning for Fast Probabilistic Diffeomorphic Registration
@@ -227,6 +227,8 @@ class SpatialTransformer(Layer):
                  indexing='ij',
                  single_transform=False,
                  fill_value=None,
+                 add_identity=True,
+                 shift_center=True,
                  **kwargs):
         """
         Parameters: 
@@ -237,9 +239,15 @@ class SpatialTransformer(Layer):
                 (along last axis) flipped compared to 'ij' indexing
             fill_value (default: None): value to use for points outside the domain.
                 If None, the nearest neighbors will be used.
+            add_identity (default: True): whether the identity matrix is added
+                to affine transforms.
+            shift_center (default: True): whether the grid is shifted to the center
+                of the image when converting affine transforms to warp fields.
         """
         self.interp_method = interp_method
         self.fill_value = fill_value
+        self.add_identity = add_identity
+        self.shift_center = shift_center
         self.ndims = None
         self.inshape = None
         self.single_transform = single_transform
@@ -256,6 +264,8 @@ class SpatialTransformer(Layer):
             'indexing': self.indexing,
             'single_transform': self.single_transform,
             'fill_value': self.fill_value,
+            'add_identity': self.add_identity,
+            'shift_center': self.shift_center,
         })
         return config
 
@@ -283,10 +293,10 @@ class SpatialTransformer(Layer):
 
         # the transform is an affine iff:
         # it's a 1D Tensor [dense transforms need to be at least ndims + 1]
-        # it's a 2D Tensor and shape == [N+1, N+1]. 
+        # it's a 2D Tensor and shape == [N+1, N+1] or [N, N+1]
         #   [dense with N=1, which is the only one that could have a transform shape of 2, would be of size Mx1]
-        self.is_affine = len(trf_shape) == 1 or \
-                         (len(trf_shape) == 2 and all([trf_shape[0] == self.ndims, trf_shape[1] == self.ndims+1]))
+        self.is_affine = len(trf_shape) == 1 or (len(trf_shape) == 2 and \
+            trf_shape[0] in (self.ndims, self.ndims+1) and trf_shape[1] == self.ndims+1)
 
         # check sizes
         if self.is_affine and len(trf_shape) == 1:
@@ -318,9 +328,18 @@ class SpatialTransformer(Layer):
         vol = K.reshape(vol, [-1, *self.inshape[0][1:]])
         trf = K.reshape(trf, [-1, *self.inshape[1][1:]])
 
-        # go from affine
+        # convert matrix to warp field
         if self.is_affine:
-            trf = tf.map_fn(lambda x: self._single_aff_to_shift(x, vol.shape[1:-1]), trf, dtype=tf.float32)
+            ncols = self.ndims + 1
+            nrows = self.ndims
+            if np.prod(trf.shape.as_list()[1:]) == (self.ndims + 1) ** 2:
+                nrows += 1
+            if len(trf.shape[1:]) == 1:
+                trf = tf.reshape(trf, shape=(-1, nrows, ncols))
+            if self.add_identity:
+                trf += tf.eye(nrows, ncols, batch_shape=(tf.shape(trf)[0],))
+            fun = lambda x: affine_to_shift(x, vol.shape[1:-1], shift_center=self.shift_center)
+            trf = tf.map_fn(fun, trf, dtype=tf.float32)
 
         # prepare location shift
         if self.indexing == 'xy':  # shift the first two dimensions
@@ -334,14 +353,6 @@ class SpatialTransformer(Layer):
             return tf.map_fn(fn, vol, dtype=tf.float32)
         else:
             return tf.map_fn(self._single_transform, [vol, trf], dtype=tf.float32)
-
-    def _single_aff_to_shift(self, trf, volshape):
-        if len(trf.shape) == 1:  # go from vector to matrix
-            trf = tf.reshape(trf, [self.ndims, self.ndims + 1])
-
-        # note this is unnecessarily extra graph since at every batch entry we have a tf.eye graph
-        trf += tf.eye(self.ndims+1)[:self.ndims,:]  # add identity, hence affine is a shift from identitiy
-        return affine_to_shift(trf, volshape, shift_center=True)
 
     def _single_transform(self, inputs):
         return transform(inputs[0], inputs[1], interp_method=self.interp_method, fill_value=self.fill_value)
