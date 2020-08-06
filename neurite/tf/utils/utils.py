@@ -1,5 +1,5 @@
 """
-tensorflow/keras utilities for the neuron project
+tensorflow/keras utilities for the neurite project
 
 If you use this code, please cite 
 Dalca AV, Guttag J, Sabuncu MR
