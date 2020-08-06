@@ -19,7 +19,6 @@ import pytools.timer as timer
 
 # reload patchlib (it's often updated right now...)
 from imp import reload
-reload(pl)
 
 # other neuron (this project) packages
 from . import dataproc as nrn_proc
