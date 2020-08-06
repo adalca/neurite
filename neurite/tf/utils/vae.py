@@ -1,13 +1,14 @@
 """
 tools for (v)ae processing, debugging, and exploration
 """
+
+# internal python imports
 from tempfile import NamedTemporaryFile
 
 # third party imports
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
 from tensorflow import keras
-import matplotlib.pyplot as plt
 from tensorflow.keras import backend as K
 from tqdm import tqdm as tqdm
 from tensorflow.keras import layers as KL
@@ -15,10 +16,10 @@ from sklearn import decomposition
 from sklearn.decomposition import PCA
 from tensorflow.keras.utils import plot_model
 from IPython.display import display, Image
-
+import matplotlib.pyplot as plt
 
 # project imports
-import neuron as ne
+import neurite as ne
 
 
 def extract_z_dec(model, sample_layer_name, vis=False, wt_chk=False):
