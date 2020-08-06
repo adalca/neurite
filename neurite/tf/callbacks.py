@@ -13,22 +13,20 @@ We'd like the following callback actions for neuron:
 --- new callback, PlotSlices
 
 '''
+# internal python imports
 import sys
 import time
 import warnings
-from imp import reload
 
+# third party imports
 from tensorflow import keras
 import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
 
+# local (our) imports
 import pytools.timer as timer
 import pynd.ndutils as nd
 import pynd.segutils as su
-
-# the neuron folder should be on the path
-import neuron as ne
+import neurite as ne
 
 
 class ModelWeightCheck(keras.callbacks.Callback):
