@@ -1,4 +1,6 @@
-''' initializations for the neuron project '''
+'''
+initializations for the neuron project
+'''
 
 # general imports
 import os
