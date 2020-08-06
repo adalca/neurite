@@ -9,7 +9,6 @@ from tempfile import NamedTemporaryFile
 # third party imports
 import numpy as np
 from tqdm import tqdm_notebook as tqdm
-from pprint import pformat
 import tensorflow as tf
 from tensorflow import keras
 import tensorflow.keras.backend as K
