@@ -1,6 +1,7 @@
 # ---- neuron ----
 from . import py
 from .py import utils
+from .py import plot
 
 
 # import backend-dependent submodules
