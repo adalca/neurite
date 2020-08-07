@@ -19,11 +19,10 @@ import warnings
 # third party imports
 from tensorflow import keras
 import numpy as np
+import matplotlib.pyplot as plt
 
 # local (our) imports
 import pytools.timer as timer
-import pynd.ndutils as nd
-import pynd.segutils as su
 import neurite as ne
 
 
@@ -202,8 +201,6 @@ class PlotTestSlices(keras.callbacks.Callback):
         # import neuron sandbox
         # has to be here, can't be at the top, due to cyclical imports (??)
         # TODO: should just pass the function to compute the figures given the model and generator
-        import neuron.sandbox as nrn_sandbox
-        reload(nrn_sandbox)
 
         with timer.Timer('plot callback', self.verbose):
             if len(self.run.grid_size) == 3:
@@ -211,7 +208,8 @@ class PlotTestSlices(keras.callbacks.Callback):
             else:
                 collapse_2d = [2]
 
-            exampl = nrn_sandbox.show_example_prediction_result(self.model,
+            # TODO: show_example_prediction_result is actually in neuron_sandbox for now
+            exampl = show_example_prediction_result(self.model,
                                                                 self.generator,
                                                                 self.run,
                                                                 self.data,
