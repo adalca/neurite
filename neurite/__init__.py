@@ -14,6 +14,7 @@ in core python/numpy
 from . import py
 from .py import utils
 from .py import plot
+from .py import dataproc
 
 
 # import backend-dependent submodules
