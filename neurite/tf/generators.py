@@ -19,7 +19,7 @@ import pytools.timer as timer
 
 
 # other neuron (this project) packages
-from . import dataproc as nrn_proc
+from neurite import dataproc as nrn_proc
 
 
 class Vol(object):
