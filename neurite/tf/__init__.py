@@ -1,8 +1,6 @@
-# import various
-from . import dataproc
+# neurite main tools
 from . import generators
 from . import callbacks
-from . import plot
 from . import metrics
 from . import models
 from . import utils
