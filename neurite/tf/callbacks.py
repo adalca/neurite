@@ -1,18 +1,16 @@
-''' callbacks for the neuron project '''
+"""
+callbacks for the neurite project
 
-'''
-We'd like the following callback actions for neuron:
+If you use this code, please cite 
 
-- print metrics on the test and validation, especially surface-specific dice
---- Perhaps doable with CSVLogger?
-- output graph up to current iteration for each metric
---- Perhaps call CSVLogger or some metric computing callback?
-- save dice plots on validation
---- again, expand CSVLogger or similar
-- save screenshots of a single test subject [Perhaps just do this as a separate callback?]
---- new callback, PlotSlices
+Dalca AV, Guttag J, Sabuncu MR
+Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation, 
+CVPR 2018
 
-'''
+Contact: adalca [at] csail [dot] mit [dot] edu
+License: GPLv3
+"""
+
 # internal python imports
 import sys
 import time
@@ -621,7 +619,7 @@ def _generate_predictions(model, data_generator, batch_size, nb_samples, vol_par
     # whole volumes
     if vol_params is not None:
         for _ in range(nb_samples):  # assumes nr volume
-            vols = ne.utils.predict_volumes(model,
+            vols = ne.utils.seg.predict_volumes(model,
                                              data_generator,
                                              batch_size,
                                              vol_params["patch_size"],
@@ -633,14 +631,6 @@ def _generate_predictions(model, data_generator, batch_size, nb_samples, vol_par
     # just one batch
     else:
         for _ in range(nb_samples):  # assumes nr batches
-            vol_pred, vol_true = ne.utils.next_label(model, data_generator)
+            vol_pred, vol_true = ne.utils.seg.next_label(model, data_generator)
             yield (vol_true, vol_pred)
 
-import collections
-def _flatten(l):
-    # https://stackoverflow.com/questions/2158395/flatten-an-irregular-list-of-lists
-    for el in l:
-        if isinstance(el, collections.Iterable) and not isinstance(el, (str, bytes)):
-            yield from _flatten(el)
-        else:
-            yield el
