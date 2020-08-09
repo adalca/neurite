@@ -172,7 +172,7 @@ class Resize(Layer):
         return tuple(output_shape)
 
     def _single_resize(self, inputs):
-        return resize(inputs, self.zoom_factor, interp_method=self.interp_method)
+        return utils.resize(inputs, self.zoom_factor, interp_method=self.interp_method)
 
 # Zoom naming of resize, to match scipy's naming
 Zoom = Resize
