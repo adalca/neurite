@@ -85,6 +85,8 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
 
     # interpolate
     if interp_method == 'linear':
+        # get floor. 
+        # This has to remain a tf.float32 since we will be using loc1 in a float32 op
         loc0 = tf.floor(loc)
 
         # clip values
@@ -137,7 +139,7 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
             interp_vol += wt * vol_val
         
     else:
-        assert interp_method == 'nearest'
+        assert interp_method == 'nearest', 'method should be linear or nearest, got: %s' % interp_method
         roundloc = tf.cast(tf.round(loc), 'int32')
         roundloc = [tf.clip_by_value(roundloc[...,d], 0, max_loc[d]) for d in range(nb_dims)]
 
@@ -145,7 +147,7 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
         # tf stacking is slow. replace with gather
         # roundloc = tf.stack(roundloc, axis=-1)
         # interp_vol = tf.gather_nd(vol, roundloc)
-        idx = ne.py.utils.sub2ind(vol.shape[:-1], roundloc)
+        idx = sub2ind2d(vol.shape[:-1], roundloc)
         interp_vol = tf.gather(tf.reshape(vol, [-1, vol.shape[-1]]), idx) 
 
     if fill_value is not None:
