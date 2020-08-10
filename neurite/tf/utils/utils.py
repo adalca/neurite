@@ -72,7 +72,8 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
         vol = K.expand_dims(vol, -1)
 
     # flatten and float location Tensors
-    loc = tf.cast(loc, 'float32')
+    if loc.dtype != tf.float32:
+        loc = tf.cast(loc, 'float32')
     
 
     if isinstance(vol.shape, (tf.compat.v1.Dimension, tf.TensorShape)):
@@ -119,7 +120,7 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
             # indices = tf.stack(subs, axis=-1)
             # vol_val = tf.gather_nd(vol, indices)
             # faster way to gather than gather_nd, because the latter needs tf.stack which is slow :(
-            idx = ne.py.utils.sub2ind(vol.shape[:-1], subs)
+            idx = sub2ind2d(vol.shape[:-1], subs)
             vol_val = tf.gather(tf.reshape(vol, [-1, volshape[-1]]), idx)
 
             # get the weight of this cube_pt based on the distance
@@ -660,6 +661,23 @@ def gaussian_kernel(sigma, windowsize=None, indexing='ij'):
     g /= tf.reduce_sum(g)
 
     return g
+
+
+def sub2ind2d(siz, subs, **kwargs):
+    """
+    assumes column-order major
+    """
+    # subs is a list
+    assert len(siz) == len(subs), \
+        'found inconsistent siz and subs: %d %d' % (len(siz), len(subs))
+
+    k = np.cumprod(siz[::-1])
+
+    ndx = subs[-1]
+    for i, v in enumerate(subs[:-1][::-1]):
+        ndx = ndx + v * k[i]
+
+    return ndx
 
 
 def prod_n(lst):
