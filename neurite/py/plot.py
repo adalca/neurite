@@ -124,6 +124,39 @@ def slices(slices_in,           # the 2D slices
     return (fig, axs)
 
 
+def volume3D(vols, slice_nos=None, **kwargs):
+    """
+    plot slices of a 3D volume by taking a middle slice of each axis
+    
+    Parameters:
+        vols: a 3d volume or list of 3d volumes
+        slice_nos (optional): a list of 3 elements of the slice numbers for each axis, 
+            or list of lists of 3 elements. if None, the middle slices will be used.
+    """
+    if not isinstance(vols, (tuple, list)):
+        vols = [vols]
+
+    assert all([len(vol.shape) == 3 for vol in vols]), 'only 3d volumes allowed in volume3D'
+
+    slics = []
+    for vi, vol in enumerate(vols):
+        
+        these_slice_nos = slice_nos
+        if slice_nos is None:
+            these_slice_nos = [f//2 for f in vol.shape]
+        elif isinstance(slice_nos[0], (list, tuple)):
+            these_slice_nos = slice_nos[vi]
+        else:
+            these_slice_nos = slice_nos
+
+        slics = slics + [np.take(vol, these_slice_nos[d], d) for d in range(3)]
+
+    if 'titles' not in kwargs.keys():
+        titles = ['axis %d' % d for d in range(3)]
+
+    slices(slics, titles=titles, **kwargs)
+
+
 def flow_legend():
     """
     show quiver plot to indicate how arrows are colored in the flow() method.
