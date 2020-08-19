@@ -135,6 +135,7 @@ def volume3D(vols, slice_nos=None, **kwargs):
     """
     if not isinstance(vols, (tuple, list)):
         vols = [vols]
+    nb_vols = len(vols)
 
     assert all([len(vol.shape) == 3 for vol in vols]), 'only 3d volumes allowed in volume3D'
 
@@ -152,9 +153,12 @@ def volume3D(vols, slice_nos=None, **kwargs):
         slics = slics + [np.take(vol, these_slice_nos[d], d) for d in range(3)]
 
     if 'titles' not in kwargs.keys():
-        titles = ['axis %d' % d for d in range(3)]
+        kwargs['titles'] = ['axis %d' % d for d in range(3)] * nb_vols
 
-    slices(slics, titles=titles, **kwargs)
+    if 'grid' not in kwargs.keys():
+        kwargs['grid'] = [nb_vols, 3]
+
+    slices(slics, **kwargs)
 
 
 def flow_legend():
