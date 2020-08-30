@@ -31,7 +31,7 @@ from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras import backend
-from tensorflow.python import roll as _roll
+from tensorflow import roll as _roll
 
 # local imports
 from . import utils
