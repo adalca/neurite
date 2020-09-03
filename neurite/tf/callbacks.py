@@ -22,8 +22,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # local (our) imports
-import pytools.timer as timer
 import neurite as ne
+from pystrum.pytools import timer
 
 
 class ModelWeightCheck(keras.callbacks.Callback):

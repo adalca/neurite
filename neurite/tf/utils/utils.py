@@ -25,9 +25,8 @@ import tensorflow as tf
 from tensorflow import keras
 import tensorflow.keras.backend as K
 
-
 # local imports
-import pynd.ndutils as nd
+import pystrum.pynd.ndutils as nd
 import neurite as ne
 import neurite.py.utils
 

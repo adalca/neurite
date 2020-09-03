@@ -13,12 +13,6 @@ import tensorflow as tf
 from tensorflow import keras
 import tensorflow.keras.backend as K
 import tensorflow.keras.utils
-from IPython.display import Image
-
-
-# local imports
-
-
 
 
 def stack_models(models, connecting_node_ids=None):
@@ -311,5 +305,6 @@ def robust_multi_gpu(model, gpus, verbose=True):
 def diagram(model):
     outfile = NamedTemporaryFile().name + '.png'
     tf.keras.utils.plot_model(model, to_file=outfile, show_shapes=True)
-    Image(outfile, width=100)
 
+    from IPython.display import Image
+    Image(outfile, width=100)

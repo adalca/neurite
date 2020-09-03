@@ -14,11 +14,11 @@ from tensorflow import keras
 import tensorflow.keras.backend as K
 
 # local imports
-import pynd.ndutils as nd
 import neurite as ne
 import neurite.py.utils
-import pytools.patchlib as pl
-import pytools.timer as timer
+import pystrum.pynd.ndutils as nd
+import pystrum.pytools.patchlib as pl
+import pystrum.pytools.timer as timer
 
 
 def predict_volumes(models,

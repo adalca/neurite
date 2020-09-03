@@ -19,7 +19,7 @@ A Neural networks toolbox with a focus on medical image analysis in tensorflow/k
 ## Requirements:
 - tensorflow, keras and all of their requirements (e.g. hyp5) 
 - numpy, scipy, tqdm  
-- [pytools lib](https://github.com/adalca/pytools-lib)
+- [pystrum](https://github.com/adalca/pystrum)
  
 ## Papers:
 If you use this code, please cite:
