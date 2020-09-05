@@ -11,10 +11,7 @@ import nibabel as nib
 import numpy as np
 import scipy.ndimage.interpolation
 from tqdm import tqdm_notebook as tqdm # for verbosity for forloops
-from PIL import Image
 import matplotlib.pyplot as plt
-
-
 
 # note sure if tqdm_notebook reverts back to 
 try:
@@ -25,9 +22,8 @@ except:
 
 from subprocess import call
 
-
 # import local ndutils
-import pynd.ndutils as nd
+import pystrum.pynd.ndutils as nd
 import re
 
 from imp import reload
@@ -148,7 +144,11 @@ def scans_to_slices(inpath, outpath, slice_nrs,
                 # save png file
                 img = (vol_img*mult_fact).astype('uint8')
                 outname = os.path.splitext(os.path.join(outpath, files[fileidx]))[0] + '_slice%d.png' % slice_nr
-                Image.fromarray(img).convert('RGB').save(outname)
+                try:
+                    from PIL import Image
+                    Image.fromarray(img).convert('RGB').save(outname)
+                except ImportError:
+                    raise ImportError('Could not save "%s" since PIL has not been installed' % outname)
             else:
                 if slice_pad == 0:  # dimenion has collapsed
                     assert vol_img.ndim == 2

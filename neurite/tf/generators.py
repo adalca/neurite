@@ -13,9 +13,9 @@ from tensorflow.python.keras.utils import np_utils
 from tensorflow.keras.models import Model
 
 # local packages
-import pynd.ndutils as nd
-import pytools.patchlib as pl
-import pytools.timer as timer
+import pystrum.pynd.ndutils as nd
+import pystrum.pytools.patchlib as pl
+import pystrum.pytools.timer as timer
 
 
 # other neuron (this project) packages

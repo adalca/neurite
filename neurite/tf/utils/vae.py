@@ -15,7 +15,6 @@ from tensorflow.keras import layers as KL
 from sklearn import decomposition
 from sklearn.decomposition import PCA
 from tensorflow.keras.utils import plot_model
-from IPython.display import display, Image
 import matplotlib.pyplot as plt
 
 # project imports
@@ -52,6 +51,8 @@ def extract_z_dec(model, sample_layer_name, vis=False, wt_chk=False):
     if vis:
         outfile = NamedTemporaryFile().name + '.png'
         plot_model(z_dec_model, to_file=outfile, show_shapes=True)
+
+        from IPython.display import Image
         Image(outfile, width=100)
 
     # check model weights:
