@@ -239,6 +239,13 @@ class GaussianBlur(Layer):
     def compute_output_shape(self, input_shape):
         return input_shape
 
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'sigma': self.sigma,
+        })
+        return config
+
 
 
 #########################################################
