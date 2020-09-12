@@ -1508,7 +1508,7 @@ class MeanStream(Layer):
     """
 
     def __init__(self, cap=100, **kwargs):
-        self.cap = tf.Variable(cap, dtype='float32', trainable=False)
+        self.cap = float(cap)
         super(MeanStream, self).__init__(**kwargs)
 
     def build(self, input_shape):
@@ -1566,7 +1566,7 @@ class CovStream(Layer):
     """
 
     def __init__(self, cap=100, **kwargs):
-        self.cap = tf.Variable(cap, dtype='float32', trainable=False)
+        self.cap = float(cap)
         super(CovStream, self).__init__(**kwargs)
 
     def build(self, input_shape):
