@@ -202,7 +202,7 @@ class GaussianBlur(Layer):
     TODO: switch from 'level' based to 'sigma' based
     """
 
-    def __init__(self, level=None, sigma=None, **kwargs):
+    def __init__(self, sigma=None, level=None, **kwargs):
         assert sigma is not None or level is not None, 'sigma or level must be provided'
         assert not (sigma is not None and level is not None), 'only sigma or level must be provided'
 
@@ -234,6 +234,7 @@ class GaussianBlur(Layer):
 
     def call(self, x):
         # TODO: switch to mutli-line if statement
+        # TODO: this hsould be cleaned up a bit, no need to loop and concat...
         return x if self.sigma == 0 else tf.concat([self.conv(x[..., n]) for n in range(self.nfeat)], -1)
 
     def compute_output_shape(self, input_shape):
