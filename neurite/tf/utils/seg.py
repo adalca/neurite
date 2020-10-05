@@ -17,7 +17,7 @@ import tensorflow.keras.backend as K
 import neurite as ne
 import neurite.py.utils
 import pystrum.pynd.ndutils as nd
-import pystrum.pytools.patchlib as pl
+import pystrum.pynd.patchlib as pl
 import pystrum.pytools.timer as timer
 
 

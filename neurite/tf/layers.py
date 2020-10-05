@@ -202,7 +202,7 @@ class GaussianBlur(Layer):
     TODO: switch from 'level' based to 'sigma' based
     """
 
-    def __init__(self, level=None, sigma=None, **kwargs):
+    def __init__(self, sigma=None, level=None, **kwargs):
         assert sigma is not None or level is not None, 'sigma or level must be provided'
         assert not (sigma is not None and level is not None), 'only sigma or level must be provided'
 
@@ -234,6 +234,7 @@ class GaussianBlur(Layer):
 
     def call(self, x):
         # TODO: switch to mutli-line if statement
+        # TODO: this hsould be cleaned up a bit, no need to loop and concat...
         return x if self.sigma == 0 else tf.concat([self.conv(x[..., n]) for n in range(self.nfeat)], -1)
 
     def compute_output_shape(self, input_shape):
@@ -1515,7 +1516,7 @@ class MeanStream(Layer):
     """
 
     def __init__(self, cap=100, **kwargs):
-        self.cap = K.variable(cap, dtype='float32')
+        self.cap = float(cap)
         super(MeanStream, self).__init__(**kwargs)
 
     def build(self, input_shape):
@@ -1536,18 +1537,26 @@ class MeanStream(Layer):
         # self.count = K.variable(0.0, name='count')
         super(MeanStream, self).build(input_shape)  # Be sure to call this somewhere!
 
-    def call(self, x):
-        # get new mean and count
-        this_bs_int = K.shape(x)[0]
-        new_mean, new_count = _mean_update(self.mean, self.count, x, self.cap)
-        
-        # update op
-        updates = [(self.count, new_count), (self.mean, new_mean)]
-        self.add_update(updates, x)
+    def call(self, x, training=None):
+        training = _get_training_value(training, self.trainable)
 
+        # get batch shape:
+        this_bs_int = K.shape(x)[0]
+        
         # prep for broadcasting :(
         p = tf.concat((K.reshape(this_bs_int, (1,)), K.shape(self.mean)), 0)
         z = tf.ones(p)
+        
+        # If calling in inference mode, use moving stats
+        if training is False:
+            return K.minimum(1., self.count/self.cap) * (z * K.expand_dims(self.mean, 0))
+        
+        # get new mean and count
+        new_mean, new_count = _mean_update(self.mean, self.count, x, self.cap)
+        
+        # update op
+        self.count.assign(new_count)
+        self.mean.assign(new_mean)
         
         # the first few 1000 should not matter that much towards this cost
         return K.minimum(1., new_count/self.cap) * (z * K.expand_dims(new_mean, 0))
@@ -1558,14 +1567,14 @@ class MeanStream(Layer):
 
 class CovStream(Layer):
     """ 
-    Maintain stream of data mean. 
+    Maintain stream of data covariance. 
 
     cap refers to mainting an approximation of up to that number of subjects -- that is,
     any incoming datapoint will have at least 1/cap weight.
     """
 
     def __init__(self, cap=100, **kwargs):
-        self.cap = K.variable(cap, dtype='float32')
+        self.cap = float(cap)
         super(CovStream, self).__init__(**kwargs)
 
     def build(self, input_shape):
@@ -1587,17 +1596,29 @@ class CovStream(Layer):
 
         super(CovStream, self).build(input_shape)  # Be sure to call this somewhere!
 
-    def call(self, x):
+    def call(self, x, training=None):
+        training = _get_training_value(training, self.trainable)
+
+        # get batch shape:
+        this_bs_int = K.shape(x)[0]
+
+        # prep for broadcasting :(
+        p = tf.concat((K.reshape(this_bs_int, (1,)), K.shape(self.cov)), 0)
+        z = tf.ones(p)
+
+        # If calling in inference mode, use moving stats
+        if training is False:
+            return K.minimum(1., self.count/self.cap) * (z * K.expand_dims(self.cov, 0))
+
         x_orig = x
 
+        # update mean
+        new_mean, new_count = _mean_update(self.mean, self.count, x, self.cap) 
+        
         # x reshape
-        this_bs_int = K.shape(x)[0]
         this_bs = tf.cast(this_bs_int, 'float32')  # this batch size
         prev_count = self.count
-        x = K.batch_flatten(x)  # B x N
-
-        # update mean
-        new_mean, new_count = _mean_update(self.mean, self.count, x, self.cap)        
+        x = K.batch_flatten(x)  # B x N       
 
         # new C update. Should be B x N x N
         x = K.expand_dims(x, -1)
@@ -1609,12 +1630,9 @@ class CovStream(Layer):
         new_cov = C / (prev_cap + this_bs - 1)
 
         # updates
-        updates = [(self.count, new_count), (self.mean, new_mean), (self.cov, new_cov)]
-        self.add_update(updates, x_orig)
-
-        # prep for broadcasting :(
-        p = tf.concat((K.reshape(this_bs_int, (1,)), K.shape(self.cov)), 0)
-        z = tf.ones(p)
+        self.count.assign(new_count)
+        self.mean.assign(new_mean)
+        self.cov.assign(new_cov)
 
         return K.minimum(1., new_count/self.cap) * (z * K.expand_dims(new_cov, 0))
 
@@ -1637,6 +1655,30 @@ def _mean_update(pre_mean, pre_count, x, pre_cap=None):
     new_mean = pre_mean * (1-alpha) + (this_sum/this_bs) * alpha
 
     return (new_mean, new_count)
+
+
+def _get_training_value(training, trainable_flag):
+    """
+    Return a flag indicating whether a layer should be called in training
+    or inference mode.
+
+    Modified from https://git.io/JUGHX
+
+    training: the setting used when layer is called for inference.
+    trainable: flag indicating whether the layer is trainable.
+    """
+    if training is None:
+        training = K.learning_phase()
+
+    if isinstance(training, int):
+        training = bool(training)
+
+    # If layer not trainable, override value passed from model.
+    if trainable_flag is False:
+        training = False
+
+    return training
+
 
 ##########################################
 ## FFT Layers
@@ -1909,3 +1951,4 @@ class SampleNormalLogVar(Layer):
         # make it a sample from N(mu, sigma^2)
         z = mu + tf.exp(log_var/2.0) * noise
         return z
+

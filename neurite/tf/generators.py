@@ -14,7 +14,7 @@ from tensorflow.keras.models import Model
 
 # local packages
 import pystrum.pynd.ndutils as nd
-import pystrum.pytools.patchlib as pl
+import pystrum.pynd.patchlib as pl
 import pystrum.pytools.timer as timer
 
 
