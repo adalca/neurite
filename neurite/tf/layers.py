@@ -1420,6 +1420,13 @@ class LocalParamWithInput(Layer):
         print('LocalParamWithInput: Consider using neuron.layers.LocalParam()')
         super().__init__(**kwargs)
 
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'shape': self.shape,
+        })
+        return config
+
     def build(self, input_shape):
         self.kernel = self.add_weight(name='kernel', 
                                       shape=self.shape,  # input_shape[1:]
