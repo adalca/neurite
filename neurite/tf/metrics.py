@@ -91,7 +91,7 @@ class CategoricalCrossentropy(object):
         # take the total loss
         # loss = K.batch_flatten(loss)
         mloss = K.mean(K.sum(K.cast(loss, 'float32'), -1))
-        tf.verify_tensor_all_finite(mloss, 'Loss not finite')
+        tf.compat.v1.verify_tensor_all_finite(mloss, 'Loss not finite')
         return mloss
 
 
@@ -264,7 +264,7 @@ class Dice(object):
 
         # return one minus mean dice as loss
         mean_dice_metric = K.mean(dice_metric)
-        tf.verify_tensor_all_finite(mean_dice_metric, 'metric not finite')
+        tf.compat.v1.verify_tensor_all_finite(mean_dice_metric, 'metric not finite')
         return mean_dice_metric
 
 
@@ -283,7 +283,7 @@ class Dice(object):
 
         # return one minus mean dice as loss
         mean_dice_loss = K.mean(dice_loss)
-        tf.verify_tensor_all_finite(mean_dice_loss, 'Loss not finite')
+        tf.compat.v1.verify_tensor_all_finite(mean_dice_loss, 'Loss not finite')
         return mean_dice_loss
 
 
