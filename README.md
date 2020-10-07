@@ -1,6 +1,15 @@
-# neurite
+# Neurite
 
-A Neural networks toolbox with a focus on medical image analysis in tensorflow/keras for now.
+A neural networks toolbox with a focus on medical image analysis in tensorflow/keras for now.
+
+
+## Install
+
+To use the Neurite library, either clone this repository and install the requirements listed in `setup.py` or install directly with pip.
+
+```
+pip install neurite
+```
 
 ## Main tools
 - [layers](neurite/tf/layers.py): various network layers, sparse operations (e.g. `SpatiallySparse_Dense`), and `LocallyConnected3D` currently not included in `keras`  
@@ -21,6 +30,7 @@ A Neural networks toolbox with a focus on medical image analysis in tensorflow/k
 - numpy, scipy, tqdm  
 - [pystrum](https://github.com/adalca/pystrum)
  
+
 ## Papers:
 If you use this code, please cite:
 
