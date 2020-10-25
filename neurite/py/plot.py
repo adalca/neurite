@@ -224,7 +224,7 @@ def flow(slices_in,           # the 2D slices
 
     if indexing == 'ij':
         for si, slc in enumerate(slices_in):
-            slices_in[si][:, :, 1] = -slices_in[si][:, :, 1] # Make y values negative to y-axis will point down in plot
+            slices_in[si][:, :, 1] = -slices_in[si][:, :, 1] # Make y values negative so y-axis will point down in plot
 
     if img_indexing:
         for si, slc in enumerate(slices_in):
