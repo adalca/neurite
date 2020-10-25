@@ -191,11 +191,12 @@ def flow(slices_in,           # the 2D slices
          titles=None,         # list of titles
          cmaps=None,          # list of colormaps
          width=15,            # width in in
+         indexing='ij',       # whether to plot vectors using matrix indexing 'ij' or cartesian indexing 'xy'
          img_indexing=True,   # whether to match the image view, i.e. flip y axis
          grid=False,          # option to plot the images in a grid or a single row
-         show=True,            # option to actually show the plot (plt.show())
+         show=True,           # option to actually show the plot (plt.show())
          quiver_width=None,
-         scale=1):             # note quiver essentially draws quiver length = 1/scale
+         scale=1):            # note quiver essentially draws quiver length = 1/scale
     '''
     plot a grid of flows (2d+2 images)
     '''
@@ -218,9 +219,16 @@ def flow(slices_in,           # the 2D slices
             inputs = [inputs[0] for i in range(nb_plots)]
         return inputs
 
+    assert indexing in ['ij', 'xy']
+    slices_in = np.copy(slices_in)  # Since img_indexing, indexing may modify slices_in in memory
+
+    if indexing == 'ij':
+        for si, slc in enumerate(slices_in):
+            slices_in[si][:, :, 1] = -slices_in[si][:, :, 1] # Make y values negative to y-axis will point down in plot
+
     if img_indexing:
         for si, slc in enumerate(slices_in):
-            slices_in[si] = np.flipud(slc)
+            slices_in[si] = np.flipud(slc) # Flip vertical order of y values
 
     titles = input_check(titles, nb_plots, 'titles')
     cmaps = input_check(cmaps, nb_plots, 'cmaps')
