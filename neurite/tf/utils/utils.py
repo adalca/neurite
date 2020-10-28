@@ -691,6 +691,57 @@ def prod_n(lst):
     return prod
 
 
+def soft_digitize(*args, **kwargs):
+    return soft_quantize(*args, **kwargs)
+
+
+def soft_quantize(x,
+                  alpha=1,
+                  bin_centers=None,
+                  nb_bins=16,
+                  min_clip=-np.inf,
+                  max_clip=np.inf,
+                  return_log=False):
+    """
+    Quantize intensities (values) in a given volume
+
+    in numpy this is called digitize
+    """
+
+    if bin_centers is not None: 
+        bin_centers = tf.convert_to_tensor(bin_centers, tf.float32)
+        assert nb_bins is None, 'cannot provide both bin_centers and nb_bins'
+        nb_bins = bin_centers.shape[0]
+    else: 
+        if nb_bins is None:
+            nb_bins = 16
+        # get bin centers dynamically
+        # TODO: perhaps consider an option to quantize by percentiles:
+        #   minval = tfp.stats.percentile(x, 1)
+        #   maxval = tfp.stats.percentile(x, 99)
+        minval = K.min(x)
+        maxval = K.max(x)
+        bin_centers = tf.linspace(minval, maxval, nb_bins)
+
+    # clipping at bin values
+    x = x[..., tf.newaxis]                                                # [..., 1]
+    x = tf.clip_by_value(x, min_clip, max_clip)
+    
+    # reshape bin centers to be (1, 1, .., B)
+    new_shape = [1]*(len(x.shape)-1) + [nb_bins]
+    bin_centers = K.reshape(bin_centers, new_shape)                       # [1, 1, ..., B]
+
+    # compute image terms
+    # TODO: need to go to log space? not sure
+    bin_diff = K.square(x - bin_centers)                                  # [..., B]
+    log = -alpha * bin_diff                                               # [..., B]
+
+    if return_log:
+        return log                                                        # [..., B]
+    else:
+        return K.exp(log)                                                 # [..., B]
+
+
 ###############################################################################
 # functions from external source
 ###############################################################################

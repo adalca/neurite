@@ -178,6 +178,45 @@ class Resize(Layer):
 Zoom = Resize
 
 
+class SoftQuantize(Layer):
+    """ 
+    Keras Layer: soft quantization of intentity input
+    """
+
+    def __init__(self,
+                 alpha=1,
+                 bin_centers=None,
+                 nb_bins=16,
+                 min_clip=-np.inf,
+                 max_clip=np.inf,
+                 return_log=False,
+                 **kwargs):
+
+        self.alpha = alpha
+        self.bin_centers = bin_centers
+        self.nb_bins = nb_bins
+        self.min_clip = min_clip
+        self.max_clip = max_clip
+        self.return_log = return_log
+        super(SoftQuantize, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        super(SoftQuantize, self).build(input_shape)  # Be sure to call this somewhere!
+
+    def call(self, x):
+        return -utils.soft_quantize(x,
+                                    alpha=self.alpha,
+                                    bin_centers=self.bin_centers,
+                                    nb_bins=self.nb_bins,
+                                    min_clip=self.min_clip,
+                                    max_clip=self.max_clip,
+                                    return_log=False)              # [bs, ..., B]
+
+    def compute_output_shape(self, input_shape):
+        output_shape_lst = list(input_shape) + [self.nb_bins]
+        return tuple(output_shape_lst)
+
+
 class MSE(Layer):
     """ 
     Keras Layer: mean squared error
