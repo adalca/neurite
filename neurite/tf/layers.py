@@ -1992,7 +1992,7 @@ class SampleNormalLogVar(Layer):
         mu, log_var = args
 
         # sample from N(0, 1)
-        noise = tf.random_normal(tf.shape(mu), 0, 1, dtype=tf.float32)
+        noise = tf.random.normal(tf.shape(mu), 0, 1, dtype=tf.float32)
 
         # make it a sample from N(mu, sigma^2)
         z = mu + tf.exp(log_var/2.0) * noise
