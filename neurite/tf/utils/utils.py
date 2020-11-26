@@ -421,58 +421,59 @@ def flatten(v):
 ###############################################################################
 
 
-def gaussian_kernel(sigma, windowsize=None, indexing='ij'):
-    """
-    prepare a gaussian (smoothing) kernel
-    sigma will be a number of a list of numbers.
-
-    some guidance from the MATLAB file 
-    https://github.com/adalca/mivt/blob/master/src/gaussFilt.m
-
-    Parameters:
-        sigma: scalar or list of scalars
-        windowsize (optional): scalar or list of scalars indicating the shape of the kernel
+def gaussian_kernel(sigma, windowsize=None, indexing='ij', separate=False, random=False):
+    '''
+    Construct an N-dimensional Gaussian kernel.
     
+    Parameters:
+        sigma: Standard deviations, scalar or list of N scalars.
+        windowsize: Extent of the kernel in each dimension, scalar or list.
+        indexing: Whether the grid is constructed with 'ij' or 'xy' indexing.
+            Ignored if the kernel is separated.
+        separate: Whether the kernel is returned as N separate 1D filters.
+        random: Whether each standard deviation is uniformily sampled from the
+            interval (0, sigma].
+
     Returns:
-        ND kernel the same dimensiosn as the number of sigmas.
+        ND Gaussian kernel where N is the number of input sigmas. If separated,
+        a list of 1D kernels will be returned.
 
-    Todo: could use MultivariateNormalDiag?
-    """
-
+    For more information see:
+        https://github.com/adalca/mivt/blob/master/src/gaussFilt.m
+    '''
     if not isinstance(sigma, (list, tuple)):
         sigma = [sigma]
-    sigma = [np.maximum(f, np.finfo(float).eps) for f in sigma]
+    sigma = [np.maximum(f, np.finfo('float32').eps) for f in sigma]
 
-    nb_dims = len(sigma)
-
-    # compute windowsize based on 3 stds.
+    # Kernel width.
     if windowsize is None:
         windowsize = [np.round(f * 3) * 2 + 1 for f in sigma]
-
+    if not isinstance(windowsize, (list, tuple)):
+        windowsize = [windowsize]
     if len(sigma) != len(windowsize):
-        raise ValueError('sigma and windowsize should have the same length.'
-                         'Got vectors: ' + str(sigma) + 'and' + str(windowsize))
+        raise ValueError(f'sigma {sigma} and width {windowsize} differ in length')
 
-    # ok, let's get to work.
-    mid = [(w - 1)/2 for w in windowsize]
+    # Precompute grid.
+    center = [(w - 1) / 2 for w in windowsize]
+    mesh = [np.arange(w) - c for w, c in zip(windowsize, center)]
+    mesh = [-0.5 * x**2 for x in mesh]
+    if not separate:
+        mesh = np.meshgrid(*mesh, indexing=indexing)
+    mesh = [tf.constant(m, dtype='float32') for m in mesh]
 
-    # list of volume ndgrid
-    # N-long list, each entry of shape volshape
-    mesh = volshape_to_meshgrid(windowsize, indexing=indexing)  
-    mesh = [tf.cast(f, 'float32') for f in mesh]
+    # Exponents.
+    if random:
+        max_sigma = sigma
+        sigma = [tf.random.uniform((1,), minval=1e-6, maxval=x) for x in max_sigma]
+    exponent = [m / s**2 for m, s in zip(mesh, sigma)]
 
-    # compute independent gaussians
-    diff = [mesh[f] - mid[f] for f in range(len(windowsize))]
-    exp_term = [- K.square(diff[f])/(2 * (sigma[f]**2)) for f in range(nb_dims)]
-    norms = [exp_term[f] - np.log(sigma[f] * np.sqrt(2 * np.pi)) for f in range(nb_dims)]
+    # Kernel.
+    if not separate:
+        exponent = [tf.reduce_sum(tf.stack(exponent), axis=0)]
+    kernel = [tf.exp(x) for x in exponent]
+    kernel = [x / tf.reduce_sum(x) for x in kernel]
 
-    # add an all-ones entry and transform into a large matrix
-    norms_matrix = tf.stack(norms, axis=-1)  # *volshape x N
-    g = K.sum(norms_matrix, -1)  # volshape
-    g = tf.exp(g)
-    g /= tf.reduce_sum(g)
-
-    return g
+    return kernel if len(kernel) > 1 else kernel[0]
 
 
 def separable_conv(x, kernels, axis=None, padding='SAME'):
