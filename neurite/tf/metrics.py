@@ -289,7 +289,7 @@ class MutualInformation:
                                       bin_centers=self.bin_centers,
                                       nb_bins=self.nb_bins,
                                       min_clip=self.min_clip,
-                                      max_clip=self.max_clip
+                                      max_clip=self.max_clip,
                                       return_log=False)              # [bs, ..., B]
 
 
