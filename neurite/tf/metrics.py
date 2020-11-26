@@ -22,6 +22,11 @@ from tensorflow.keras import losses
 from . import utils
 
 
+# TODO: 
+#  - separate metrics from losses
+#  - clean up categoricalcrossentropy to use the tf built-in weights. 
+#    Maybe wrap with 'label weights', 'voxel_weights', or 'weights'?
+#  - Have wrapper classes for Dice: SoftDice, HardDice.
 
 class MutualInformation:
     """
@@ -247,13 +252,7 @@ class MutualInformation:
         return mi
 
 
-    def _soft_log_sim_map(self, 
-                         x,
-                         alpha=self.soft_bin_alpha,
-                         bin_centers=self.bin_centers,
-                         nb_bins=self.nb_bins,
-                         min_clip=self.min_clip,
-                         max_clip=self.max_clip):
+    def _soft_log_sim_map(self, x):
         """
         soft quantization of intensities (values) in a given volume
 
@@ -267,21 +266,15 @@ class MutualInformation:
         """
 
         return ne.utils.soft_quantize(x,
-                                      alpha=soft_bin_alpha,
-                                      bin_centers=bin_centers,
-                                      nb_bins=nb_bins,
-                                      min_clip=min_clip,
-                                      max_clip=max_clip,
+                                      alpha=self.soft_bin_alpha,
+                                      bin_centers=self.bin_centers,
+                                      nb_bins=self.nb_bins,
+                                      min_clip=self.min_clip,
+                                      max_clip=self.max_clip,
                                       return_log=True)               # [bs, ..., B]
 
 
-    def _soft_sim_map(self,
-                     x,
-                     alpha=self.soft_bin_alpha,
-                     bin_centers=self.bin_centers,
-                     nb_bins=self.nb_bins,
-                     min_clip=self.min_clip,
-                     max_clip=self.max_clip):
+    def _soft_sim_map(self, x):
         """
         See neurite.utils.soft_quantize
 
@@ -292,11 +285,11 @@ class MutualInformation:
             volume with one more dimension [bs, ..., B]
         """
         return ne.utils.soft_quantize(x,
-                                      alpha=soft_bin_alpha,
-                                      bin_centers=bin_centers,
-                                      nb_bins=nb_bins,
-                                      min_clip=min_clip,
-                                      max_clip=max_clip,
+                                      alpha=self.soft_bin_alpha,
+                                      bin_centers=self.bin_centers,
+                                      nb_bins=self.nb_bins,
+                                      min_clip=self.min_clip,
+                                      max_clip=self.max_clip
                                       return_log=False)              # [bs, ..., B]
 
 
@@ -683,11 +676,3 @@ def l1(y_true, y_pred):
 def l2(y_true, y_pred):
     """ L2 metric (MSE) """
     return losses.mean_squared_error(y_true, y_pred)
-
-
-###############################################################################
-# Helper Functions
-###############################################################################
-
-
-
