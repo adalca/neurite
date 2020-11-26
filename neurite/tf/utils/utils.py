@@ -417,6 +417,112 @@ def flatten(v):
    
     
 ###############################################################################
+# filtering
+###############################################################################
+
+
+def gaussian_kernel(sigma, windowsize=None, indexing='ij'):
+    """
+    prepare a gaussian (smoothing) kernel
+    sigma will be a number of a list of numbers.
+
+    some guidance from the MATLAB file 
+    https://github.com/adalca/mivt/blob/master/src/gaussFilt.m
+
+    Parameters:
+        sigma: scalar or list of scalars
+        windowsize (optional): scalar or list of scalars indicating the shape of the kernel
+    
+    Returns:
+        ND kernel the same dimensiosn as the number of sigmas.
+
+    Todo: could use MultivariateNormalDiag?
+    """
+
+    if not isinstance(sigma, (list, tuple)):
+        sigma = [sigma]
+    sigma = [np.maximum(f, np.finfo(float).eps) for f in sigma]
+
+    nb_dims = len(sigma)
+
+    # compute windowsize based on 3 stds.
+    if windowsize is None:
+        windowsize = [np.round(f * 3) * 2 + 1 for f in sigma]
+
+    if len(sigma) != len(windowsize):
+        raise ValueError('sigma and windowsize should have the same length.'
+                         'Got vectors: ' + str(sigma) + 'and' + str(windowsize))
+
+    # ok, let's get to work.
+    mid = [(w - 1)/2 for w in windowsize]
+
+    # list of volume ndgrid
+    # N-long list, each entry of shape volshape
+    mesh = volshape_to_meshgrid(windowsize, indexing=indexing)  
+    mesh = [tf.cast(f, 'float32') for f in mesh]
+
+    # compute independent gaussians
+    diff = [mesh[f] - mid[f] for f in range(len(windowsize))]
+    exp_term = [- K.square(diff[f])/(2 * (sigma[f]**2)) for f in range(nb_dims)]
+    norms = [exp_term[f] - np.log(sigma[f] * np.sqrt(2 * np.pi)) for f in range(nb_dims)]
+
+    # add an all-ones entry and transform into a large matrix
+    norms_matrix = tf.stack(norms, axis=-1)  # *volshape x N
+    g = K.sum(norms_matrix, -1)  # volshape
+    g = tf.exp(g)
+    g /= tf.reduce_sum(g)
+
+    return g
+
+
+def separable_conv(x, kernels, axis=None, padding='SAME'):
+    '''
+    Apply a list of 1D kernels along axes of an ND or (N+1)D tensor, i.e.
+    with or without a trailing feature dimension but without batch dimension. By
+    default, the K kernels will be applied along the first K axes.
+
+    Inputs:
+        x: each ND or (N+1)D Tensor (note no batch dimension)
+        kernels: list of N 1D kernel Tensors, 
+
+    Returns:
+        conv'ed version of x
+    '''
+
+    if not isinstance(kernels, (tuple, list)):
+        kernels = [kernels]
+    if np.isscalar(axis):
+        axis = [axis]
+    if axis is None:
+        axis = range(0, len(kernels))
+    assert len(kernels) == len(axis), 'number of kernels and axes differ'
+
+    # Append feature dimension if missing.
+    num_dim = len(x.shape)
+    no_features = len(kernels) == num_dim
+    if no_features:
+        num_dim += 1
+        x = x[..., None]
+
+    # Change feature to batch dimension, append a dummy feature dimension.
+    ind = np.arange(len(x.shape))
+    forward = (ind[-1], *ind[:-1])
+    backward = (*ind[1:], ind[0])
+    x = tf.transpose(x, perm=forward)[..., None]
+    
+    for ax, k in zip(axis, kernels):
+        width = np.prod(k.shape.as_list())
+        shape = np.ones(num_dim + 1)
+        shape[ax] = width
+        k = tf.reshape(k, shape=shape)
+        x = tf.nn.convolution(x, k, padding=padding)
+
+    # Remove dummy feature dimension and restore features from batch dimension.
+    x = tf.transpose(x[...,0], perm=backward)
+    return x[..., 0] if no_features else x
+
+
+###############################################################################
 # simple math functions, often used as activations 
 ###############################################################################
 
@@ -611,59 +717,6 @@ def perlin_vol(vol_shape, min_scale=0, max_scale=None, interp_method='linear', w
     return vol
 
 
-def gaussian_kernel(sigma, windowsize=None, indexing='ij'):
-    """
-    sigma will be a number of a list of numbers.
-
-    # some guidance from my MATLAB file 
-    https://github.com/adalca/mivt/blob/master/src/gaussFilt.m
-
-    Parameters:
-        sigma: scalar or list of scalars
-        windowsize (optional): scalar or list of scalars indicating the shape of the kernel
-    
-    Returns:
-        ND kernel the same dimensiosn as the number of sigmas.
-
-    Todo: could use MultivariateNormalDiag
-    """
-
-    if not isinstance(sigma, (list, tuple)):
-        sigma = [sigma]
-    sigma = [np.maximum(f, np.finfo(float).eps) for f in sigma]
-
-    nb_dims = len(sigma)
-
-    # compute windowsize
-    if windowsize is None:
-        windowsize = [np.round(f * 3) * 2 + 1 for f in sigma]
-
-    if len(sigma) != len(windowsize):
-        raise ValueError('sigma and windowsize should have the same length.'
-                         'Got vectors: ' + str(sigma) + 'and' + str(windowsize))
-
-    # ok, let's get to work.
-    mid = [(w - 1)/2 for w in windowsize]
-
-    # list of volume ndgrid
-    # N-long list, each entry of shape volshape
-    mesh = volshape_to_meshgrid(windowsize, indexing=indexing)  
-    mesh = [tf.cast(f, 'float32') for f in mesh]
-
-    # compute independent gaussians
-    diff = [mesh[f] - mid[f] for f in range(len(windowsize))]
-    exp_term = [- K.square(diff[f])/(2 * (sigma[f]**2)) for f in range(nb_dims)]
-    norms = [exp_term[f] - np.log(sigma[f] * np.sqrt(2 * np.pi)) for f in range(nb_dims)]
-
-    # add an all-ones entry and transform into a large matrix
-    norms_matrix = tf.stack(norms, axis=-1)  # *volshape x N
-    g = K.sum(norms_matrix, -1)  # volshape
-    g = tf.exp(g)
-    g /= tf.reduce_sum(g)
-
-    return g
-
-
 def sub2ind2d(siz, subs, **kwargs):
     """
     assumes column-order major
@@ -696,16 +749,39 @@ def soft_digitize(*args, **kwargs):
 
 
 def soft_quantize(x,
-                  alpha=1,
                   bin_centers=None,
                   nb_bins=16,
+                  alpha=1,
                   min_clip=-np.inf,
                   max_clip=np.inf,
                   return_log=False):
     """
-    Quantize intensities (values) in a given volume
+    (Softly) quantize intensities (values) in a given volume, based on RBFs. 
+    In numpy this (hard quantization) is called "digitize".
 
-    in numpy this is called digitize
+    Specify bin_centers OR number of bins 
+        (which will estimate bin centers based on a heuristic using the min/max of the image)
+
+    Algorithm: 
+    - create (or obtain) a set of bins
+    - for each array element, that value v gets assigned to all bins with 
+        a weight of exp(-alpha * (v - c)), where c is the bin center
+    - return volume x nb_bins
+    
+    Parameters:
+        x [bs, ...]: intensity image. 
+        bin_centers (np.float32 or list, optional): bin centers for soft histogram.
+            Defaults to None.
+        nb_bins (int, optional): number of bins, if bin_centers is not specified. 
+            Defaults to 16.
+        alpha (int, optional): alpha in RBF.
+            Defaults to 1.
+        min_clip (float, optional): Lower value to clip data. Defaults to -np.inf.
+        max_clip (float, optional): Upper value to clip data. Defaults to np.inf.
+        return_log (bool, optional): [description]. Defaults to False.
+
+    Returns:
+        tf.float32: volume with one more dimension [bs, ..., B]
     """
 
     if bin_centers is not None: 
