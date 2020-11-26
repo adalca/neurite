@@ -114,8 +114,9 @@ def mod_submodel(orig_model,
         dct_node_idx = {}
         while len(node_list) > 0:
             node = node_list.pop(0)
+            
             node_input_layers = node.inbound_layers
-            node_indices = node.node_indices
+            # node_indices = node.node_indices
             if not isinstance(node_input_layers, (list, tuple)):
                 node_input_layers = [node_input_layers]
                 node_indices = [node_indices]
@@ -124,8 +125,7 @@ def mod_submodel(orig_model,
             # if not empty. we need to check that we're not adding the same layers through the same node.
             if len(dct.setdefault(node.outbound_layer, [])) > 0:
                 for li, layers in enumerate(dct[node.outbound_layer]):
-                    if layers == node.inbound_layers and \
-                        dct_node_idx[node.outbound_layer][li] == node_indices:
+                    if layers == node.inbound_layers and dct_node_idx[node.outbound_layer][li] == node_indices:
                         add = False
                         break
             if add:
@@ -134,7 +134,6 @@ def mod_submodel(orig_model,
             # append is in place
 
             # add new node
-            
             for li, layer in enumerate(node_input_layers):
                 if hasattr(layer, '_inbound_nodes'):
                     node_list.append(layer._inbound_nodes[node_indices[li]])
