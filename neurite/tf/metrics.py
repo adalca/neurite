@@ -21,6 +21,7 @@ from tensorflow.keras import losses
 # local
 from . import utils
 
+
 class CategoricalCrossentropy(object):
     """
     Categorical crossentropy with optional categorical weights and spatial prior
@@ -287,6 +288,28 @@ class Dice(object):
         return mean_dice_loss
 
 
+    def _label_to_one_hot(tens, nb_labels):
+        """
+        Transform a label nD Tensor to a one-hot 3D Tensor. The input tensor is first
+        batch-flattened, and then each batch and each voxel gets a one-hot representation
+        """
+        y = K.batch_flatten(tens)
+        return K.one_hot(y, nb_labels)
+
+
+    def _hard_max(tens, axis):
+        """
+        we can't use the argmax function in a loss, as it's not differentiable
+        We can use it in a metric, but not in a loss function
+        therefore, we replace the 'hard max' operation (i.e. argmax + onehot)
+        with this approximation
+        """
+        tensmax = K.max(tens, axis=axis, keepdims=True)
+        eps_hot = K.maximum(tens - tensmax + K.epsilon(), 0)
+        one_hot = eps_hot / K.epsilon()
+        return one_hot
+
+
 class MeanSquaredError():
     """
     MSE with several weighting options
@@ -334,77 +357,24 @@ class MeanSquaredError():
         return K.mean(ksq)
 
 
-class Mix():
-    """ a mix of several losses """
+class MultipleLosses():
+    """ a mix of several losses for the same output """
 
     def __init__(self, losses, loss_weights=None):
         self.losses = losses
         self.loss_wts = loss_wts
+
         if loss_wts is None:
             self.loss_wts = np.ones(len(loss_wts))
 
     def loss(self, y_true, y_pred):
-        total_loss = K.variable(0)
+        total_loss = 0
         for idx, loss in enumerate(self.losses):
             total_loss += self.loss_weights[idx] * loss(y_true, y_pred)
+
         return total_loss
 
 
-class WGAN_GP(object):
-    """
-    based on https://github.com/rarilurelo/keras_improved_wgan/blob/master/wgan_gp.py
-    """
-
-    def __init__(self, disc, batch_size=1, lambda_gp=10):
-        self.disc = disc
-        self.lambda_gp = lambda_gp
-        self.batch_size = batch_size
-
-    def loss(self, y_true, y_pred):
-
-        # get the value for the true and fake images
-        disc_true = self.disc(y_true)
-        disc_pred = self.disc(y_pred)
-
-        # sample a x_hat by sampling along the line between true and pred
-        # z = tf.placeholder(tf.float32, shape=[None, 1])
-        # shp = y_true.get_shape()[0]
-        # WARNING: SHOULD REALLY BE shape=[batch_size, 1] !!!
-        # self.batch_size does not work, since it's not None!!!
-        alpha = K.random_uniform(shape=[K.shape(y_pred)[0], 1, 1, 1])
-        diff = y_pred - y_true
-        interp = y_true + alpha * diff
-
-        # take gradient of D(x_hat)
-        gradients = K.gradients(self.disc(interp), [interp])[0]
-        grad_pen = K.mean(K.square(K.sqrt(K.sum(K.square(gradients), axis=1))-1))
-
-        # compute loss
-        return (K.mean(disc_pred) - K.mean(disc_true)) + self.lambda_gp * grad_pen
-
-
-class Nonbg(object):
-    """ UNTESTED
-    class to modify output on operating only on the non-bg class
-
-    All data is aggregated and the (passed) metric is called on flattened true and
-    predicted outputs in all (true) non-bg regions
-
-    Usage:
-        loss = metrics.dice
-        nonbgloss = nonbg(loss).loss
-    """
-
-    def __init__(self, metric):
-        self.metric = metric
-
-    def loss(self, y_true, y_pred):
-        """ prepare a loss of the given metric/loss operating on non-bg data """
-        yt = y_true #.eval()
-        ytbg = np.where(yt == 0)
-        y_true_fix = K.variable(yt.flat(ytbg))
-        y_pred_fix = K.variable(y_pred.flat(ytbg))
-        return self.metric(y_true_fix, y_pred_fix)
 
 ###############################################################################
 # simple function losses
@@ -425,23 +395,5 @@ def l2(y_true, y_pred):
 # Helper Functions
 ###############################################################################
 
-def _label_to_one_hot(tens, nb_labels):
-    """
-    Transform a label nD Tensor to a one-hot 3D Tensor. The input tensor is first
-    batch-flattened, and then each batch and each voxel gets a one-hot representation
-    """
-    y = K.batch_flatten(tens)
-    return K.one_hot(y, nb_labels)
 
 
-def _hard_max(tens, axis):
-    """
-    we can't use the argmax function in a loss, as it's not differentiable
-    We can use it in a metric, but not in a loss function
-    therefore, we replace the 'hard max' operation (i.e. argmax + onehot)
-    with this approximation
-    """
-    tensmax = K.max(tens, axis=axis, keepdims=True)
-    eps_hot = K.maximum(tens - tensmax + K.epsilon(), 0)
-    one_hot = eps_hot / K.epsilon()
-    return one_hot
