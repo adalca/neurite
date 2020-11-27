@@ -27,11 +27,14 @@ from . import utils
 #  - clean up categoricalcrossentropy to use the tf built-in weights. 
 #    Maybe wrap with 'label weights', 'voxel_weights', or 'weights'?
 #  - Have wrapper classes for Dice: SoftDice, HardDice.
+#  - metric wrapper/decorator? for cropping. 
 
 class MutualInformation:
     """
     Soft Mutual Information approximation for intensity volumes and probabilistic volumes 
       (e.g. probabilistic segmentaitons)
+
+    # TODO: add local MI by using patches. This is quite memory consuming, though.
 
     Includes functions that can compute mutual information between volumes, 
       between segmentations, or between a volume and a segmentation map
@@ -309,83 +312,11 @@ class MutualInformation:
         return x_prob
 
 
-class CategoricalCrossentropy(object):
-    """
-    Categorical crossentropy with optional categorical weights and spatial prior
-
-    Adapted from weighted categorical crossentropy via wassname:
-    https://gist.github.com/wassname/ce364fddfc8a025bfab4348cf5de852d
-
-    Variables:
-        weights: numpy array of shape (C,) where C is the number of classes
-
-    Usage:
-        loss = CategoricalCrossentropy().loss # or
-        loss = CategoricalCrossentropy(weights=weights).loss # or
-        loss = CategoricalCrossentropy(..., prior=prior).loss
-        model.compile(loss=loss, optimizer='adam')
-    """
-
-    def __init__(self, weights=None, use_float16=False, vox_weights=None, crop_indices=None):
-        """
-        Parameters:
-            vox_weights is either a numpy array the same size as y_true,
-                or a string: 'y_true' or 'expy_true'
-            crop_indices: indices to crop each element of the batch
-                if each element is N-D (so y_true is N+1 dimensional)
-                then crop_indices is a Tensor of crop ranges (indices)
-                of size <= N-D. If it's < N-D, then it acts as a slice
-                for the last few dimensions.
-                See Also: tf.gather_nd
-        """
-
-        self.weights = weights if (weights is not None) else None
-        self.use_float16 = use_float16
-        self.vox_weights = vox_weights
-        self.crop_indices = crop_indices
-
-        if self.crop_indices is not None and vox_weights is not None:
-            self.vox_weights = utils.batch_gather(self.vox_weights, self.crop_indices)
-
-    def loss(self, y_true, y_pred):
-        """ categorical crossentropy loss """
-
-        if self.crop_indices is not None:
-            y_true = utils.batch_gather(y_true, self.crop_indices)
-            y_pred = utils.batch_gather(y_pred, self.crop_indices)
-
-        if self.use_float16:
-            y_true = K.cast(y_true, 'float16')
-            y_pred = K.cast(y_pred, 'float16')
-
-        # scale and clip probabilities
-        # this should not be necessary for softmax output.
-        y_pred /= K.sum(y_pred, axis=-1, keepdims=True)
-        y_pred = K.clip(y_pred, K.epsilon(), 1)
-
-        # compute log probability
-        log_post = K.log(y_pred)  # likelihood
-
-        # loss
-        loss = - y_true * log_post
-
-        # weighted loss
-        if self.weights is not None:
-            loss *= self.weights
-
-        if self.vox_weights is not None:
-            loss *= self.vox_weights
-
-        # take the total loss
-        # loss = K.batch_flatten(loss)
-        mloss = K.mean(K.sum(K.cast(loss, 'float32'), -1))
-        tf.compat.v1.verify_tensor_all_finite(mloss, 'Loss not finite')
-        return mloss
-
-
 class Dice(object):
     """
     Dice of two Tensors.
+
+    # TODO in cleanup: remove hard max, remove nb_labels unless it's "max_label" type and 'hard' dice
 
     Tensors should either be:
     - probabilitic for each label
@@ -443,7 +374,8 @@ class Dice(object):
             print(res_same[2].eval())
     """
 
-    def __init__(self, nb_labels,
+    def __init__(self,
+                 nb_labels, # should only be necessary if doing hard/one-hot. Could be optional for 
                  weights=None,
                  input_type='prob',
                  dice_type='soft',
@@ -486,7 +418,7 @@ class Dice(object):
             y_true = utils.batch_gather(y_true, self.crop_indices)
             y_pred = utils.batch_gather(y_pred, self.crop_indices)
 
-        if self.input_type == 'prob':
+        if self.input_type in ['prob', 'one-hot']:
             # We assume that y_true is probabilistic, but just in case:
             if self.re_norm:
                 y_true = tf.div_no_nan(y_true, K.sum(y_true, axis=-1, keepdims=True))
@@ -509,7 +441,9 @@ class Dice(object):
                     y_pred_op = _hard_max(y_pred, axis=-1)
                     y_true_op = _hard_max(y_true, axis=-1)
                 else:
-                    y_pred_op = _label_to_one_hot(K.argmax(y_pred, axis=-1), self.nb_labels)
+                    # TODO: this is a *huge* amount of memory, probably should not be computing this... 
+                    # but might actually be the same thing as looping over voxels and getting the maps
+                    y_pred_op = _label_to_one_hot(K.argmax(y_pred, axis=-1), self.nb_labels)  
                     y_true_op = _label_to_one_hot(K.argmax(y_true, axis=-1), self.nb_labels)
 
             # if given predicted label, transform to one hot notation
@@ -591,10 +525,88 @@ class Dice(object):
         therefore, we replace the 'hard max' operation (i.e. argmax + onehot)
         with this approximation
         """
+        assert False, 'deprecated, you should really just use a soft dice.'
         tensmax = K.max(tens, axis=axis, keepdims=True)
         eps_hot = K.maximum(tens - tensmax + K.epsilon(), 0)
         one_hot = eps_hot / K.epsilon()
         return one_hot
+
+
+
+class CategoricalCrossentropy(object):
+    """
+    Categorical crossentropy with optional categorical weights and spatial prior
+
+    Adapted from weighted categorical crossentropy via wassname:
+    https://gist.github.com/wassname/ce364fddfc8a025bfab4348cf5de852d
+
+    Variables:
+        weights: numpy array of shape (C,) where C is the number of classes
+
+    Usage:
+        loss = CategoricalCrossentropy().loss # or
+        loss = CategoricalCrossentropy(weights=weights).loss # or
+        loss = CategoricalCrossentropy(..., prior=prior).loss
+        model.compile(loss=loss, optimizer='adam')
+    """
+
+    def __init__(self, weights=None, use_float16=False, vox_weights=None, crop_indices=None):
+        """
+        Parameters:
+            vox_weights is either a numpy array the same size as y_true,
+                or a string: 'y_true' or 'expy_true'
+            crop_indices: indices to crop each element of the batch
+                if each element is N-D (so y_true is N+1 dimensional)
+                then crop_indices is a Tensor of crop ranges (indices)
+                of size <= N-D. If it's < N-D, then it acts as a slice
+                for the last few dimensions.
+                See Also: tf.gather_nd
+        """
+
+        self.weights = weights if (weights is not None) else None
+        self.use_float16 = use_float16
+        self.vox_weights = vox_weights
+        self.crop_indices = crop_indices
+
+        if self.crop_indices is not None and vox_weights is not None:
+            self.vox_weights = utils.batch_gather(self.vox_weights, self.crop_indices)
+
+    def loss(self, y_true, y_pred):
+        """ categorical crossentropy loss """
+
+        if self.crop_indices is not None:
+            y_true = utils.batch_gather(y_true, self.crop_indices)
+            y_pred = utils.batch_gather(y_pred, self.crop_indices)
+
+        if self.use_float16:
+            y_true = K.cast(y_true, 'float16')
+            y_pred = K.cast(y_pred, 'float16')
+
+        # scale and clip probabilities
+        # this should not be necessary for softmax output.
+        y_pred /= K.sum(y_pred, axis=-1, keepdims=True)
+        y_pred = K.clip(y_pred, K.epsilon(), 1)
+
+        # compute log probability
+        log_post = K.log(y_pred)  # likelihood
+
+        # loss
+        loss = - y_true * log_post
+
+        # weighted loss
+        if self.weights is not None:
+            loss *= self.weights
+
+        if self.vox_weights is not None:
+            loss *= self.vox_weights
+
+        # take the total loss
+        # loss = K.batch_flatten(loss)
+        mloss = K.mean(K.sum(K.cast(loss, 'float32'), -1))
+        tf.compat.v1.verify_tensor_all_finite(mloss, 'Loss not finite')
+        return mloss
+
+
 
 
 class MeanSquaredError():
@@ -644,7 +656,7 @@ class MeanSquaredError():
         return K.mean(ksq)
 
 
-class MultipleLosses():
+class MultipleMetrics():
     """ a mix of several losses for the same output """
 
     def __init__(self, losses, loss_weights=None):
