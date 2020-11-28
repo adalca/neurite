@@ -10,7 +10,8 @@ Contact: adalca [at] csail [dot] mit [dot] edu
 License: GPLv3
 """
 
-import sys
+# core python
+import sys, warnings
 
 # third party
 import numpy as np
@@ -19,15 +20,16 @@ import tensorflow.keras.backend as K
 from tensorflow.keras import losses
 
 # local
+import neurite as ne
 from . import utils
 
 
 # TODO: 
-#  - separate metrics from losses
 #  - clean up categoricalcrossentropy to use the tf built-in weights. 
-#    Maybe wrap with 'label weights', 'voxel_weights', or 'weights'?
-#  - Have wrapper classes for Dice: SoftDice, HardDice.
-#  - metric wrapper/decorator? for cropping. 
+#  decorators:
+#    - Maybe wrap with 'label weights', 'voxel_weights', or 'weights'?
+#    - metric wrapper/decorator? for cropping.
+
 
 class MutualInformation:
     """
@@ -314,222 +316,226 @@ class MutualInformation:
 
 class Dice(object):
     """
-    Dice of two Tensors.
+    Dice of two Tensors. 
+    Enables both 'soft' and 'hard' Dice, and weighting per label (or per batch entry)
 
-    # TODO in cleanup: remove hard max, remove nb_labels unless it's "max_label" type and 'hard' dice
-
-    Tensors should either be:
-    - probabilitic for each label
-        i.e. [batch_size, *vol_size, nb_labels], where vol_size is the size of the volume (n-dims)
-        e.g. for a 2D vol, y has 4 dimensions, where each entry is a prob for that voxel
-    - max_label
-        i.e. [batch_size, *vol_size], where vol_size is the size of the volume (n-dims).
-        e.g. for a 2D vol, y has 3 dimensions, where each entry is the max label of that voxel
-
-    Variables:
-        nb_labels: optional numpy array of shape (L,) where L is the number of labels
-            if not provided, all non-background (0) labels are computed and averaged
-        weights: optional numpy array of shape (L,) giving relative weights of each label
-        input_type is 'prob', or 'max_label'
-        dice_type is hard or soft
-
-    Usage:
-        diceloss = metrics.dice(weights=[1, 2, 3])
-        model.compile(diceloss, ...)
-
-    Test:
-        import keras.utils as nd_utils
-        reload(nrn_metrics)
-        weights = [0.1, 0.2, 0.3, 0.4, 0.5]
-        nb_labels = len(weights)
-        vol_size = [10, 20]
-        batch_size = 7
-
-        dice_loss = metrics.Dice(nb_labels=nb_labels).loss
-        dice = metrics.Dice(nb_labels=nb_labels).dice
-        dice_wloss = metrics.Dice(nb_labels=nb_labels, weights=weights).loss
-
-        # vectors
-        lab_size = [batch_size, *vol_size]
-        r = nd_utils.to_categorical(np.random.randint(0, nb_labels, lab_size), nb_labels)
-        vec_1 = np.reshape(r, [*lab_size, nb_labels])
-        r = nd_utils.to_categorical(np.random.randint(0, nb_labels, lab_size), nb_labels)
-        vec_2 = np.reshape(r, [*lab_size, nb_labels])
-
-        # get some standard vectors
-        tf_vec_1 = tf.constant(vec_1, dtype=tf.float32)
-        tf_vec_2 = tf.constant(vec_2, dtype=tf.float32)
-
-        # compute some metrics
-        res = [f(tf_vec_1, tf_vec_2) for f in [dice, dice_loss, dice_wloss]]
-        res_same = [f(tf_vec_1, tf_vec_1) for f in [dice, dice_loss, dice_wloss]]
-
-        # tf run
-        init_op = tf.global_variables_initializer()
-        with tf.Session() as sess:
-            sess.run(init_op)
-            sess.run(res)
-            sess.run(res_same)
-            print(res[2].eval())
-            print(res_same[2].eval())
+    References: 
+    - Dice, 1945, Ecology
+        [original paper describing metric]
+    - Dalca et al, 2018, CVPR https://arxiv.org/abs/1903.03148
+        [paper for which we developed this method]
     """
 
     def __init__(self,
-                 nb_labels, # should only be necessary if doing hard/one-hot. Could be optional for 
-                 weights=None,
-                 input_type='prob',
                  dice_type='soft',
-                 approx_hard_max=True,
-                 vox_weights=None,
-                 crop_indices=None,
-                 re_norm=False,
-                 area_reg=0.1):  # regularization for bottom of Dice coeff
+                 input_type='prob',
+                 nb_labels=None,
+                 weights=None,
+                 normalize=False):  # regularization for bottom of Dice coeff
         """
-        input_type is 'prob', or 'max_label'
-        dice_type is hard or soft
-        approx_hard_max - see note below
+        Dice of two Tensors. 
+        
+        If Tensors are probablistic/one-hot, should be size 
+            [batch_size, *vol_size, nb_labels], where vol_size is the size of the volume (n-dims)
+            e.g. for a 2D vol, y has 4 dimensions, where each entry is a prob for that voxel
+        If Tensors contain the label id at each location, size should be
+            i.e. [batch_size, *vol_size], where vol_size is the size of the volume (n-dims).
+            e.g. for a 2D vol, y has 3 dimensions, where each entry is the max label of that voxel
+            If you provide [batch_size, *vol_size, 1], everything will still work since that just
+            assumes a volume with an extra dimension, but the Dice score would be the same.
 
-        Note: for hard dice, we grab the most likely label and then compute a
-        one-hot encoding for each voxel with respect to possible labels. To grab the most
-        likely labels, argmax() can be used, but only when Dice is used as a metric
-        For a Dice *loss*, argmax is not differentiable, and so we can't use it
-        Instead, we approximate the prob->one_hot translation when approx_hard_max is True.
+        Args:
+            dice_type (str, optional): 'soft' or 'hard'. Defaults to 'soft'.
+                hard dice will not provide gradients (and hence should not be used with backprop)
+            input_type (str, optional): 'prob', 'one_hot', or 'max_label'
+                'prob' (or 'one_hot' which will be treated the same) means we assume prob label maps
+                'max_label' means we assume each volume location entry has the id of the seg label
+                Defaults to 'prob'.
+            nb_labels (int, optional): number of labels (maximum label + 1) 
+                *Required* if using hard dice with max_label data. Defaults to None.
+            weights (np.array or tf.Tensor, optional): weights matrix, broadcastable to 
+                [batch_size, nb_labels]. most often, would want to weight the labels, so would be 
+                an array of size [1, nb_labels]. 
+                Defaults to None.
+            normalize (bool, optional): whether to renormalize probabilistic Tensors.
+                Defaults to False.
         """
+        # input_type is 'prob', or 'max_label'
+        # dice_type is hard or soft
 
-        self.nb_labels = nb_labels
-        self.weights = None if weights is None else K.variable(weights)
-        self.vox_weights = None if vox_weights is None else K.variable(vox_weights)
-        self.input_type = input_type
         self.dice_type = dice_type
-        self.approx_hard_max = approx_hard_max
-        self.area_reg = area_reg
-        self.crop_indices = crop_indices
-        self.re_norm = re_norm
+        self.input_type = input_type
+        self.nb_labels = nb_labels
+        self.weights = weights
+        self.normalize = normalize
 
-        if self.crop_indices is not None and vox_weights is not None:
-            self.vox_weights = utils.batch_gather(self.vox_weights, self.crop_indices)
+        # checks
+        assert self.input_type in ['prob', 'max_label']
+
+        if self.dice_type == 'hard' and self.input_type == 'max_label':
+            assert self.nb_labels is not None, 'If doing hard Dice need nb_labels'
+
+        if self.dice_type == 'soft':
+            assert self.input_type in ['prob', 'one_hot'], \
+                'if doing soft Dice, must use probabilistic (one_hot)encoding'
 
     def dice(self, y_true, y_pred):
         """
-        compute dice for given Tensors
+        compute dice between two Tensors
 
+        Args:
+            y_pred, y_true: Tensors
+                - if prob/onehot, then shape [batch_size, ..., nb_labels]
+                - if max_label (label at each location), then shape [batch_size, ...]
+
+        Returns: 
+            Tensor of size [batch_size, nb_labels]
         """
-        if self.crop_indices is not None:
-            y_true = utils.batch_gather(y_true, self.crop_indices)
-            y_pred = utils.batch_gather(y_pred, self.crop_indices)
 
-        if self.input_type in ['prob', 'one-hot']:
-            # We assume that y_true is probabilistic, but just in case:
-            if self.re_norm:
-                y_true = tf.div_no_nan(y_true, K.sum(y_true, axis=-1, keepdims=True))
-            y_true = K.clip(y_true, K.epsilon(), 1)
+        # input checks
+        if self.input_type in ['prob', 'one_hot']:
+            
+            # Optionally re-normalize. 
+            # Note that in some cases you explicitly don't wnat to, e.g. if you only return a subset of the labels
+            if self.normalize:
+                y_true = tf.math.divide_no_nan(y_true, K.sum(y_true, axis=-1, keepdims=True))
+                y_pred = tf.math.divide_no_nan(y_pred, K.sum(y_pred, axis=-1, keepdims=True))
 
-            # make sure pred is a probability
-            if self.re_norm:
-                y_pred = tf.div_no_nan(y_pred, K.sum(y_pred, axis=-1, keepdims=True))
-            y_pred = K.clip(y_pred, K.epsilon(), 1)
-
+            # some value checking
+            msg = 'value outside range'
+            tf.debugging.assert_greater_equal(y_true, 0., msg)
+            tf.debugging.assert_greater_equal(y_pred, 0., msg)
+            tf.debugging.assert_less_equal(y_true, 1., msg)
+            tf.debugging.assert_less_equal(y_pred, 1., msg)
+            
         # Prepare the volumes to operate on
-        # If we're doing 'hard' Dice, then we will prepare one-hot-based matrices of size
+        # If we're doing 'hard' Dice, then we will prepare one_hot-based matrices of size
         # [batch_size, nb_voxels, nb_labels], where for each voxel in each batch entry,
         # the entries are either 0 or 1
         if self.dice_type == 'hard':
 
             # if given predicted probability, transform to "hard max""
             if self.input_type == 'prob':
-                if self.approx_hard_max:
-                    y_pred_op = _hard_max(y_pred, axis=-1)
-                    y_true_op = _hard_max(y_true, axis=-1)
-                else:
-                    # TODO: this is a *huge* amount of memory, probably should not be computing this... 
-                    # but might actually be the same thing as looping over voxels and getting the maps
-                    y_pred_op = _label_to_one_hot(K.argmax(y_pred, axis=-1), self.nb_labels)  
-                    y_true_op = _label_to_one_hot(K.argmax(y_true, axis=-1), self.nb_labels)
+                # this breaks differentiability, since argmax is not differentiable.
+                warnings.warn('You are using ne.metrics.Dice with probabilistic inputs' \
+                              'and computing *hard* dice. \n For this, we use argmax to' \
+                              'get the optimal label at each location, which is not' \
+                              'differentiable. Do not use expecting gradients.')                
 
-            # if given predicted label, transform to one hot notation
-            else:
-                assert self.input_type == 'max_label'
-                y_pred_op = _label_to_one_hot(y_pred, self.nb_labels)
-                y_true_op = _label_to_one_hot(y_true, self.nb_labels)
+                if self.nb_labels is None:
+                    self.nb_labels = y_pred.shape.as_list()[-1]
 
-        # If we're doing soft Dice, require prob output, and the data already is as we need it
-        # [batch_size, nb_voxels, nb_labels]
-        else:
-            assert self.input_type == 'prob', "cannot do soft dice with max_label input"
-            y_pred_op = y_pred
-            y_true_op = y_true
+                y_pred = K.argmax(y_pred, axis=-1)
+                y_true = K.argmax(y_true, axis=-1)
 
+            # transform to one hot notation
+            y_pred = K.one_hot(y_pred, self.nb_labels)
+            y_true = K.one_hot(y_true, self.nb_labels)
+      
         # reshape to [batch_size, nb_voxels, nb_labels]
-        batch_size = K.shape(y_true)[0]
-        y_pred_op = K.reshape(y_pred_op, [batch_size, -1, K.shape(y_true)[-1]])
-        y_true_op = K.reshape(y_true_op, [batch_size, -1, K.shape(y_true)[-1]])
-
+        y_true = ne.utils.batch_channel_flatten(y_true)
+        y_pred = ne.utils.batch_channel_flatten(y_pred)
+        
         # compute dice for each entry in batch.
         # dice will now be [batch_size, nb_labels]
-        top = 2 * K.sum(y_true_op * y_pred_op, 1)
-        bottom = K.sum(K.square(y_true_op), 1) + K.sum(K.square(y_pred_op), 1)
-        # make sure we have no 0s on the bottom. K.epsilon()
-        bottom = K.maximum(bottom, self.area_reg)
-        return top / bottom
+        top = 2 * K.sum(y_true * y_pred, 1)
+        bottom = K.sum(K.square(y_true), 1) + K.sum(K.square(y_pred), 1)
+        return tf.math.divide_no_nan(top, bottom)
 
     def mean_dice(self, y_true, y_pred):
-        """ weighted mean dice across all patches and labels """
+        """ 
+        mean dice across all patches and labels 
+        optionally weighted
+
+        Args:
+            y_pred, y_true: Tensors
+                - if prob/onehot, then shape [batch_size, ..., nb_labels]
+                - if max_label (label at each location), then shape [batch_size, ...]
+
+        Returns: 
+            dice (Tensor of size 1, tf.float32)
+        """
 
         # compute dice, which will now be [batch_size, nb_labels]
         dice_metric = self.dice(y_true, y_pred)
 
         # weigh the entries in the dice matrix:
         if self.weights is not None:
+            assert len(self.weights.shape) == 2, \
+                'weights should be a matrix broadcastable to [batch_size, nb_labels]'
             dice_metric *= self.weights
-        if self.vox_weights is not None:
-            dice_metric *= self.vox_weights
 
         # return one minus mean dice as loss
         mean_dice_metric = K.mean(dice_metric)
-        tf.compat.v1.verify_tensor_all_finite(mean_dice_metric, 'metric not finite')
+        tf.debugging.assert_all_finite(mean_dice_metric, 'metric not finite')
         return mean_dice_metric
 
-
     def loss(self, y_true, y_pred):
-        """ the loss. Assumes y_pred is prob (in [0,1] and sum_row = 1) """
-
-        # compute dice, which will now be [batch_size, nb_labels]
-        dice_metric = self.dice(y_true, y_pred)
-
-        # loss
-        dice_loss = 1 - dice_metric
-
-        # weigh the entries in the dice matrix:
-        if self.weights is not None:
-            dice_loss *= self.weights
-
-        # return one minus mean dice as loss
-        mean_dice_loss = K.mean(dice_loss)
-        tf.compat.v1.verify_tensor_all_finite(mean_dice_loss, 'Loss not finite')
-        return mean_dice_loss
-
-
-    def _label_to_one_hot(tens, nb_labels):
         """
-        Transform a label nD Tensor to a one-hot 3D Tensor. The input tensor is first
-        batch-flattened, and then each batch and each voxel gets a one-hot representation
+        Deprecate anytime after 12/01/2021
         """
-        y = K.batch_flatten(tens)
-        return K.one_hot(y, nb_labels)
+        warnings.warn('ne.metrics.*.loss functions are deprecated.' \
+                     'Please use the ne.losses.*.loss functions.')
+
+        return - self.mean_dice(y_true, y_pred)
 
 
-    def _hard_max(tens, axis):
+class SoftDice(Dice):
+    def __init__(self,
+                 weights=None,
+                 normalize=False):
         """
-        we can't use the argmax function in a loss, as it's not differentiable
-        We can use it in a metric, but not in a loss function
-        therefore, we replace the 'hard max' operation (i.e. argmax + onehot)
-        with this approximation
+        soft Dice score, inherits from Dice() class
+
+        Args:
+            weights (np.array or tf.Tensor, optional): weights matrix, broadcastable to 
+                [batch_size, nb_labels]. most often, would want to weight the labels, so would be 
+                an array of size [1, nb_labels]. 
+                Defaults to None.
+            normalize (bool, optional): whether to renormalize probabilistic Tensors.
+                Defaults to False.
         """
-        assert False, 'deprecated, you should really just use a soft dice.'
-        tensmax = K.max(tens, axis=axis, keepdims=True)
-        eps_hot = K.maximum(tens - tensmax + K.epsilon(), 0)
-        one_hot = eps_hot / K.epsilon()
-        return one_hot
+        super().__init__(dice_type='soft',
+                         input_type='prob',
+                         weights=weights,
+                         normalize=normalize)
+
+
+class HardDice(Dice):
+    def __init__(self,
+                 nb_labels,
+                 input_type='max_label',
+                 weights=None,
+                 normalize=False):
+        """
+        hard Dice score, inherits from Dice() class
+        
+        Tensors are assumed to be optimal label ids at each location. 
+        If you wish to compute Hard Dice with Tensors 
+
+        Args:
+            nb_labels: the number of labels (maximum label + 1) in the Tensors
+            input_type (str, optional): 'max_label', 'prob', 'one_hot'
+                'max_label' means we assume each volume location entry has the id of the seg label.
+                or 
+                'prob' (or 'one_hot' which will be treated the same) means we assume prob label maps
+                we will take tf.argmax() along the last dimension before running hard dice. 
+                There will be no gradient.
+                Defaults to 'max_label'.
+            weights (np.array or tf.Tensor, optional): weights matrix, broadcastable to 
+                [batch_size, nb_labels]. most often, would want to weight the labels, so would be 
+                an array of size [1, nb_labels]. 
+                Defaults to None.
+            normalize (bool, optional): whether to renormalize probabilistic Tensors.
+                Defaults to False.
+        """
+        super().__init__(dice_type='hard',
+                         input_type=input_type,
+                         nb_labels=nb_labels,
+                         weights=weights,
+                         normalize=normalize)
+
+
 
 
 
@@ -607,8 +613,6 @@ class CategoricalCrossentropy(object):
         return mloss
 
 
-
-
 class MeanSquaredError():
     """
     MSE with several weighting options
@@ -656,20 +660,22 @@ class MeanSquaredError():
         return K.mean(ksq)
 
 
+
+
 class MultipleMetrics():
-    """ a mix of several losses for the same output """
+    """ a mix of several metrics for the same output """
 
-    def __init__(self, losses, loss_weights=None):
-        self.losses = losses
-        self.loss_wts = loss_wts
+    def __init__(self, metrics, weights=None):
+        self.metrics = metrics
+        self.weights = weights
 
-        if loss_wts is None:
-            self.loss_wts = np.ones(len(loss_wts))
+        if weights is None:
+            self.weights = np.ones(len(metrics))
 
     def loss(self, y_true, y_pred):
         total_loss = 0
-        for idx, loss in enumerate(self.losses):
-            total_loss += self.loss_weights[idx] * loss(y_true, y_pred)
+        for idx, loss in enumerate(self.metrics):
+            total_loss += self.weights[idx] * loss(y_true, y_pred)
 
         return total_loss
 
