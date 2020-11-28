@@ -155,8 +155,8 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
         below = [tf.less(loc[...,d], 0) for d in range(nb_dims)]
         above = [tf.greater(loc[...,d], max_loc[d]) for d in range(nb_dims)]
         out_of_bounds = tf.reduce_any(tf.stack(below + above, axis=-1), axis=-1, keepdims=True)
-        interp_vol *= tf.cast(tf.logical_not(out_of_bounds), dtype=out_type)
-        interp_vol += tf.cast(out_of_bounds, dtype=out_type) * fill_value
+        interp_vol *= tf.cast(tf.logical_not(out_of_bounds), out_type)
+        interp_vol += tf.cast(out_of_bounds, out_type) * fill_value
 
     return interp_vol
 
