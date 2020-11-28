@@ -122,7 +122,8 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
             # vol_val = tf.gather_nd(vol, indices)
             # faster way to gather than gather_nd, because the latter needs tf.stack which is slow :(
             idx = sub2ind2d(vol.shape[:-1], subs)
-            vol_val = tf.gather(tf.reshape(vol, [-1, volshape[-1]]), idx)
+            vol_reshape = tf.reshape(vol, [-1, volshape[-1]])
+            vol_val = tf.gather(vol_reshape, idx)
 
             # get the weight of this cube_pt based on the distance
             # if c[d] is 0 --> want weight = 1 - (pt - floor[pt]) = diff_loc1
