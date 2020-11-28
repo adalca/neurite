@@ -646,6 +646,15 @@ def odd_shifted_relu(x, shift=-0.5, scale=2.0):
     return scale * K.relu(x - shift)  - scale * K.relu(- x - shift)
 
 
+def minmax_norm(x):
+    """
+    Min-max normalize tensor using a save division.
+    """
+    x_min = tf.reduce_min(x)
+    x_max = tf.reduce_max(x)
+    return tf.compat.v1.div_no_nan(x - x_min, x_max - x_min)
+
+
 ###############################################################################
 # other
 ###############################################################################
