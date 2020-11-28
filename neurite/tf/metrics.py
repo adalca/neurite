@@ -307,7 +307,7 @@ class MutualInformation:
         return x_prob
 
 
-class Dice(object):
+class Dice:
     """
     Dice of two Tensors. 
     Enables both 'soft' and 'hard' Dice, and weighting per label (or per batch entry)
