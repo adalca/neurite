@@ -144,19 +144,57 @@ class HardDice(metrics.HardDice):
         return  - self.mean_dice(y_true, y_pred)
 
 
-class MultipleLosses():
-    """ a mix of several losses for the same output """
+class CategoricalCrossentropy(metrics.CategoricalCrossentropy):
+    def __init__(self, *args, **kwargs):
+        """
+        wraps tf.keras.losses.CategoricalCrossentropy, but enables label_weights as an 
+        explicit parameter (which is also possible in the tf version, but a bit more cumbersome)
 
-    def __init__(self, losses, loss_weights=None):
-        self.losses = losses
-        self.loss_weights = loss_weights
+        see metrics.CategoricalCrossentropy
+        """
 
-        if loss_weights is None:
-            self.loss_weights = np.ones(len(loss_weights))
+        super().__init__(*args, **kwargs)
 
-    def loss(self, y_true, y_pred):
-        total_loss = 0
-        for idx, loss in enumerate(self.losses):
-            total_loss += self.loss_weights[idx] * loss(y_true, y_pred)
+    def loss(self, *args, **kwargs):
+        return self.cce(*args, **kwargs)
 
-        return total_loss
+
+class MeanSquaredErrorProb(metrics.MeanSquaredErrorProb):
+    def __init__(self, *args, **kwargs):
+        """
+        wraps tf.keras.losses.MeanSquaredError, but specifically assumes the last dimension of 
+        the Tensors is the log-probability of labels, and allows for label weights along those 
+        labels. (this is also possible in the tf version, but a bit more cumbersome)
+
+        see doc for metrics.MeanSquaredErrorProb
+        """
+        super().__init__(*args, **kwargs)
+
+    def loss(self, *args, **kwargs):
+        return self.mse(*args, **kwargs)
+
+
+###############################################################################
+# decorators
+###############################################################################
+
+def multiple_losses_decorator(losses, weights=None):
+    """
+    Applies multiple losses to a given output
+
+    Args:
+        losses (list): list of losses, each taking in two Tensors
+        weights (list or np.array, optional): weight for each metric.
+            Defaults to None.
+    """
+        
+    if weights is None:
+        weights = np.ones(len(losses))
+
+    def loss(y_true, y_pred):
+        total_val = 0
+        for idx, los in enumerate(losses):
+            total_val += weights[idx] * los(y_true, y_pred)
+        return total_val
+
+    return loss

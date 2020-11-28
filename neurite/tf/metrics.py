@@ -25,7 +25,6 @@ from . import utils
 
 
 # TODO: 
-#  - clean up categoricalcrossentropy to use the tf built-in weights. 
 #  decorators:
 #    - Maybe wrap with 'label weights', 'voxel_weights', or 'weights'?
 #    - metric wrapper/decorator? for cropping.
@@ -536,149 +535,95 @@ class HardDice(Dice):
                          normalize=normalize)
 
 
+class CategoricalCrossentropy(tf.keras.losses.CategoricalCrossentropy):
 
-
-
-class CategoricalCrossentropy(object):
-    """
-    Categorical crossentropy with optional categorical weights and spatial prior
-
-    Adapted from weighted categorical crossentropy via wassname:
-    https://gist.github.com/wassname/ce364fddfc8a025bfab4348cf5de852d
-
-    Variables:
-        weights: numpy array of shape (C,) where C is the number of classes
-
-    Usage:
-        loss = CategoricalCrossentropy().loss # or
-        loss = CategoricalCrossentropy(weights=weights).loss # or
-        loss = CategoricalCrossentropy(..., prior=prior).loss
-        model.compile(loss=loss, optimizer='adam')
-    """
-
-    def __init__(self, weights=None, use_float16=False, vox_weights=None, crop_indices=None):
+    def __init__(self, label_weights=None, **kwargs):
         """
-        Parameters:
-            vox_weights is either a numpy array the same size as y_true,
-                or a string: 'y_true' or 'expy_true'
-            crop_indices: indices to crop each element of the batch
-                if each element is N-D (so y_true is N+1 dimensional)
-                then crop_indices is a Tensor of crop ranges (indices)
-                of size <= N-D. If it's < N-D, then it acts as a slice
-                for the last few dimensions.
-                See Also: tf.gather_nd
+        wraps tf.keras.losses.CategoricalCrossentropy, but enables label_weights as an 
+        explicit parameter (which is also possible in the tf version, but a bit more cumbersome)
+
+        Args:
+            label_weights: list, numpy array or Tensor with the same length as the number of 
+                labels in the probabilistic maps
+            other tf.keras.losses.CategoricalCrossentropy kwargs
         """
+        self.label_weights = None
+        if label_weights is not None:
+            self.label_weights = tf.convert_to_tensor(label_weights)
 
-        self.weights = weights if (weights is not None) else None
-        self.use_float16 = use_float16
-        self.vox_weights = vox_weights
-        self.crop_indices = crop_indices
+        super().__init__(**kwargs)
 
-        if self.crop_indices is not None and vox_weights is not None:
-            self.vox_weights = utils.batch_gather(self.vox_weights, self.crop_indices)
+    def __call__(self, y_true, y_pred, sample_weight=None):
+        return self.cce(y_true, y_pred, sample_weight=sample_weight)
 
-    def loss(self, y_true, y_pred):
-        """ categorical crossentropy loss """
+    def cce(self, y_true, y_pred, sample_weight=None):
+        D = y_pred.ndim
+        wts = tf.reshape(self.label_weights, [1] * (D-1) + [-1])
 
-        if self.crop_indices is not None:
-            y_true = utils.batch_gather(y_true, self.crop_indices)
-            y_pred = utils.batch_gather(y_pred, self.crop_indices)
+        if sample_weight is None:
+            sample_weight = 1
+        sample_weight = sample_weight * wts
 
-        if self.use_float16:
-            y_true = K.cast(y_true, 'float16')
-            y_pred = K.cast(y_pred, 'float16')
-
-        # scale and clip probabilities
-        # this should not be necessary for softmax output.
-        y_pred /= K.sum(y_pred, axis=-1, keepdims=True)
-        y_pred = K.clip(y_pred, K.epsilon(), 1)
-
-        # compute log probability
-        log_post = K.log(y_pred)  # likelihood
-
-        # loss
-        loss = - y_true * log_post
-
-        # weighted loss
-        if self.weights is not None:
-            loss *= self.weights
-
-        if self.vox_weights is not None:
-            loss *= self.vox_weights
-
-        # take the total loss
-        # loss = K.batch_flatten(loss)
-        mloss = K.mean(K.sum(K.cast(loss, 'float32'), -1))
-        tf.compat.v1.verify_tensor_all_finite(mloss, 'Loss not finite')
-        return mloss
+        return super().__call__(y_true, y_pred, sample_weight=sample_weight)
 
 
-class MeanSquaredError():
+class MeanSquaredErrorProb(tf.keras.losses.MeanSquaredError):
+
+    def __init__(self, label_weights=None, **kwargs):
+        """
+        wraps tf.keras.losses.MeanSquaredError, but specifically assumes the last dimension of 
+        the Tensors is the log-probability of labels, and allows for label weights along those 
+        labels. (this is also possible in the tf version, but a bit more cumbersome)
+
+        Args:
+            label_weights: list, numpy array or Tensor with the same length as the number of 
+                labels in the probabilistic maps
+            other tf.keras.losses.CategoricalCrossentropy kwargs
+        """
+        self.label_weights = None
+        if label_weights is not None:
+            self.label_weights = tf.convert_to_tensor(label_weights)
+
+        super().__init__(**kwargs)
+
+    def __call__(self, y_true, y_pred, sample_weight=None):
+        return self.mse(y_true, y_pred, sample_weight=sample_weight)
+
+    def mse(self, y_true, y_pred, sample_weight=None):
+        D = y_pred.ndim
+        wts = tf.reshape(self.label_weights, [1] * (D-1) + [-1])
+
+        if sample_weight is None:
+            sample_weight = 1
+        sample_weight = sample_weight * wts
+
+        return super().__call__(y_true, y_pred, sample_weight=sample_weight)
+
+
+###############################################################################
+# decorators
+###############################################################################
+
+def multiple_metrics_decorator(metrics, weights=None):
     """
-    MSE with several weighting options
+    Applies multiple metrics to a given output
+
+    Args:
+        metrics (list): list of metrics, each taking in two Tensors
+        weights (list or np.array, optional): weight for each metric.
+            Defaults to None.
     """
-
-
-    def __init__(self, weights=None, vox_weights=None, crop_indices=None):
-        """
-        Parameters:
-            vox_weights is either a numpy array the same size as y_true,
-                or a string: 'y_true' or 'expy_true'
-            crop_indices: indices to crop each element of the batch
-                if each element is N-D (so y_true is N+1 dimensional)
-                then crop_indices is a Tensor of crop ranges (indices)
-                of size <= N-D. If it's < N-D, then it acts as a slice
-                for the last few dimensions.
-                See Also: tf.gather_nd
-        """
-        self.weights = weights
-        self.vox_weights = vox_weights
-        self.crop_indices = crop_indices
-
-        if self.crop_indices is not None and vox_weights is not None:
-            self.vox_weights = utils.batch_gather(self.vox_weights, self.crop_indices)
         
-    def loss(self, y_true, y_pred):
+    if weights is None:
+        weights = np.ones(len(metrics))
 
-        if self.crop_indices is not None:
-            y_true = utils.batch_gather(y_true, self.crop_indices)
-            y_pred = utils.batch_gather(y_pred, self.crop_indices)
+    def metric(y_true, y_pred):
+        total_val = 0
+        for idx, met in enumerate(metrics):
+            total_val += weights[idx] * met(y_true, y_pred)
+        return total_val
 
-        ksq = K.square(y_pred - y_true)
-
-        if self.vox_weights is not None:
-            if self.vox_weights == 'y_true':
-                ksq *= y_true
-            elif self.vox_weights == 'expy_true':
-                ksq *= tf.exp(y_true)
-            else:
-                ksq *= self.vox_weights
-
-        if self.weights is not None:
-            ksq *= self.weights
-
-        return K.mean(ksq)
-
-
-
-
-class MultipleMetrics():
-    """ a mix of several metrics for the same output """
-
-    def __init__(self, metrics, weights=None):
-        self.metrics = metrics
-        self.weights = weights
-
-        if weights is None:
-            self.weights = np.ones(len(metrics))
-
-    def loss(self, y_true, y_pred):
-        total_loss = 0
-        for idx, loss in enumerate(self.metrics):
-            total_loss += self.weights[idx] * loss(y_true, y_pred)
-
-        return total_loss
-
+    return metric
 
 
 ###############################################################################
