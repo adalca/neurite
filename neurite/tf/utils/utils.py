@@ -361,7 +361,7 @@ def meshgrid(*args, **kwargs):
     """
 
     indexing = kwargs.pop("indexing", "xy")
-    name = kwargs.pop("name", "meshgrid")
+    # name = kwargs.pop("name", "meshgrid")
     if kwargs:
         key = list(kwargs.keys())[0]
         raise TypeError("'{}' is an invalid keyword argument "
