@@ -24,12 +24,6 @@ import neurite as ne
 from . import utils
 
 
-# TODO: 
-#  decorators:
-#    - Maybe wrap with 'label weights', 'voxel_weights', or 'weights'?
-#    - metric wrapper/decorator? for cropping.
-
-
 class MutualInformation:
     """
     Soft Mutual Information approximation for intensity volumes and probabilistic volumes 
