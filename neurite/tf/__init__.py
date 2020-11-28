@@ -2,6 +2,7 @@
 from . import generators
 from . import callbacks
 from . import metrics
+from . import losses
 from . import models
 from . import utils
 from . import layers
