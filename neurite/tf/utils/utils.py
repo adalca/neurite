@@ -842,7 +842,7 @@ def batch_channel_flatten(x):
         a Tensor of size [batch_size, V, channel_size] where V is the number of elements in the 
           middle N-2 dimensions
     """
-    return flatten_axes(x, range(1, x.ndim - 1))
+    return flatten_axes(x, range(1, K.ndim(x) - 1))
 
 # have both namings around
 flatten_batch_channel = batch_channel_flatten
@@ -855,10 +855,11 @@ def flatten_axes(x, axes):
         batch_channel_flatten
         tensorflow.keras.backend.batch_flatten
     """
-    assert isinstance(axes, (list, tuple, range)), 'axes must be list or tuple of axes to be flattened'
+    assert isinstance(axes, (list, tuple, range)), \
+        'axes must be list or tuple of axes to be flattened'
     assert np.all(np.diff(axes) == 1), 'axes need to be contiguous'
     assert axes[0] >= 0, 'axis %d has to be non-negative' % axes[0]
-    assert axes[-1] < x.ndim, 'axis %d outside max axis %d' % (axes[-1], x.ndim - 1)
+    assert axes[-1] < K.ndim(x), 'axis %d outside max axis %d' % (axes[-1], K.ndim(x) - 1)
 
     shp = K.shape(x)
     reshape = list(shp[:axes[0]]) + [-1] + list(shp[axes[-1]+1:])
