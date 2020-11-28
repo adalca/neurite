@@ -862,7 +862,7 @@ def flatten_axes(x, axes):
     assert axes[-1] < K.ndim(x), 'axis %d outside max axis %d' % (axes[-1], K.ndim(x) - 1)
 
     shp = K.shape(x)
-    reshape = list(shp[:axes[0]]) + [-1] + list(shp[axes[-1]+1:])
+    reshape = tf.concat([shp[:axes[0]], - tf.ones((1,), dtype=tf.int32), shp[axes[-1]+1:]], 0)
     return K.reshape(x, reshape)
     
 
