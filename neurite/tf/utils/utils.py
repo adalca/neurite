@@ -416,6 +416,24 @@ def flatten(v):
 
     return tf.reshape(v, [-1])
    
+
+def take(x, indices, axis):
+    """ Take elements from an array along axis. Similar to np.take. 
+    This just wraps tf.gather, but gather can be overwhleming at times :)
+
+    Args:
+        x (Tensor): the ND volume to be indexed into
+        indices (Tensor, int, or list): indexes along axis. 
+            If given int or Tensor of shape (), then returned volume will be one lower dim.
+            If given list of Tensor of shape (?, ), then returned volume will be same dim, 
+            even if list or Tensor have only one element.
+        axis (int): the axis to index into
+
+    Returns:
+        Tensor: with only given indices along specified axis, ND or (N-1)D
+    """
+    return tf.gather(x, indices, axis=axis)
+
     
 ###############################################################################
 # filtering
