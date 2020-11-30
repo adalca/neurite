@@ -1,27 +1,34 @@
 """
-tensorflow/keras utilities for the neuron project
+models (networks) for the neuron project
 
-If you use this code, please cite 
+If you use this code, please cite the following, and read function docs for further info/citations
 Dalca AV, Guttag J, Sabuncu MR
 Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation, 
-CVPR 2018
+CVPR 2018. https://arxiv.org/abs/1903.03148
 
-Contact: adalca [at] csail [dot] mit [dot] edu
-License: GPLv3
+
+Copyright 2020 Adrian V. Dalca
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 """
 
-import sys
-from . import layers
+# core python
+import sys, warnings
 
 # third party
 import numpy as np
 import tensorflow as tf
-from tensorflow import keras
 import tensorflow.keras.layers as KL
 from tensorflow.keras.models import Model
 import tensorflow.keras.backend as K
 from tensorflow.python.keras.constraints import maxnorm
 
+# local
+from . import layers
 
 ###############################################################################
 # Roughly volume preserving (e.g. high dim to high dim) models
@@ -591,8 +598,6 @@ def single_ae(enc_size,
     return model
 
 
-
-
 ###############################################################################
 # Encoders, decoders, etc.
 ###############################################################################
@@ -1039,6 +1044,9 @@ def design_dnn(nb_features, input_shape, nb_levels, conv_size, nb_labels,
     return model
 
 
+###############################################################################
+# Experimental, might be deprecated 
+###############################################################################
 
 def EncoderNet(nb_features,
                input_shape,
@@ -1104,7 +1112,7 @@ def EncoderNet(nb_features,
     if (rescale is not None):
         dense = layers.RescaleValues(rescale)(dense)
     out = KL.Dense(nb_labels, name='output_dense', activation=final_activation)(dense)
-    model = keras.models.Model(inputs=enc_model.inputs, outputs=out)
+    model = tf.kerasmodels.Model(inputs=enc_model.inputs, outputs=out)
     
     return model
 
@@ -1116,11 +1124,13 @@ def DenseLayerNet(inshape, layer_sizes, nb_labels=2, activation='relu', final_ac
     if nb_labels is 0 assume it is a regression net and use linear activation
     (if None specified)
     """
+    warnings.warn('incorrect PEP8 naming. Will be deprecated')
+
     inputs = KL.Input(shape=inshape, name='input')
     prev_layer = KL.Flatten(name='flat_inputs')(inputs)
     # to prevent overfitting include some kernel and bias regularization
-    kreg = keras.regularizers.l1_l2(l1=1e-5, l2=1e-4)
-    breg = keras.regularizers.l2(1e-4)
+    kreg = tf.kerasregularizers.l1_l2(l1=1e-5, l2=1e-4)
+    breg = tf.kerasregularizers.l2(1e-4)
 
     # connect the list of dense layers to each other
     for lno, layer_size in enumerate(layer_sizes):
@@ -1133,10 +1143,6 @@ def DenseLayerNet(inshape, layer_sizes, nb_labels=2, activation='relu', final_ac
     # tie the previous dense layer to a onehot encoded output layer
     last_layer = KL.Dense(nb_labels, name='last_dense', activation=final_activation)(prev_layer)
 
-    model = keras.models.Model(inputs=inputs, outputs=last_layer)
+    model = tf.kerasmodels.Model(inputs=inputs, outputs=last_layer)
     return(model)
 
-
-###############################################################################
-# Helper function
-###############################################################################

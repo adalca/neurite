@@ -1,19 +1,19 @@
 """
-tensorflow/keras utilities for the neuron project
+layers for the neuron project
 
-If you use this code, please cite 
+If you use this code, please cite the following, and read function docs for further info/citations
 Dalca AV, Guttag J, Sabuncu MR
 Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation, 
-CVPR 2018
+CVPR 2018. https://arxiv.org/abs/1903.03148
 
-or for the transformation/integration functions:
 
-Unsupervised Learning for Fast Probabilistic Diffeomorphic Registration
-Adrian V. Dalca, Guha Balakrishnan, John Guttag, Mert R. Sabuncu
-MICCAI 2018.
+Copyright 2020 Adrian V. Dalca
 
-Contact: adalca [at] csail [dot] mit [dot] edu
-License: GPLv3
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 """
 
 # internal python imports
@@ -39,7 +39,7 @@ from . import utils
 
 class Negate(Layer):
     """ 
-    Keras Layer: negative of the input
+    Keras Layer: negative of the input.
     """
 
     def __init__(self, **kwargs):
@@ -84,12 +84,10 @@ class Resize(Layer):
     N-D Resize Tensorflow / Keras Layer
     Note: this is not re-shaping an existing volume, but resizing, like scipy's "Zoom"
 
-    If you find this function useful, please cite:
-        Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation,Dalca AV, Guttag J, Sabuncu MR
-        CVPR 2018  
-
-    Since then, we've re-written the code to be generalized to any 
-    dimensions, and along the way wrote grid and interpolation functions
+    If you find this class useful, please cite the original paper this was written for:
+        Dalca AV, Guttag J, Sabuncu MR
+        Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation, 
+        CVPR 2018. https://arxiv.org/abs/1903.03148
     """
 
     def __init__(self,
@@ -181,6 +179,11 @@ Zoom = Resize
 class SoftQuantize(Layer):
     """ 
     Keras Layer: soft quantization of intentity input
+
+    If you find this class useful, please cite the original paper this was written for:
+        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
+        Learning image registration without images.
+        arXiv preprint arXiv:2004.10282, 2020. https://arxiv.org/abs/2004.10282
     """
 
     def __init__(self,
@@ -238,7 +241,11 @@ class MSE(Layer):
 class GaussianBlur(Layer):
     """ 
     Applies gaussian blur to an input image.
-    TODO: switch from 'level' based to 'sigma' based
+
+    If you find this class useful, please cite the original paper this was written for:
+        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
+        Learning image registration without images.
+        arXiv preprint arXiv:2004.10282, 2020. https://arxiv.org/abs/2004.10282
     """
 
     def __init__(self, sigma=None, level=None, **kwargs):
@@ -408,6 +415,11 @@ class LocalBias(Layer):
     """ 
     Local bias layer: each pixel/voxel has its own bias operation (one parameter)
     out[v] = in[v] + b
+
+    If you find this class useful, please cite the original paper this was written for:
+        Dalca AV, Guttag J, Sabuncu MR
+        Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation, 
+        CVPR 2018. https://arxiv.org/abs/1903.03148
     """
 
     def __init__(self, my_initializer='RandomNormal', biasmult=1.0, **kwargs):
@@ -434,6 +446,11 @@ class LocalLinear(Layer):
     """ 
     Local linear layer: each pixel/voxel has its own linear operation (two parameters)
     out[v] = a * in[v] + b
+
+    If you find this class useful, please cite the original paper this was written for:
+        Dalca AV, Guttag J, Sabuncu MR
+        Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation, 
+        CVPR 2018. https://arxiv.org/abs/1903.03148
     """
 
     def __init__(self, initializer='RandomNormal', **kwargs):
@@ -1365,6 +1382,11 @@ class LocalParamLayer(Layer):
     Local Parameter layer: each pixel/voxel has its own parameter (one parameter)
     out[v] = b
 
+    If you find this class useful, please cite the original paper this was written for:
+        A.V. Dalca, M. Rakic, J. Guttag, M.R. Sabuncu. 
+        Learning Conditional Deformable Templates with Convolutional Networks 
+        NeurIPS: Advances in Neural Information Processing Systems. pp 804-816, 2019. 
+
     using code from 
     https://github.com/YerevaNN/R-NET-in-Keras/blob/master/layers/SharedWeight.py
     and
@@ -1450,6 +1472,11 @@ class LocalParamWithInput(Layer):
     which messed up the code. Instead, we'll do this quick version where we need an input, but we'll ignore it.
 
     this doesn't have the _keras_shape issue since we built on the input and use call()
+
+    If you find this class useful, please cite the original paper this was written for:
+        A.V. Dalca, M. Rakic, J. Guttag, M.R. Sabuncu. 
+        Learning Conditional Deformable Templates with Convolutional Networks 
+        NeurIPS: Advances in Neural Information Processing Systems. pp 804-816, 2019. 
     """
 
     def __init__(self, shape, initializer='RandomNormal', mult=1.0, **kwargs):
@@ -1559,6 +1586,11 @@ class MeanStream(Layer):
 
     cap refers to mainting an approximation of up to that number of subjects -- that is,
     any incoming datapoint will have at least 1/cap weight.
+
+    If you find this class useful, please cite the original paper this was written for:
+        A.V. Dalca, M. Rakic, J. Guttag, M.R. Sabuncu. 
+        Learning Conditional Deformable Templates with Convolutional Networks 
+        NeurIPS: Advances in Neural Information Processing Systems. pp 804-816, 2019. 
     """
 
     def __init__(self, cap=100, **kwargs):
@@ -1617,6 +1649,11 @@ class CovStream(Layer):
 
     cap refers to mainting an approximation of up to that number of subjects -- that is,
     any incoming datapoint will have at least 1/cap weight.
+
+    If you find this class useful, please cite the original paper this was written for:
+        A.V. Dalca, M. Rakic, J. Guttag, M.R. Sabuncu. 
+        Learning Conditional Deformable Templates with Convolutional Networks 
+        NeurIPS: Advances in Neural Information Processing Systems. pp 804-816, 2019. 
     """
 
     def __init__(self, cap=100, **kwargs):
@@ -1735,6 +1772,11 @@ class FFT(Layer):
     fft layer, assuming the real/imag are input/output via two features
     Input: tf.complex of size [batch_size, ..., nb_feats]
     Output: tf.complex of size [batch_size, ..., nb_feats]
+
+    If you find this class useful, please cite the original paper this was written for:
+        Deep-learning-based Optimization of the Under-sampling Pattern in MRI 
+        C. Bahadir‡, A.Q. Wang‡, A.V. Dalca, M.R. Sabuncu. 
+        IEEE TCP: Transactions on Computational Imaging. 6. pp. 1139-1152. 2020.
     """
 
     def __init__(self, **kwargs):
@@ -1780,6 +1822,11 @@ class IFFT(Layer):
     ifft layer, assuming the real/imag are input/output via two features
     Input: tf.complex of size [batch_size, ..., nb_feats]
     Output: tf.complex of size [batch_size, ..., nb_feats]
+
+    If you find this class useful, please cite the original paper this was written for:
+        Deep-learning-based Optimization of the Under-sampling Pattern in MRI 
+        C. Bahadir‡, A.Q. Wang‡, A.V. Dalca, M.R. Sabuncu. 
+        IEEE TCP: Transactions on Computational Imaging. 6. pp. 1139-1152. 2020.
     """
 
     def __init__(self, **kwargs):
@@ -1821,6 +1868,14 @@ class IFFT(Layer):
 
 
 class ComplexToChannels(Layer):
+    """
+    Transform from Complex Tensors to hacing the read and imaginary parts along channels
+
+    If you find this class useful, please cite the original paper this was written for:
+        Deep-learning-based Optimization of the Under-sampling Pattern in MRI 
+        C. Bahadir‡, A.Q. Wang‡, A.V. Dalca, M.R. Sabuncu. 
+        IEEE TCP: Transactions on Computational Imaging. 6. pp. 1139-1152. 2020.
+    """
 
     def __init__(self, **kwargs):
         super(ComplexToChannels, self).__init__(**kwargs)
@@ -1842,6 +1897,14 @@ class ComplexToChannels(Layer):
 
 
 class ChannelsToComplex(Layer):
+    """
+    going from data along difference channels to a Complex Tensor
+
+    If you find this class useful, please cite the original paper this was written for:
+        Deep-learning-based Optimization of the Under-sampling Pattern in MRI 
+        C. Bahadir‡, A.Q. Wang‡, A.V. Dalca, M.R. Sabuncu. 
+        IEEE TCP: Transactions on Computational Imaging. 6. pp. 1139-1152. 2020.
+    """
 
     def __init__(self, **kwargs):
         super(ChannelsToComplex, self).__init__(**kwargs)
@@ -1964,6 +2027,11 @@ class SampleNormalLogVar(Layer):
     """ 
     Keras Layer: Gaussian sample given mean and log_variance
     
+    If you find this class useful, please cite the original paper this was written for:
+        Dalca AV, Guttag J, Sabuncu MR
+        Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation, 
+        CVPR 2018. https://arxiv.org/abs/1903.03148
+
     inputs: list of Tensors [mu, log_var]
     outputs: Tensor sample from N(mu, sigma^2)
     """

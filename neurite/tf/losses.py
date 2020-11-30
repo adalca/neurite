@@ -1,13 +1,19 @@
 """
-tensorflow/keras utilities for the neuron project
+losses for the neuron project
 
-If you use this code, please cite 
+If you use this code, please cite the following, and read function docs for further info/citations
 Dalca AV, Guttag J, Sabuncu MR
 Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation, 
-CVPR 2018
+CVPR 2018. https://arxiv.org/abs/1903.03148
 
-Contact: adalca [at] csail [dot] mit [dot] edu
-License: GPLv3
+
+Copyright 2020 Adrian V. Dalca
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 """
 
 # core imports
@@ -18,15 +24,35 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.keras.backend as K
 from tensorflow.keras import losses
+# simple metrics renamed mae -> l1, mse -> l2
+from tensorflow.keras.losses import mean_absolute_error as l1
+from tensorflow.keras.losses import mean_squared_error as l2
 
 # local
 from . import utils
 from . import metrics
 
 
+# explicit import of MutualInformation class -- although there is not direct loss member class, 
+# since there's many ways to use MutualInformation as a loss for many settings 
+# (maximizing, minimze, volumes, segmentation maps, etc)
+from .metrics import MutualInformation
+
+
 class Dice(metrics.Dice):
     """
     inherits ne.metrics.Dice
+
+
+    Dice of two Tensors. 
+    Enables both 'soft' and 'hard' Dice, and weighting per label (or per batch entry)
+
+    More information/citations:
+    - Dice. Measures of the amount of ecologic association between species. Ecology. 1945
+        [original paper describing metric]
+    - Dalca AV, Guttag J, Sabuncu MR Anatomical Priors in Convolutional Networks for 
+      Unsupervised Biomedical Segmentation. CVPR 2018. https://arxiv.org/abs/1903.03148
+        [paper for which we developed this method]    
     """
     def __init__(self, *args, **kwargs):
         """
@@ -67,6 +93,12 @@ class Dice(metrics.Dice):
 class SoftDice(metrics.SoftDice):
     """
     inherits ne.metrics.Dice
+
+    More information/citations:
+    - Dalca AV, Guttag J, Sabuncu MR Anatomical Priors in Convolutional Networks for 
+      Unsupervised Biomedical Segmentation. CVPR 2018. https://arxiv.org/abs/1903.03148
+    - Milletari et al, V-net: Fully convolutional neural networks for volumetric medical image 
+      segmentation. 3DV 2016.
     """
     def __init__(self, *args, **kwargs):
         """
@@ -107,6 +139,13 @@ class SoftDice(metrics.SoftDice):
 class HardDice(metrics.HardDice):
     """
     inherits ne.metrics.Dice
+
+    More information/citations:
+    - Dice. Measures of the amount of ecologic association between species. Ecology. 1945
+        [original paper describing metric]
+    - Dalca AV, Guttag J, Sabuncu MR Anatomical Priors in Convolutional Networks for 
+      Unsupervised Biomedical Segmentation. CVPR 2018. https://arxiv.org/abs/1903.03148
+        [paper for which we developed this method]
     """
     def __init__(self, *args, **kwargs):
         """

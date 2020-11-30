@@ -1,19 +1,19 @@
 """
-tensorflow/keras utilities for the neurite project
+utilities for the neuron project
 
-If you use this code, please cite 
+If you use this code, please cite the following, and read function docs for further info/citations
 Dalca AV, Guttag J, Sabuncu MR
 Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation, 
-CVPR 2018
+CVPR 2018. https://arxiv.org/abs/1903.03148
 
-or for the transformation/interpolation related functions:
 
-Unsupervised Learning for Fast Probabilistic Diffeomorphic Registration
-Adrian V. Dalca, Guha Balakrishnan, John Guttag, Mert R. Sabuncu
-MICCAI 2018.
+Copyright 2020 Adrian V. Dalca
 
-Contact: adalca [at] csail [dot] mit [dot] edu
-License: GPLv3
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 """
 
 # python imports
@@ -28,7 +28,6 @@ import tensorflow.keras.backend as K
 # local imports
 import pystrum.pynd.ndutils as nd
 import neurite as ne
-import neurite.py.utils
 
 
 def interpn(vol, loc, interp_method='linear', fill_value=None):
@@ -49,6 +48,15 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
 
     Returns:
         new interpolated volume of the same size as the entries in loc
+
+    If you find this function useful, please cite the original paper this was written for:
+        VoxelMorph: A Learning Framework for Deformable Medical Image Registration 
+        G. Balakrishnan, A. Zhao, M. R. Sabuncu, J. Guttag, A.V. Dalca. 
+        IEEE TMI: Transactions on Medical Imaging. 38(8). pp 1788-1800. 2019. 
+
+        Unsupervised Learning for Probabilistic Diffeomorphic Registration for Images and Surfaces
+        A.V. Dalca, G. Balakrishnan, J. Guttag, M.R. Sabuncu. 
+        MedIA: Medical Image Analysis. (57). pp 226-236, 2019 
 
     TODO:
         enable optional orig_grid - the original grid points.
@@ -167,6 +175,11 @@ def resize(vol, zoom_factor, interp_method='linear'):
     if zoom_factor is a list, it will determine the ndims, in which case vol has to be of length ndims of ndims + 1
 
     if zoom_factor is an integer, then vol must be of length ndims + 1
+
+    If you find this function useful, please cite the original paper this was written for:
+        Dalca AV, Guttag J, Sabuncu MR
+        Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation, 
+        CVPR 2018. https://arxiv.org/abs/1903.03148
 
     """
 
@@ -459,6 +472,11 @@ def gaussian_kernel(sigma, windowsize=None, indexing='ij', separate=False, rando
 
     For more information see:
         https://github.com/adalca/mivt/blob/master/src/gaussFilt.m
+
+    If you find this function useful, please cite the original paper this was written for:
+        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
+        Learning image registration without images.
+        arXiv preprint arXiv:2004.10282, 2020. https://arxiv.org/abs/2004.10282
     '''
     if not isinstance(sigma, (list, tuple)):
         sigma = [sigma]
@@ -507,6 +525,11 @@ def separable_conv(x, kernels, axis=None, padding='SAME'):
 
     Returns:
         conv'ed version of x
+
+    If you find this function useful, please cite the original paper this was written for:
+        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
+        Learning image registration without images.
+        arXiv preprint arXiv:2004.10282, 2020. https://arxiv.org/abs/2004.10282
     '''
 
     if not isinstance(kernels, (tuple, list)):
@@ -703,6 +726,11 @@ def perlin_vol(vol_shape, min_scale=0, max_scale=None, interp_method='linear', w
     
     https://github.com/adalca/matlib/blob/master/matlib/visual/perlin.m
     loosely inspired from http://nullprogram.com/blog/2007/11/20
+
+    If you find this function useful, please cite the original paper this was written for:
+        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
+        Learning image registration without images.
+        arXiv preprint arXiv:2004.10282, 2020. https://arxiv.org/abs/2004.10282
     """
 
     # input handling
@@ -811,6 +839,11 @@ def soft_quantize(x,
 
     Returns:
         tf.float32: volume with one more dimension [bs, ..., B]
+    
+    If you find this function useful, please cite the original paper this was written for:
+        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
+        Learning image registration without images.
+        arXiv preprint arXiv:2004.10282, 2020. https://arxiv.org/abs/2004.10282
     """
 
     if bin_centers is not None: 

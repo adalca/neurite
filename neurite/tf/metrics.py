@@ -1,13 +1,19 @@
 """
-tensorflow/keras utilities for the neuron project
+metrics for the neuron project
 
-If you use this code, please cite 
+If you use this code, please cite the following, and read function docs for further info/citations
 Dalca AV, Guttag J, Sabuncu MR
 Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation, 
-CVPR 2018
+CVPR 2018. https://arxiv.org/abs/1903.03148
 
-Contact: adalca [at] csail [dot] mit [dot] edu
-License: GPLv3
+
+Copyright 2020 Adrian V. Dalca
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 """
 
 # core python
@@ -18,6 +24,9 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.keras.backend as K
 from tensorflow.keras import losses
+# simple metrics renamed mae -> l1, mse -> l2
+from tensorflow.keras.losses import mean_absolute_error as l1
+from tensorflow.keras.losses import mean_squared_error as l2
 
 # local
 import neurite as ne
@@ -28,6 +37,12 @@ class MutualInformation:
     """
     Soft Mutual Information approximation for intensity volumes and probabilistic volumes 
       (e.g. probabilistic segmentaitons)
+
+    More information/citation:
+    - Courtney K Guo. Multi-modal image registration with unsupervised deep learning. 
+      PhD thesis, Massachusetts Institute of Technology, 2019.
+    - M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. Learning image registration without images.
+      arXiv preprint arXiv:2004.10282, 2020. https://arxiv.org/abs/2004.10282
 
     # TODO: add local MI by using patches. This is quite memory consuming, though.
 
@@ -312,10 +327,11 @@ class Dice:
     Dice of two Tensors. 
     Enables both 'soft' and 'hard' Dice, and weighting per label (or per batch entry)
 
-    References: 
-    - Dice, 1945, Ecology
+    More information/citations:
+    - Dice. Measures of the amount of ecologic association between species. Ecology. 1945
         [original paper describing metric]
-    - Dalca et al, 2018, CVPR https://arxiv.org/abs/1903.03148
+    - Dalca AV, Guttag J, Sabuncu MR Anatomical Priors in Convolutional Networks for 
+      Unsupervised Biomedical Segmentation. CVPR 2018. https://arxiv.org/abs/1903.03148
         [paper for which we developed this method]
     """
 
@@ -474,6 +490,16 @@ class Dice:
 
 
 class SoftDice(Dice):
+    """
+    Soft Dice of two Tensors. 
+
+    More information/citations:
+    - Dalca AV, Guttag J, Sabuncu MR Anatomical Priors in Convolutional Networks for 
+      Unsupervised Biomedical Segmentation. CVPR 2018. https://arxiv.org/abs/1903.03148
+    - Milletari et al, V-net: Fully convolutional neural networks for volumetric medical image 
+      segmentation. 3DV 2016.
+    """
+
     def __init__(self,
                  weights=None,
                  normalize=False):
@@ -495,6 +521,16 @@ class SoftDice(Dice):
 
 
 class HardDice(Dice):
+    """
+    "Hard" Dice of two Tensors. 
+
+    More information/citations:
+    - Dice. Measures of the amount of ecologic association between species. Ecology. 1945
+        [original paper describing metric]
+    - Dalca AV, Guttag J, Sabuncu MR Anatomical Priors in Convolutional Networks for 
+      Unsupervised Biomedical Segmentation. CVPR 2018. https://arxiv.org/abs/1903.03148
+        [paper for which we developed this method]
+    """
     def __init__(self,
                  nb_labels,
                  input_type='max_label',
@@ -618,18 +654,3 @@ def multiple_metrics_decorator(metrics, weights=None):
         return total_val
 
     return metric
-
-
-###############################################################################
-# simple function losses
-###############################################################################
-
-
-def l1(y_true, y_pred):
-    """ L1 metric (MAE) """
-    return losses.mean_absolute_error(y_true, y_pred)
-
-
-def l2(y_true, y_pred):
-    """ L2 metric (MSE) """
-    return losses.mean_squared_error(y_true, y_pred)
