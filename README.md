@@ -2,7 +2,6 @@
 
 A neural networks toolbox with a focus on medical image analysis in tensorflow/keras for now.
 
-
 ## Install
 
 To use the Neurite library, either clone this repository and install the requirements listed in `setup.py` or install directly with pip.
