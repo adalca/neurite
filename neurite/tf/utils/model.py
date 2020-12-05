@@ -240,7 +240,7 @@ def mod_submodel(orig_model,
     return outputs
 
 
-def reset_weights(model, session=None):
+def reset_weights(model):
     """
     reset weights of model with the appropriate initializer.
     Note: only uses "kernel_initializer" and "bias_initializer"
@@ -253,9 +253,6 @@ def reset_weights(model, session=None):
         model: keras model to reset
         session (optional): the current session
     """
-
-    if session is None:
-        session = K.get_session()
 
     for layer in model.layers: 
         reset = False
