@@ -257,11 +257,11 @@ def reset_weights(model):
     for layer in model.layers: 
         reset = False
         if hasattr(layer, 'kernel_initializer'):
-            layer.kernel.initializer.run(session=session)
+            layer.kernel.initializer.run()
             reset = True
         
         if hasattr(layer, 'bias_initializer'):
-            layer.bias.initializer.run(session=session)
+            layer.bias.initializer.run()
             reset = True
         
         if not reset:
