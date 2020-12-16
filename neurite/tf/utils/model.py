@@ -120,7 +120,7 @@ def mod_submodel(orig_model,
             out_layers = orig_model._output_layers
             
             node_list = []
-            for i, ol in enumerate(orig_model._output_layers):
+            for _, ol in enumerate(orig_model._output_layers):
                 node_list += ol._inbound_nodes
             node_list  = list(set(node_list ))
             

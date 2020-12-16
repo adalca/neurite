@@ -198,7 +198,7 @@ def predict_volume_stack(models,
             # update stacks
             all_vol[idx][batch_range, :] = K.batch_flatten(input_batch)[0:batch_vox_idx, :]
             all_true[idx][batch_range, :] = K.batch_flatten(sample[1])[0:batch_vox_idx, :]
-            all_pred[idx][batch_range, :] = K._batch_flatten(pred)[0:batch_vox_idx, :]
+            all_pred[idx][batch_range, :] = K.batch_flatten(pred)[0:batch_vox_idx, :]
             if do_prior:
                 all_prior[idx][batch_range, :] = K.batch_flatten(sample[0][1])[0:batch_vox_idx, :]
 
