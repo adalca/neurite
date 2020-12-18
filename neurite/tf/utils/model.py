@@ -9,11 +9,15 @@ CVPR 2018. https://arxiv.org/abs/1903.03148
 
 Copyright 2020 Adrian V. Dalca
 
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in 
+compliance with the License. You may obtain a copy of the License at
 
 http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+Unless required by applicable law or agreed to in writing, software distributed under the License 
+is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+implied. See the License for the specific language governing permissions and limitations under 
+the License.
 """
 
 # python imports
@@ -49,12 +53,12 @@ def stack_models(models, connecting_node_ids=None):
 
     # go through models 1 onwards and stack with current graph
     for mi in range(1, len(models)):
-        
-        # prepare input nodes - a combination of 
+
+        # prepare input nodes - a combination of
         new_input_nodes = list(models[mi].inputs)
         stacked_inputs_contrib = list(models[mi].inputs)
 
-        if connecting_node_ids is None: 
+        if connecting_node_ids is None:
             conn_id = list(range(len(new_input_nodes)))
             assert len(new_input_nodes) == len(models[mi-1].outputs), \
                 'argument count does not match'
@@ -64,7 +68,7 @@ def stack_models(models, connecting_node_ids=None):
         for out_idx, ii in enumerate(conn_id):
             new_input_nodes[ii] = output_tensors[out_idx]
             stacked_inputs_contrib[ii] = None
-        
+
         output_tensors = mod_submodel(models[mi], new_input_nodes=new_input_nodes)
         stacked_inputs = stacked_inputs + stacked_inputs_contrib
 
@@ -91,7 +95,7 @@ def mod_submodel(orig_model,
     given an original model:
         model stitching: given new input node(s), get output tensors of having pushed these 
         nodes through the model
-        
+
         model cutting: given input layer (pointers) inside the model, the new input nodes
         will match the new input layers, hence allowing cutting the model
 
@@ -99,7 +103,7 @@ def mod_submodel(orig_model,
         orig_model: original keras model pointer
         new_input_nodes: a pointer to a new input node replacement
         input_layers: the name of the layer in the original model to replace input nodes
-    
+
     Returns:
         pointer to modified model
     """
@@ -118,23 +122,23 @@ def mod_submodel(orig_model,
 
         else:
             out_layers = orig_model._output_layers
-            
+
             node_list = []
             for _, ol in enumerate(orig_model._output_layers):
                 node_list += ol._inbound_nodes
-            node_list  = list(set(node_list ))
-            
+            node_list = list(set(node_list))
+
         dct = {}
         dct_node_idx = {}
         while len(node_list) > 0:
             node = node_list.pop(0)
-            
+
             node_input_layers = node.inbound_layers
             # node_indices = node.node_indices
             if not isinstance(node_input_layers, (list, tuple)):
                 node_input_layers = [node_input_layers]
                 node_indices = [node_indices]
-                
+
             add = True
             # if not empty. we need to check that we're not adding the same layers through the same node.
             if len(dct.setdefault(node.outbound_layer, [])) > 0:
@@ -151,7 +155,7 @@ def mod_submodel(orig_model,
             for li, layer in enumerate(node_input_layers):
                 if hasattr(layer, '_inbound_nodes'):
                     node_list.append(layer._inbound_nodes[node_indices[li]])
-            
+
         return dct
 
     def _get_new_layer_output(layer, new_layer_outputs, inp_layers):
@@ -173,8 +177,9 @@ def mod_submodel(orig_model,
                 for li, inp_layer in enumerate(group):
                     if inp_layer in new_layer_outputs:
                         input_nodes[li] = new_layer_outputs[inp_layer]
-                    else: # recursive call
-                        input_nodes[li] = _get_new_layer_output(inp_layer, new_layer_outputs, inp_layers)
+                    else:  # recursive call
+                        input_nodes[li] = _get_new_layer_output(
+                            inp_layer, new_layer_outputs, inp_layers)
 
                 # layer call
                 if len(input_nodes) == 1:
@@ -184,8 +189,6 @@ def mod_submodel(orig_model,
 
         return new_layer_outputs[layer]
 
-
-
     # for each layer create list of input layers
     inp_layers = _layer_dependency_dict(orig_model)
 
@@ -193,7 +196,7 @@ def mod_submodel(orig_model,
     #   These layers will be 'ignored' in that they will not be called!
     #   instead, the outbound nodes of the layers will be the input nodes
     #   computed below or passed in
-    if input_layers is None: # if none provided, search for them
+    if input_layers is None:  # if none provided, search for them
         # InputLayerClass = keras.engine.topology.InputLayer
         InputLayerClass = type(tf.keras.layers.InputLayer())
         input_layers = [l for l in orig_model.layers if isinstance(l, InputLayerClass)]
@@ -212,7 +215,8 @@ def mod_submodel(orig_model,
     else:
         input_nodes = new_input_nodes
     assert len(input_nodes) == len(input_layers), \
-        'input_nodes (%d) and input_layers (%d) have to match' % (len(input_nodes), len(input_layers))
+        'input_nodes (%d) and input_layers (%d) have to match' % (
+            len(input_nodes), len(input_layers))
 
     # initialize dictionary of layer:new_output_node
     #   note: the input layers are not called, instead their outbound nodes
@@ -231,11 +235,13 @@ def mod_submodel(orig_model,
                 if layer.get_output_at(i) in orig_model.outputs:
                     output_layers.append(layer)
                     break
-    assert len(output_layers) == len(orig_model.outputs), "Number of output layers don't match"
+    assert len(output_layers) == len(
+        orig_model.outputs), "Number of output layers don't match"
 
     outputs = [None] * len(output_layers)
     for li, output_layer in enumerate(output_layers):
-        outputs[li] = _get_new_layer_output(output_layer, new_layer_outputs, inp_layers)
+        outputs[li] = _get_new_layer_output(
+            output_layer, new_layer_outputs, inp_layers)
 
     return outputs
 
@@ -254,16 +260,16 @@ def reset_weights(model):
         session (optional): the current session
     """
 
-    for layer in model.layers: 
+    for layer in model.layers:
         reset = False
         if hasattr(layer, 'kernel_initializer'):
             layer.kernel.initializer.run()
             reset = True
-        
+
         if hasattr(layer, 'bias_initializer'):
             layer.bias.initializer.run()
             reset = True
-        
+
         if not reset:
             print('Could not find initializer for layer %s. skipping', layer.name)
 
@@ -296,7 +302,7 @@ def robust_multi_gpu(model, gpus, verbose=True):
             Note: if given int, assume that is the count of gpus, 
             so if you want a single specific gpu, this function will not do that.
         verbose: whether to display what happened (default: True)
-    
+
     Returns:
         keras model
     """
