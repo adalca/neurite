@@ -26,6 +26,7 @@ def slices(slices_in,           # the 2D slices
            width=15,            # width in in
            show=True,           # option to actually show the plot (plt.show())
            axes_off=True,
+           plot_block=True,    #option to plt.show()
            imshow_args=None):
     '''
     plot a grid of slices (2d images)
@@ -119,7 +120,7 @@ def slices(slices_in,           # the 2D slices
 
     if show:
         plt.tight_layout()
-        plt.show()
+        plt.show(block=plot_block)
 
     return (fig, axs)
 
@@ -161,7 +162,7 @@ def volume3D(vols, slice_nos=None, **kwargs):
     slices(slics, **kwargs)
 
 
-def flow_legend():
+def flow_legend(plot_block=True):
     """
     show quiver plot to indicate how arrows are colored in the flow() method.
     https://stackoverflow.com/questions/40026718/different-colours-for-arrows-in-quiver-plot
@@ -184,7 +185,7 @@ def flow_legend():
     plt.xlim(-2, 2)
     plt.ylim(-2, 2)
     plt.quiver(x, y, u, v, color=colormap(norm(colors)),  angles='xy', scale_units='xy', scale=1)
-    plt.show()
+    plt.show(block=plot_block)
 
 
 def flow(slices_in,           # the 2D slices
@@ -196,6 +197,7 @@ def flow(slices_in,           # the 2D slices
          grid=False,          # option to plot the images in a grid or a single row
          show=True,           # option to actually show the plot (plt.show())
          quiver_width=None,
+         plot_block=True,    #option to plt.show()
          scale=1):            # note quiver essentially draws quiver length = 1/scale
     '''
     plot a grid of flows (2d+2 images)
@@ -302,12 +304,12 @@ def flow(slices_in,           # the 2D slices
     plt.tight_layout()
 
     if show:
-        plt.show()
+        plt.show(block=plot_block)
 
     return (fig, axs)
 
 
-def pca(pca, x, y):
+def pca(pca, x, y, plot_block=True):
     x_mean = np.mean(x, 0)
     x_std = np.std(x, 0)
 
@@ -345,4 +347,4 @@ def pca(pca, x, y):
     plt.imshow(W @ np.transpose(W), cmap=plt.get_cmap('gray'))
     plt.colorbar()
     plt.title('W * W\'')
-    plt.show()
+    plt.show(block=plot_block)
