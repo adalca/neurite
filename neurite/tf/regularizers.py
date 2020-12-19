@@ -22,8 +22,7 @@ import tensorflow.keras.backend as K
 from .utils import soft_delta
 
 
-
-def soft_l0_wrap(wt = 1.):
+def soft_l0_wrap(wt=1.):
 
     def soft_l0(x):
         """

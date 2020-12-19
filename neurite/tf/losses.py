@@ -9,11 +9,15 @@ CVPR 2018. https://arxiv.org/abs/1903.03148
 
 Copyright 2020 Adrian V. Dalca
 
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in 
+compliance with the License. You may obtain a copy of the License at
 
 http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+Unless required by applicable law or agreed to in writing, software distributed under the License is
+distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or 
+implied. See the License for the specific language governing permissions and limitations under 
+the License.
 """
 
 # core imports
@@ -33,8 +37,8 @@ from . import utils
 from . import metrics
 
 
-# explicit import of MutualInformation class -- although there is not direct loss member class, 
-# since there's many ways to use MutualInformation as a loss for many settings 
+# explicit import of MutualInformation class -- although there is not direct loss member class,
+# since there's many ways to use MutualInformation as a loss for many settings
 # (maximizing, minimze, volumes, segmentation maps, etc)
 from .metrics import MutualInformation
 
@@ -54,6 +58,7 @@ class Dice(metrics.Dice):
       Unsupervised Biomedical Segmentation. CVPR 2018. https://arxiv.org/abs/1903.03148
         [paper for which we developed this method]    
     """
+
     def __init__(self, *args, **kwargs):
         """
         inherits ne.metrics.Dice
@@ -72,7 +77,7 @@ class Dice(metrics.Dice):
         Returns: 
             Tensor of size [batch_size, nb_labels]
         """
-        return  - self.dice(y_true, y_pred)
+        return - self.dice(y_true, y_pred)
 
     def mean_loss(self, y_true, y_pred):
         """ 
@@ -87,7 +92,7 @@ class Dice(metrics.Dice):
         Returns: 
             negative mean dice (Tensor of size 1, tf.float32)
         """
-        return  - self.mean_dice(y_true, y_pred)
+        return - self.mean_dice(y_true, y_pred)
 
 
 class SoftDice(metrics.SoftDice):
@@ -100,6 +105,7 @@ class SoftDice(metrics.SoftDice):
     - Milletari et al, V-net: Fully convolutional neural networks for volumetric medical image 
       segmentation. 3DV 2016.
     """
+
     def __init__(self, *args, **kwargs):
         """
         inherits ne.metrics.Dice
@@ -118,7 +124,7 @@ class SoftDice(metrics.SoftDice):
         Returns: 
             Tensor of size [batch_size, nb_labels]
         """
-        return  - self.dice(y_true, y_pred)
+        return - self.dice(y_true, y_pred)
 
     def mean_loss(self, y_true, y_pred):
         """ 
@@ -133,7 +139,7 @@ class SoftDice(metrics.SoftDice):
         Returns: 
             negative mean dice (Tensor of size 1, tf.float32)
         """
-        return  - self.mean_dice(y_true, y_pred)
+        return - self.mean_dice(y_true, y_pred)
 
 
 class HardDice(metrics.HardDice):
@@ -147,6 +153,7 @@ class HardDice(metrics.HardDice):
       Unsupervised Biomedical Segmentation. CVPR 2018. https://arxiv.org/abs/1903.03148
         [paper for which we developed this method]
     """
+
     def __init__(self, *args, **kwargs):
         """
         inherits ne.metrics.Dice
@@ -165,7 +172,7 @@ class HardDice(metrics.HardDice):
         Returns: 
             Tensor of size [batch_size, nb_labels]
         """
-        return  - self.dice(y_true, y_pred)
+        return - self.dice(y_true, y_pred)
 
     def mean_loss(self, y_true, y_pred):
         """ 
@@ -180,7 +187,7 @@ class HardDice(metrics.HardDice):
         Returns: 
             negative mean dice (Tensor of size 1, tf.float32)
         """
-        return  - self.mean_dice(y_true, y_pred)
+        return - self.mean_dice(y_true, y_pred)
 
 
 class CategoricalCrossentropy(metrics.CategoricalCrossentropy):
@@ -226,7 +233,7 @@ def multiple_losses_decorator(losses, weights=None):
         weights (list or np.array, optional): weight for each metric.
             Defaults to None.
     """
-        
+
     if weights is None:
         weights = np.ones(len(losses))
 

@@ -9,11 +9,15 @@ CVPR 2018. https://arxiv.org/abs/1903.03148
 
 Copyright 2020 Adrian V. Dalca
 
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in 
+compliance with the License. You may obtain a copy of the License at
 
 http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+Unless required by applicable law or agreed to in writing, software distributed under the License is
+distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or 
+implied. See the License for the specific language governing permissions and limitations under 
+the License.
 """
 
 # internal python imports
@@ -56,8 +60,8 @@ def extract_z_dec(model, sample_layer_name, vis=False, wt_chk=False):
     new_inputs = [new_z_input, *model.inputs[1:]]
     input_layers = [sample_layer_name, *model.input_layers[1:]]
     z_dec_model_outs = ne.utils.mod_submodel(tmp_model,
-                                              new_input_nodes=new_inputs,
-                                              input_layers=input_layers)
+                                             new_input_nodes=new_inputs,
+                                             input_layers=input_layers)
 
     # get new model
     z_dec_model = keras.models.Model(new_inputs, z_dec_model_outs)
@@ -151,7 +155,7 @@ def sample_dec(z_dec_model,
         z_logvar = np.reshape(z_logvar, [1, *input_shape])
 
     # get standard deviation
-    z_std = np.exp(z_logvar/2)
+    z_std = np.exp(z_logvar / 2)
 
     # get samples
     if do_sweep:
@@ -165,7 +169,7 @@ def sample_dec(z_dec_model,
             high = z_mu - nb_sweep_stds * z_std
 
         x_sweep = np.linspace(0, 1, nb_samples)
-        z_samples = [x * high + (1-x) * low for x in x_sweep]
+        z_samples = [x * high + (1 - x) * low for x in x_sweep]
 
     else:
         std = np.copy(z_std)
@@ -219,9 +223,9 @@ def sweep_dec_given_x(full_model, z_dec_model, sample1, sample2, sample_layer_na
     outs = [None] * nb_samples
     for xi, x in enumerate(tqdm(x_range)):
         if sweep_z_samples:
-            z = x * pred1[3] + (1-x) * pred2[3]
+            z = x * pred1[3] + (1 - x) * pred2[3]
         else:
-            z = x * pred1[1] + (1-x) * pred2[1]
+            z = x * pred1[1] + (1 - x) * pred2[1]
 
         if isinstance(sample1[0], (list, tuple)):  # assuming prior or something like that
             outs[xi] = z_dec_model.predict([z, *sample1[0][1:]])
@@ -245,8 +249,10 @@ def pca_init_dense(model, mu_dense_layer_name, undense_layer_name, generator,
     initialize the (V)AE middle *dens*e layer with PCA
     Warning: this modifies the weights in your model!
 
-    model should take input the same as the normal (V)AE, and output a flat layer before the mu dense layer
-    if nb_samples is None, we will compute at least as many as there are initial dimension (Which might be a lot)
+    model should take input the same as the normal (V)AE, and output a flat layer 
+        before the mu dense layer
+    if nb_samples is None, we will compute at least as many as there are 
+        initial dimension (Which might be a lot)
 
     assumes mu_dense_layer_name is of input size [None, pre_mu_len] and output size [None, enc_len]
 
@@ -333,7 +339,8 @@ def model_output_pca(pre_mu_model, generator, nb_samples, nb_components,
 
     else:
         assert nb_batch_samples == nb_samples, \
-            "generator should either give us 1 sample or %d samples at once. got: %d" % (nb_samples, nb_batch_samples)
+            "generator should either give us 1 sample or %d samples at once. got: %d" % (
+                nb_samples, nb_batch_samples)
         y = pre_mu_model.predict(sample[0])
 
     # pca
@@ -392,7 +399,13 @@ def latent_stats(model, gen, nb_reps=100, tqdm=tqdm):
     return data
 
 
-def latent_stats_plots(model, gen, nb_reps=100, dim_1=0, dim_2=1, figsize=(15, 7), colors=None, tqdm=tqdm):
+def latent_stats_plots(model, gen,
+                       nb_reps=100,
+                       dim_1=0,
+                       dim_2=1,
+                       figsize=(15, 7),
+                       colors=None,
+                       tqdm=tqdm):
     """
     Make some debug/info (mostly latent-stats-related) plots
 
@@ -411,11 +424,10 @@ def latent_stats_plots(model, gen, nb_reps=100, dim_1=0, dim_2=1, figsize=(15, 7
     x = np.arange(mu_data.shape[1])
     print('VAE plots: colors represent sample index')
 
-
     print('Sample plots (colors represent sample index)')
     datapoints = np.zeros(data['mu'].shape)
     for di, mu in tqdm(enumerate(data['mu']), leave=False):
-        logvar = data['logvar'][di,...]
+        logvar = data['logvar'][di, ...]
         eps = np.random.normal(loc=0, scale=1, size=(data['mu'].shape[-1]))
         datapoints[di, ...] = mu + np.exp(logvar / 2) * eps
     plt.figure(figsize=figsize)
@@ -436,7 +448,6 @@ def latent_stats_plots(model, gen, nb_reps=100, dim_1=0, dim_2=1, figsize=(15, 7
     plt.title('mean sample z. nb_reps=%d. colors = sorted dim.' % nb_reps)
     plt.xlabel('sorted dims')
     plt.ylabel('mean sample z')
-
 
     # plot
     plt.figure(figsize=figsize)
@@ -481,11 +492,7 @@ def latent_stats_plots(model, gen, nb_reps=100, dim_1=0, dim_2=1, figsize=(15, 7
     plt.ylabel('mean std')
     plt.show()
 
-
-
-
     return data
-
 
 
 ###############################################################################

@@ -9,11 +9,15 @@ CVPR 2018. https://arxiv.org/abs/1903.03148
 
 Copyright 2020 Adrian V. Dalca
 
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in 
+compliance with the License. You may obtain a copy of the License at
 
 http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+Unless required by applicable law or agreed to in writing, software distributed under the License is
+distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or 
+implied. See the License for the specific language governing permissions and limitations under 
+the License.
 """
 # python imports
 import itertools
@@ -92,7 +96,7 @@ def predict_volumes(models,
 
         # quilt volumes and aggregate overlapping patches, if any
         args = [patch_size, grid_size, patch_stride]
-        label_kwargs = {'nan_func_layers':nan_func, 'nan_func_K':nan_func, 'verbose':verbose}
+        label_kwargs = {'nan_func_layers': nan_func, 'nan_func_K': nan_func, 'verbose': verbose}
         vol_true_label = _quilt(all_true_label, *args, **label_kwargs).astype('int')
         vol_pred_label = _quilt(all_pred_label, *args, **label_kwargs).astype('int')
 
@@ -163,7 +167,7 @@ def predict_volume_stack(models,
     # in order to loop through batches and form full volumes
     nb_patches = np.prod(grid_size)
     # assert np.mod(nb_patches, batch_size) == 0, \
-        # "batch_size %d should be a divisor of nb_patches %d" %(batch_size, nb_patches)
+    # "batch_size %d should be a divisor of nb_patches %d" %(batch_size, nb_patches)
     nb_batches = ((nb_patches - 1) // batch_size) + 1
 
     # go through the patches
@@ -186,19 +190,20 @@ def predict_volume_stack(models,
             # with timer.Timer('prediction', verbose):
             pred = model.predict(sample[0])
             assert pred.shape[0] == batch_size, \
-                "batch size mismatch. sample has batch size %d, given batch size is %d" %(pred.shape[0], batch_size)
+                "batch size mismatch. sample has batch size %d, given batch size is %d" % (
+                    pred.shape[0], batch_size)
             input_batch = sample[0] if not do_prior else sample[0][0]
 
             # compute batch range
             batch_start = batch_idx * batch_size
             batch_end = np.minimum(batch_start + batch_size, nb_patches)
             batch_range = np.arange(batch_start, batch_end)
-            batch_vox_idx = batch_end-batch_start
+            batch_vox_idx = batch_end - batch_start
 
             # update stacks
             all_vol[idx][batch_range, :] = K.batch_flatten(input_batch)[0:batch_vox_idx, :]
             all_true[idx][batch_range, :] = K.batch_flatten(sample[1])[0:batch_vox_idx, :]
-            all_pred[idx][batch_range, :] = K._batch_flatten(pred)[0:batch_vox_idx, :]
+            all_pred[idx][batch_range, :] = K.batch_flatten(pred)[0:batch_vox_idx, :]
             if do_prior:
                 all_prior[idx][batch_range, :] = K.batch_flatten(sample[0][1])[0:batch_vox_idx, :]
 
@@ -236,7 +241,8 @@ def prob_of_label(vol, labelvol):
 
     # check dimensions
     nb_dims = np.ndim(labelvol)
-    assert np.ndim(vol) == nb_dims + 1, "vol dimensions do not match [%d] vs [%d]" % (np.ndim(vol)-1, nb_dims)
+    assert np.ndim(vol) == nb_dims + \
+        1, "vol dimensions do not match [%d] vs [%d]" % (np.ndim(vol) - 1, nb_dims)
     shp = vol.shape
     nb_voxels = np.prod(shp[0:nb_dims])
     nb_labels = shp[-1]
