@@ -62,12 +62,12 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
         enable optional orig_grid - the original grid points.
         check out tf.contrib.resampler, only seems to work for 2D data
     """
-    
+
     if isinstance(loc, (list, tuple)):
         loc = tf.stack(loc, -1)
     nb_dims = loc.shape[-1]
 
-    if len(vol.shape) not in [nb_dims, nb_dims+1]:
+    if len(vol.shape) not in [nb_dims, nb_dims + 1]:
         raise Exception("Number of loc Tensors %d does not match volume dimension %d"
                         % (nb_dims, len(vol.shape[:-1])))
 
@@ -81,7 +81,6 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
     # flatten and float location Tensors
     if loc.dtype != tf.float32:
         loc = tf.cast(loc, 'float32')
-    
 
     if isinstance(vol.shape, (tf.compat.v1.Dimension, tf.TensorShape)):
         volshape = vol.shape.as_list()
@@ -92,13 +91,13 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
 
     # interpolate
     if interp_method == 'linear':
-        # get floor. 
+        # get floor.
         # This has to remain a tf.float32 since we will be using loc1 in a float32 op
         loc0 = tf.floor(loc)
 
         # clip values
-        clipped_loc = [tf.clip_by_value(loc[...,d], 0, max_loc[d]) for d in range(nb_dims)]
-        loc0lst = [tf.clip_by_value(loc0[...,d], 0, max_loc[d]) for d in range(nb_dims)]
+        clipped_loc = [tf.clip_by_value(loc[..., d], 0, max_loc[d]) for d in range(nb_dims)]
+        loc0lst = [tf.clip_by_value(loc0[..., d], 0, max_loc[d]) for d in range(nb_dims)]
 
         # get other end of point cube
         loc1 = [tf.clip_by_value(loc0lst[d] + 1, 0, max_loc[d]) for d in range(nb_dims)]
@@ -109,15 +108,16 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
         #   because: floor(pt) + 1 - pt = 1 + (floor(pt) - pt) = 1 - (pt - floor(pt))
         diff_loc1 = [loc1[d] - clipped_loc[d] for d in range(nb_dims)]
         diff_loc0 = [1 - d for d in diff_loc1]
-        weights_loc = [diff_loc1, diff_loc0] # note reverse ordering since weights are inverse of diff.
+        # note reverse ordering since weights are inverse of diff.
+        weights_loc = [diff_loc1, diff_loc0]
 
-        # go through all the cube corners, indexed by a ND binary vector 
+        # go through all the cube corners, indexed by a ND binary vector
         # e.g. [0, 0] means this "first" corner in a 2-D "cube"
         cube_pts = list(itertools.product([0, 1], repeat=nb_dims))
         interp_vol = 0
-        
+
         for c in cube_pts:
-            
+
             # get nd values
             # note re: indices above volumes via https://github.com/tensorflow/tensorflow/issues/15091
             #   It works on GPU because we do not perform index validation checking on GPU -- it's too
@@ -142,27 +142,27 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
             # wt = tf.reduce_prod(wlm, axis=0)
             wt = prod_n(wts_lst)
             wt = K.expand_dims(wt, -1)
-            
+
             # compute final weighted value for each cube corner
             interp_vol += wt * vol_val
-        
+
     else:
         assert interp_method == 'nearest', 'method should be linear or nearest, got: %s' % interp_method
         roundloc = tf.cast(tf.round(loc), 'int32')
-        roundloc = [tf.clip_by_value(roundloc[...,d], 0, max_loc[d]) for d in range(nb_dims)]
+        roundloc = [tf.clip_by_value(roundloc[..., d], 0, max_loc[d]) for d in range(nb_dims)]
 
         # get values
         # tf stacking is slow. replace with gather
         # roundloc = tf.stack(roundloc, axis=-1)
         # interp_vol = tf.gather_nd(vol, roundloc)
         idx = sub2ind2d(vol.shape[:-1], roundloc)
-        interp_vol = tf.gather(tf.reshape(vol, [-1, vol.shape[-1]]), idx) 
+        interp_vol = tf.gather(tf.reshape(vol, [-1, vol.shape[-1]]), idx)
 
     if fill_value is not None:
         out_type = interp_vol.dtype
         fill_value = tf.constant(fill_value, dtype=out_type)
-        below = [tf.less(loc[...,d], 0) for d in range(nb_dims)]
-        above = [tf.greater(loc[...,d], max_loc[d]) for d in range(nb_dims)]
+        below = [tf.less(loc[..., d], 0) for d in range(nb_dims)]
+        above = [tf.greater(loc[..., d], max_loc[d]) for d in range(nb_dims)]
         out_of_bounds = tf.reduce_any(tf.stack(below + above, axis=-1), axis=-1, keepdims=True)
         interp_vol *= tf.cast(tf.logical_not(out_of_bounds), out_type)
         interp_vol += tf.cast(out_of_bounds, out_type) * fill_value
@@ -186,8 +186,8 @@ def resize(vol, zoom_factor, interp_method='linear'):
     if isinstance(zoom_factor, (list, tuple)):
         ndims = len(zoom_factor)
         vol_shape = vol.shape[:ndims]
-        
-        assert len(vol_shape) in (ndims, ndims+1), \
+
+        assert len(vol_shape) in (ndims, ndims + 1), \
             "zoom_factor length %d does not match ndims %d" % (len(vol_shape), ndims)
 
     else:
@@ -200,7 +200,7 @@ def resize(vol, zoom_factor, interp_method='linear'):
     new_shape = [vol_shape[f] * zoom_factor[f] for f in range(ndims)]
     new_shape = [int(f) for f in new_shape]
 
-    lin = [tf.linspace(0., vol_shape[d]-1., new_shape[d]) for d in range(ndims)]
+    lin = [tf.linspace(0., vol_shape[d] - 1., new_shape[d]) for d in range(ndims)]
     grid = ne.utils.ndgrid(*lin)
 
     return ne.utils.interpn(vol, grid, interp_method=interp_method)
@@ -216,7 +216,7 @@ zoom = resize
 def tf_map_fn_axis(fn, elems, axis, **kwargs):
     """
     apply tf.map_fn along a specific axis
-    
+
     Parameters:
         fn: function to apply
         elems:
@@ -226,20 +226,20 @@ def tf_map_fn_axis(fn, elems, axis, **kwargs):
         kwargs: other arguments for tf.map_fn
 
     """
-    
+
     # determine lists
     islist = isinstance(elems, (tuple, list))
     if not islist:
         elems = [elems]
         assert not isinstance(axis, (tuple, list)), 'axis cannot be list if elements are not list'
         axis = [axis]
-        
-        
+
     elems_perm = []
     for xi, x in enumerate(elems):
         a = axis[xi]
         s = len(x.get_shape().as_list())
-        if a == -1: a = s - 1
+        if a == -1:
+            a = s - 1
 
         # move channels to front, so x will be [axis, ...]
         perm = [a] + list(range(0, a)) + list(range(a + 1, s))
@@ -248,25 +248,25 @@ def tf_map_fn_axis(fn, elems, axis, **kwargs):
     # compute sptial deformation regularization for this channel
     if not islist:
         elems_perm = elems_perm[0]
-        
+
     x_perm_trf = tf.map_fn(fn, elems_perm, **kwargs)
     if not islist:
         x_perm_trf = [x_perm_trf]
-        
 
     # move in_channels back to end
     elems_trf = []
     for xi, x in enumerate(x_perm_trf):
         a = axis[xi]
         s = len(x.get_shape().as_list())
-        if a == -1: a = s - 1
-            
+        if a == -1:
+            a = s - 1
+
         perm = list(range(1, a + 1)) + [0] + list(range(a + 1, s))
         elems_trf.append(K.permute_dimensions(x, perm))
-        
+
     if not islist:
         elems_trf = elems_trf[0]
-    
+
     return elems_trf
 
 
@@ -284,7 +284,7 @@ def volshape_to_ndgrid(volshape, **kwargs):
     See Also:
         ndgrid
     """
-    
+
     isint = [float(d).is_integer() for d in volshape]
     if not all(isint):
         raise ValueError("volshape needs to be a list of integers")
@@ -310,7 +310,7 @@ def volshape_to_meshgrid(volshape, **kwargs):
     See Also:
         tf.meshgrid, meshgrid, ndgrid, volshape_to_ndgrid
     """
-    
+
     isint = [float(d).is_integer() for d in volshape]
     if not all(isint):
         raise ValueError("volshape needs to be a list of integers")
@@ -330,18 +330,18 @@ def ndgrid(*args, **kwargs):
 
     Returns:
         A list of Tensors
-    
+
     """
     return meshgrid(*args, indexing='ij', **kwargs)
 
 
 def meshgrid(*args, **kwargs):
     """
-    
+
     meshgrid code that builds on (copies) tensorflow's meshgrid but dramatically
     improves runtime by changing the last step to tiling instead of multiplication.
     https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/python/ops/array_ops.py#L1921
-    
+
     Broadcasts parameters for evaluation on an N-D grid.
     Given N one-dimensional coordinate arrays `*args`, returns a list `outputs`
     of N-D coordinate arrays for evaluating expressions on an N-D grid.
@@ -379,7 +379,7 @@ def meshgrid(*args, **kwargs):
     if kwargs:
         key = list(kwargs.keys())[0]
         raise TypeError("'{}' is an invalid keyword argument "
-                    "for this function".format(key))
+                        "for this function".format(key))
 
     if indexing not in ("xy", "ij"):
         raise ValueError("indexing parameter must be either 'xy' or 'ij'")
@@ -403,13 +403,13 @@ def meshgrid(*args, **kwargs):
         shapes[0], shapes[1] = shapes[1], shapes[0]
         sz[0], sz[1] = sz[1], sz[0]
 
-    # This is the part of the implementation from tf that is slow. 
+    # This is the part of the implementation from tf that is slow.
     # We replace it below to get a ~6x speedup (essentially using tile instead of * tf.ones())
-    # TODO(nolivia): improve performance with a broadcast  
+    # TODO(nolivia): improve performance with a broadcast
     # mult_fact = tf.ones(shapes, output_dtype)
     # return [x * mult_fact for x in output]
-    for i in range(len(output)):       
-        stack_sz = [*sz[:i], 1, *sz[(i+1):]]
+    for i in range(len(output)):
+        stack_sz = [*sz[:i], 1, *sz[(i + 1):]]
         if indexing == 'xy' and ndim > 1 and i < 2:
             stack_sz[0], stack_sz[1] = stack_sz[1], stack_sz[0]
         output[i] = tf.tile(output[i], tf.stack(stack_sz))
@@ -419,16 +419,16 @@ def meshgrid(*args, **kwargs):
 def flatten(v):
     """
     flatten Tensor v
-    
+
     Parameters:
         v: Tensor to be flattened
-    
+
     Returns:
         flat Tensor
     """
 
     return tf.reshape(v, [-1])
-   
+
 
 def take(x, indices, axis):
     """ Take elements from an array along axis. Similar to np.take. 
@@ -447,7 +447,7 @@ def take(x, indices, axis):
     """
     return tf.gather(x, indices, axis=axis)
 
-    
+
 ###############################################################################
 # filtering
 ###############################################################################
@@ -456,7 +456,7 @@ def take(x, indices, axis):
 def gaussian_kernel(sigma, windowsize=None, indexing='ij', separate=False, random=False):
     '''
     Construct an N-dimensional Gaussian kernel.
-    
+
     Parameters:
         sigma: Standard deviations, scalar or list of N scalars.
         windowsize: Extent of the kernel in each dimension, scalar or list.
@@ -552,7 +552,7 @@ def separable_conv(x, kernels, axis=None, padding='SAME'):
     forward = (ind[-1], *ind[:-1])
     backward = (*ind[1:], ind[0])
     x = tf.transpose(x, perm=forward)[..., None]
-    
+
     for ax, k in zip(axis, kernels):
         width = np.prod(k.shape.as_list())
         shape = np.ones(num_dim + 1)
@@ -561,12 +561,12 @@ def separable_conv(x, kernels, axis=None, padding='SAME'):
         x = tf.nn.convolution(x, k, padding=padding)
 
     # Remove dummy feature dimension and restore features from batch dimension.
-    x = tf.transpose(x[...,0], perm=backward)
+    x = tf.transpose(x[..., 0], perm=backward)
     return x[..., 0] if no_features else x
 
 
 ###############################################################################
-# simple math functions, often used as activations 
+# simple math functions, often used as activations
 ###############################################################################
 
 def softmax(x, axis=-1, alpha=1):
@@ -601,7 +601,7 @@ def logtanh(x, a=1):
 
     See Also: arcsinh
     """
-    return K.tanh(x) *  K.log(2 + a * abs(x))
+    return K.tanh(x) * K.log(2 + a * abs(x))
 
 
 def arcsinh(x, alpha=1):
@@ -619,8 +619,8 @@ def logistic(x, x0=0., alpha=1., L=1.):
     """
     assert L > 0, 'L (height of logistic) should be > 0'
     assert alpha > 0, 'alpha (slope) of logistic should be > 0'
-    
-    return L / (1 + tf.exp(-alpha * (x-x0)))
+
+    return L / (1 + tf.exp(-alpha * (x - x0)))
 
 
 def sigmoid(x):
@@ -634,21 +634,21 @@ def logistic_fixed_ends(x, start=-1., end=1., L=1., **kwargs):
     """
     assert end > start, 'End of fixed points should be greater than start'
     # tf.assert_greater(end, start, message='assert')
-    
+
     # clip to start and end
     x = tf.clip_by_value(x, start, end)
-    
+
     # logistic function
     xv = logistic(x, L=L, **kwargs)
-    
+
     # ends of linear corrective function
     sv = logistic(start, L=L, **kwargs)
     ev = logistic(end, L=L, **kwargs)
-    
+
     # corrective function
     df = end - start
-    linear_corr = (end-x)/df * (- sv) + (x-start)/df * (-ev + L)
-    
+    linear_corr = (end - x) / df * (- sv) + (x - start) / df * (-ev + L)
+
     # return fixed logistic
     return xv + linear_corr
 
@@ -685,7 +685,7 @@ def odd_shifted_relu(x, shift=-0.5, scale=2.0):
 
     shift = float(shift)
     scale = float(scale)
-    return scale * K.relu(x - shift)  - scale * K.relu(- x - shift)
+    return scale * K.relu(x - shift) - scale * K.relu(- x - shift)
 
 
 def minmax_norm(x):
@@ -706,12 +706,12 @@ def perlin_vol(vol_shape, min_scale=0, max_scale=None, interp_method='linear', w
     generate perlin noise ND volume 
 
     rough algorithm:
-    
+
     vol = zeros
     for scale in scales:
         rand = generate random uniform noise at given scale
         vol += wt * upsampled rand to vol_shape 
-        
+
 
     Parameters
     ----------
@@ -723,7 +723,7 @@ def perlin_vol(vol_shape, min_scale=0, max_scale=None, interp_method='linear', w
     interp_order: interpolation (upscale) order, as used in ne.utils.zoom
     wt_type: the weight type between volumes. default: monotonically decreasing with image size.
       options: 'monotonic', 'random'
-    
+
     https://github.com/adalca/matlib/blob/master/matlib/visual/perlin.m
     loosely inspired from http://nullprogram.com/blog/2007/11/20
 
@@ -735,7 +735,7 @@ def perlin_vol(vol_shape, min_scale=0, max_scale=None, interp_method='linear', w
 
     # input handling
     assert wt_type in ['monotonic', 'random'], \
-        "wt_type should be in 'monotonic', 'random', got: %s"  % wt_type
+        "wt_type should be in 'monotonic', 'random', got: %s" % wt_type
 
     if max_scale is None:
         max_width = np.max(vol_shape)
@@ -746,16 +746,15 @@ def perlin_vol(vol_shape, min_scale=0, max_scale=None, interp_method='linear', w
     wts = []
     for i in range(min_scale, max_scale + 1):
         scale_shapes.append(np.ceil([f / (2**i) for f in vol_shape]).astype('int'))
-    
+
         # determine weight
         if wt_type == 'monotonic':
             wts.append(i + 1)  # larger images (so more high frequencies) get lower weight
         else:
             wts.append(K.random_uniform([1])[0])
 
-    wts = K.stack(wts)/K.sum(wts)
+    wts = K.stack(wts) / K.sum(wts)
     wts = tf.cast(wts, tf.float32)
-
 
     # get perlin volume
     vol = K.zeros(vol_shape)
@@ -763,14 +762,14 @@ def perlin_vol(vol_shape, min_scale=0, max_scale=None, interp_method='linear', w
 
         # get a small random volume
         rand_vol = K.random_uniform(sc)
-        
+
         # interpolated rand volume to upper side
-        reshape_factor = [vol_shape[d]/sc[d] for d in range(len(vol_shape))]
+        reshape_factor = [vol_shape[d] / sc[d] for d in range(len(vol_shape))]
         interp_vol = zoom(rand_vol, reshape_factor, interp_method=interp_method)[..., 0]
 
         # add to existing volume
         vol = vol + wts[sci] * interp_vol
-        
+
     return vol
 
 
@@ -824,7 +823,7 @@ def soft_quantize(x,
     - for each array element, that value v gets assigned to all bins with 
         a weight of exp(-alpha * (v - c)), where c is the bin center
     - return volume x nb_bins
-    
+
     Parameters:
         x [bs, ...]: intensity image. 
         bin_centers (np.float32 or list, optional): bin centers for soft histogram.
@@ -839,18 +838,18 @@ def soft_quantize(x,
 
     Returns:
         tf.float32: volume with one more dimension [bs, ..., B]
-    
+
     If you find this function useful, please cite the original paper this was written for:
         M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
         Learning image registration without images.
         arXiv preprint arXiv:2004.10282, 2020. https://arxiv.org/abs/2004.10282
     """
 
-    if bin_centers is not None: 
+    if bin_centers is not None:
         bin_centers = tf.convert_to_tensor(bin_centers, tf.float32)
         assert nb_bins is None, 'cannot provide both bin_centers and nb_bins'
         nb_bins = bin_centers.shape[0]
-    else: 
+    else:
         if nb_bins is None:
             nb_bins = 16
         # get bin centers dynamically
@@ -864,9 +863,9 @@ def soft_quantize(x,
     # clipping at bin values
     x = x[..., tf.newaxis]                                                # [..., 1]
     x = tf.clip_by_value(x, min_clip, max_clip)
-    
+
     # reshape bin centers to be (1, 1, .., B)
-    new_shape = [1]*(len(x.shape)-1) + [nb_bins]
+    new_shape = [1] * (len(x.shape) - 1) + [nb_bins]
     bin_centers = K.reshape(bin_centers, new_shape)                       # [1, 1, ..., B]
 
     # compute image terms
@@ -883,7 +882,7 @@ def soft_quantize(x,
 def batch_channel_flatten(x):
     """
     flatten volume elements outside for each batch and channel
-    
+
     using naming based on keras backend
 
     Args:
@@ -895,8 +894,10 @@ def batch_channel_flatten(x):
     """
     return flatten_axes(x, range(1, K.ndim(x) - 1))
 
+
 # have both namings around
 flatten_batch_channel = batch_channel_flatten
+
 
 def flatten_axes(x, axes):
     """
@@ -913,9 +914,8 @@ def flatten_axes(x, axes):
     assert axes[-1] < K.ndim(x), 'axis %d outside max axis %d' % (axes[-1], K.ndim(x) - 1)
 
     shp = K.shape(x)
-    reshape = tf.concat([shp[:axes[0]], - tf.ones((1,), dtype=tf.int32), shp[axes[-1]+1:]], 0)
+    reshape = tf.concat([shp[:axes[0]], - tf.ones((1,), dtype=tf.int32), shp[axes[-1] + 1:]], 0)
     return K.reshape(x, reshape)
-    
 
 
 ###############################################################################
@@ -925,7 +925,7 @@ def flatten_axes(x, axes):
 def batch_gather(reference, indices):
     """
     C+P From Keras pull request https://github.com/keras-team/keras/pull/6377/files
-    
+
     Batchwise gathering of row indices.
 
     The numpy equivalent is `reference[np.arange(batch_size), indices]`, where
