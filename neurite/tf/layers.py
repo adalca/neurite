@@ -73,7 +73,7 @@ class RescaleValues(Layer):
         super(RescaleValues, self).build(input_shape)  # Be sure to call this somewhere!
 
     def call(self, x):
-        return x * self.resize 
+        return x * self.resize
 
     def compute_output_shape(self, input_shape):
         return input_shape
@@ -135,13 +135,12 @@ class Resize(Layer):
         else:
             assert len(self.zoom_factor) == self.ndims, \
                 'zoom factor length {} does not match number of dimensions {}'\
-                    .format(len(self.zoom_factor), self.ndims)
+                .format(len(self.zoom_factor), self.ndims)
 
         # confirm built
         self.built = True
 
         super(Resize, self).build(input_shape)  # Be sure to call this somewhere!
-
 
     def call(self, inputs):
         """
@@ -163,7 +162,7 @@ class Resize(Layer):
         return tf.map_fn(self._single_resize, vol, dtype=tf.float32)
 
     def compute_output_shape(self, input_shape):
-        
+
         output_shape = [input_shape[0]]
         output_shape += [int(input_shape[1:-1][f] * self.zoom_factor[f]) for f in range(self.ndims)]
         output_shape += [input_shape[-1]]
@@ -171,6 +170,7 @@ class Resize(Layer):
 
     def _single_resize(self, inputs):
         return utils.resize(inputs, self.zoom_factor, interp_method=self.interp_method)
+
 
 # Zoom naming of resize, to match scipy's naming
 Zoom = Resize
@@ -261,21 +261,22 @@ class GaussianBlur(Layer):
         else:
             if sigma < 0:
                 raise ValueError('Gaussian blur sigma must not be less than 0')
-                
+
             self.sigma = sigma
 
         super().__init__(**kwargs)
 
     def build(self, input_shape):
         ndims = len(input_shape) - 2
-        
+
         # prepare kernel
         kernel = utils.gaussian_kernel([self.sigma] * ndims)
         kernel = tf.reshape(kernel, kernel.shape.as_list() + [1, 1])
 
         # prepare convoperation
         convnd = getattr(tf.nn, 'conv%dd' % ndims)
-        self.conv = lambda x : convnd(tf.expand_dims(x, -1), kernel, [1] * (ndims + 2), padding='SAME')
+        self.conv = lambda x: convnd(tf.expand_dims(x, -1), kernel,
+                                     [1] * (ndims + 2), padding='SAME')
         self.nfeat = input_shape[-1]
 
     def call(self, x):
@@ -292,7 +293,6 @@ class GaussianBlur(Layer):
             'sigma': self.sigma,
         })
         return config
-
 
 
 #########################################################
@@ -313,7 +313,7 @@ class SpatiallySparse_Dense(Layer):
     # tensor inputs should be [enc], and output will be vol
     """
 
-    def __init__(self, input_shape, output_len, use_bias=False, 
+    def __init__(self, input_shape, output_len, use_bias=False,
                  kernel_initializer='RandomNormal',
                  bias_initializer='RandomNormal', **kwargs):
         self.kernel_initializer = kernel_initializer
@@ -326,19 +326,17 @@ class SpatiallySparse_Dense(Layer):
 
     def build(self, input_shape):
 
-
-
         # Create a trainable weight variable for this layer.
         self.kernel = self.add_weight(name='mult-kernel',
-                                    shape=(np.prod(self.orig_input_shape),
-                                           self.output_len),
-                                    initializer=self.kernel_initializer,
-                                    trainable=True)
+                                      shape=(np.prod(self.orig_input_shape),
+                                             self.output_len),
+                                      initializer=self.kernel_initializer,
+                                      trainable=True)
 
         M = K.reshape(self.kernel, [-1, self.output_len])  # D x d
-        mt = K.transpose(M) # d x D
+        mt = K.transpose(M)  # d x D
         mtm_inv = tf.matrix_inverse(K.dot(mt, M))  # d x d
-        self.W = K.dot(mtm_inv, mt) # d x D
+        self.W = K.dot(mtm_inv, mt)  # d x D
 
         if self.use_bias:
             self.bias = self.add_weight(name='bias-kernel',
@@ -362,20 +360,21 @@ class SpatiallySparse_Dense(Layer):
         # flatten
         if len(args) == 2:  # input y, m
             # get inputs
-            y, y_mask = args 
+            y, y_mask = args
             a_fact = int(y.get_shape().as_list()[-1] / y_mask.get_shape().as_list()[-1])
             y_mask = K.repeat_elements(y_mask, a_fact, -1)
             y_flat = K.batch_flatten(y)  # N x D
             y_mask_flat = K.batch_flatten(y_mask)  # N x D
 
             # prepare switching matrix
-            W = self.W # d x D
+            W = self.W  # d x D
 
             w_tmp = K.expand_dims(W, 0)  # 1 x d x D
-            Wo = K.permute_dimensions(w_tmp, [0, 2, 1]) * K.expand_dims(y_mask_flat, -1)  # N x D x d
+            Wo = K.permute_dimensions(w_tmp, [0, 2, 1]) * \
+                K.expand_dims(y_mask_flat, -1)  # N x D x d
             WoT = K.permute_dimensions(Wo, [0, 2, 1])    # N x d x D
             WotWo_inv = tf.matrix_inverse(K.batch_dot(WoT, Wo))  # N x d x d
-            pre = K.batch_dot(WotWo_inv, WoT) # N x d x D
+            pre = K.batch_dot(WotWo_inv, WoT)  # N x d x D
             res = K.batch_dot(pre, y_flat)  # N x d
 
             if self.use_bias:
@@ -429,7 +428,7 @@ class LocalBias(Layer):
 
     def build(self, input_shape):
         # Create a trainable weight variable for this layer.
-        self.kernel = self.add_weight(name='kernel', 
+        self.kernel = self.add_weight(name='kernel',
                                       shape=input_shape[1:],
                                       initializer=self.initializer,
                                       trainable=True)
@@ -459,123 +458,123 @@ class LocalLinear(Layer):
 
     def build(self, input_shape):
         # Create a trainable weight variable for this layer.
-        self.mult = self.add_weight(name='mult-kernel', 
-                                      shape=input_shape[1:],
-                                      initializer=self.initializer,
-                                      trainable=True)
-        self.bias = self.add_weight(name='bias-kernel', 
-                                      shape=input_shape[1:],
-                                      initializer=self.initializer,
-                                      trainable=True)
+        self.mult = self.add_weight(name='mult-kernel',
+                                    shape=input_shape[1:],
+                                    initializer=self.initializer,
+                                    trainable=True)
+        self.bias = self.add_weight(name='bias-kernel',
+                                    shape=input_shape[1:],
+                                    initializer=self.initializer,
+                                    trainable=True)
         super(LocalLinear, self).build(input_shape)  # Be sure to call this somewhere!
 
     def call(self, x):
-        return x * self.mult + self.bias 
+        return x * self.mult + self.bias
 
     def compute_output_shape(self, input_shape):
         return input_shape
- 
+
 
 class LocallyConnected3D(Layer):
     """
     Code based on LocallyConnected2D from TensorFLow/Keras:
     https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/layers/local.py
 
-	Locally-connected layer for 3D inputs.
-	  The `LocallyConnected3D` layer works similarly
-	  to the `Conv3D` layer, except that weights are unshared,
-	  that is, a different set of filters is applied at each
-	  different patch of the input.
-	  Note: layer attributes cannot be modified after the layer has been called
-	  once (except the `trainable` attribute).
-	  Examples:
-	  ```python
-		  # apply a 3x3x3 unshared weights convolution with 64 output filters on a
-		  32x32x32 image
-		  # with `data_format="channels_last"`:
-		  model = Sequential()
-		  model.add(LocallyConnected3D(64, (3, 3, 3), input_shape=(32, 32, 32, 3)))
-		  # now model.output_shape == (None, 30, 30, 30, 64)
-		  # notice that this layer will consume (30*30*30)*(3*3*3*64) + (30*30*30)*64
-		  parameters
-		  # add a 3x3x3 unshared weights convolution on top, with 32 output filters:
-		  model.add(LocallyConnected3D(32, (3, 3, 3)))
-		  # now model.output_shape == (None, 28, 28, 28, 32)
-	  ```
-	  Arguments:
-		  filters: Integer, the dimensionality of the output space
-			  (i.e. the number of output filters in the convolution).
-		  kernel_size: An integer or tuple/list of 3 integers, specifying the
-			  width and height of the 3D convolution window.
-			  Can be a single integer to specify the same value for
-			  all spatial dimensions.
-		  strides: An integer or tuple/list of 3 integers,
-			  specifying the strides of the convolution along the width, height
-			  and depth. Can be a single integer to specify the same value for
-			  all spatial dimensions.
-		  padding: Currently only support `"valid"` (case-insensitive).
-			  `"same"` will be supported in future.
-			  `"valid"` means no padding.
-		  data_format: A string,
-			  one of `channels_last` (default) or `channels_first`.
-			  The ordering of the dimensions in the inputs.
-			  `channels_last` corresponds to inputs with shape
-			  `(batch, height, width, depth, channels)` while `channels_first`
-			  corresponds to inputs with shape
-			  `(batch, channels, height, width, height)`.
-			  It defaults to the `image_data_format` value found in your
-			  Keras config file at `~/.keras/keras.json`.
-			  If you never set it, then it will be "channels_last".
-		  activation: Activation function to use.
-			  If you don't specify anything, no activation is applied
-			  (ie. "linear" activation: `a(x) = x`).
-		  use_bias: Boolean, whether the layer uses a bias vector.
-		  kernel_initializer: Initializer for the `kernel` weights matrix.
-		  bias_initializer: Initializer for the bias vector.
-		  kernel_regularizer: Regularizer function applied to
-			  the `kernel` weights matrix.
-		  bias_regularizer: Regularizer function applied to the bias vector.
-		  activity_regularizer: Regularizer function applied to
-			  the output of the layer (its "activation").
-		  kernel_constraint: Constraint function applied to the kernel matrix.
-		  bias_constraint: Constraint function applied to the bias vector.
-		  implementation: implementation mode, either `1`, `2`, or `3`.
-			  `1` loops over input spatial locations to perform the forward pass.
-			  It is memory-efficient but performs a lot of (small) ops.
-			  `2` stores layer weights in a dense but sparsely-populated 2D matrix
-			  and implements the forward pass as a single matrix-multiply. It uses
-			  a lot of RAM but performs few (large) ops.
-			  `3` stores layer weights in a sparse tensor and implements the forward
-			  pass as a single sparse matrix-multiply.
-			  How to choose:
-			  `1`: large, dense models,
-			  `2`: small models,
-			  `3`: large, sparse models,
-			  where "large" stands for large input/output activations
-			  (i.e. many `filters`, `input_filters`, large `np.prod(input_size)`,
-			  `np.prod(output_size)`), and "sparse" stands for few connections
-			  between inputs and outputs, i.e. small ratio
-			  `filters * input_filters * np.prod(kernel_size) / (np.prod(input_size)
-			  * np.prod(strides))`, where inputs to and outputs of the layer are
-			  assumed to have shapes `input_size + (input_filters,)`,
-			  `output_size + (filters,)` respectively.
-			  It is recommended to benchmark each in the setting of interest to pick
-			  the most efficient one (in terms of speed and memory usage). Correct
-			  choice of implementation can lead to dramatic speed improvements (e.g.
-			  50X), potentially at the expense of RAM.
-			  Also, only `padding="valid"` is supported by `implementation=1`.
-	  Input shape:
-		  5D tensor with shape:
-		  `(samples, channels, rows, cols, z)` if data_format='channels_first'
-		  or 5D tensor with shape:
-		  `(samples, rows, cols, z, channels)` if data_format='channels_last'.
-	  Output shape:
-		  5D tensor with shape:
-		  `(samples, filters, new_rows, new_cols, new_z)` if data_format='channels_first'
-		  or 5D tensor with shape:
-		  `(samples, new_rows, new_cols, new_z, filters)` if data_format='channels_last'.
-		  `rows`, `cols` and `z` values might have changed due to padding.
-	"""
+        Locally-connected layer for 3D inputs.
+          The `LocallyConnected3D` layer works similarly
+          to the `Conv3D` layer, except that weights are unshared,
+          that is, a different set of filters is applied at each
+          different patch of the input.
+          Note: layer attributes cannot be modified after the layer has been called
+          once (except the `trainable` attribute).
+          Examples:
+          ```python
+                  # apply a 3x3x3 unshared weights convolution with 64 output filters on a
+                  32x32x32 image
+                  # with `data_format="channels_last"`:
+                  model = Sequential()
+                  model.add(LocallyConnected3D(64, (3, 3, 3), input_shape=(32, 32, 32, 3)))
+                  # now model.output_shape == (None, 30, 30, 30, 64)
+                  # notice that this layer will consume (30*30*30)*(3*3*3*64) + (30*30*30)*64
+                  parameters
+                  # add a 3x3x3 unshared weights convolution on top, with 32 output filters:
+                  model.add(LocallyConnected3D(32, (3, 3, 3)))
+                  # now model.output_shape == (None, 28, 28, 28, 32)
+          ```
+          Arguments:
+                  filters: Integer, the dimensionality of the output space
+                          (i.e. the number of output filters in the convolution).
+                  kernel_size: An integer or tuple/list of 3 integers, specifying the
+                          width and height of the 3D convolution window.
+                          Can be a single integer to specify the same value for
+                          all spatial dimensions.
+                  strides: An integer or tuple/list of 3 integers,
+                          specifying the strides of the convolution along the width, height
+                          and depth. Can be a single integer to specify the same value for
+                          all spatial dimensions.
+                  padding: Currently only support `"valid"` (case-insensitive).
+                          `"same"` will be supported in future.
+                          `"valid"` means no padding.
+                  data_format: A string,
+                          one of `channels_last` (default) or `channels_first`.
+                          The ordering of the dimensions in the inputs.
+                          `channels_last` corresponds to inputs with shape
+                          `(batch, height, width, depth, channels)` while `channels_first`
+                          corresponds to inputs with shape
+                          `(batch, channels, height, width, height)`.
+                          It defaults to the `image_data_format` value found in your
+                          Keras config file at `~/.keras/keras.json`.
+                          If you never set it, then it will be "channels_last".
+                  activation: Activation function to use.
+                          If you don't specify anything, no activation is applied
+                          (ie. "linear" activation: `a(x) = x`).
+                  use_bias: Boolean, whether the layer uses a bias vector.
+                  kernel_initializer: Initializer for the `kernel` weights matrix.
+                  bias_initializer: Initializer for the bias vector.
+                  kernel_regularizer: Regularizer function applied to
+                          the `kernel` weights matrix.
+                  bias_regularizer: Regularizer function applied to the bias vector.
+                  activity_regularizer: Regularizer function applied to
+                          the output of the layer (its "activation").
+                  kernel_constraint: Constraint function applied to the kernel matrix.
+                  bias_constraint: Constraint function applied to the bias vector.
+                  implementation: implementation mode, either `1`, `2`, or `3`.
+                          `1` loops over input spatial locations to perform the forward pass.
+                          It is memory-efficient but performs a lot of (small) ops.
+                          `2` stores layer weights in a dense but sparsely-populated 2D matrix
+                          and implements the forward pass as a single matrix-multiply. It uses
+                          a lot of RAM but performs few (large) ops.
+                          `3` stores layer weights in a sparse tensor and implements the forward
+                          pass as a single sparse matrix-multiply.
+                          How to choose:
+                          `1`: large, dense models,
+                          `2`: small models,
+                          `3`: large, sparse models,
+                          where "large" stands for large input/output activations
+                          (i.e. many `filters`, `input_filters`, large `np.prod(input_size)`,
+                          `np.prod(output_size)`), and "sparse" stands for few connections
+                          between inputs and outputs, i.e. small ratio
+                          `filters * input_filters * np.prod(kernel_size) / (np.prod(input_size)
+                          * np.prod(strides))`, where inputs to and outputs of the layer are
+                          assumed to have shapes `input_size + (input_filters,)`,
+                          `output_size + (filters,)` respectively.
+                          It is recommended to benchmark each in the setting of interest to pick
+                          the most efficient one (in terms of speed and memory usage). Correct
+                          choice of implementation can lead to dramatic speed improvements (e.g.
+                          50X), potentially at the expense of RAM.
+                          Also, only `padding="valid"` is supported by `implementation=1`.
+          Input shape:
+                  5D tensor with shape:
+                  `(samples, channels, rows, cols, z)` if data_format='channels_first'
+                  or 5D tensor with shape:
+                  `(samples, rows, cols, z, channels)` if data_format='channels_last'.
+          Output shape:
+                  5D tensor with shape:
+                  `(samples, filters, new_rows, new_cols, new_z)` if data_format='channels_first'
+                  or 5D tensor with shape:
+                  `(samples, new_rows, new_cols, new_z, filters)` if data_format='channels_last'.
+                  `rows`, `cols` and `z` values might have changed due to padding.
+        """
 
     def __init__(self,
                  filters,
@@ -654,11 +653,11 @@ class LocallyConnected3D(Layer):
 
         elif self.implementation == 2:
             if self.data_format == 'channels_first':
-              self.kernel_shape = (input_filter, input_row, input_col, input_z,
-                                   self.filters, self.output_row, self.output_col, self.output_z)
+                self.kernel_shape = (input_filter, input_row, input_col, input_z,
+                                     self.filters, self.output_row, self.output_col, self.output_z)
             else:
-              self.kernel_shape = (input_row, input_col, input_z, input_filter,
-                                   self.output_row, self.output_col, self.output_z, self.filters)
+                self.kernel_shape = (input_row, input_col, input_z, input_filter,
+                                     self.output_row, self.output_col, self.output_z, self.filters)
 
             self.kernel = self.add_weight(shape=self.kernel_shape,
                                           initializer=self.kernel_initializer,
@@ -741,17 +740,17 @@ class LocallyConnected3D(Layer):
     def call(self, inputs):
         if self.implementation == 1:
             output = LocallyConnected3D.local_conv(inputs, self.kernel,
-                self.kernel_size, self.strides,
-                (self.output_row, self.output_col, self.output_z), self.data_format)
+                                                   self.kernel_size, self.strides,
+                                                   (self.output_row, self.output_col, self.output_z), self.data_format)
 
         elif self.implementation == 2:
             output = LocallyConnected3D.local_conv_matmul(inputs, self.kernel,
-                self.kernel_mask, self.compute_output_shape(inputs.shape))
+                                                          self.kernel_mask, self.compute_output_shape(inputs.shape))
 
         elif self.implementation == 3:
             output = LocallyConnected3D.local_conv_sparse_matmul(inputs,
-                self.kernel, self.kernel_idxs, self.kernel_shape,
-                self.compute_output_shape(inputs.shape))
+                                                                 self.kernel, self.kernel_idxs, self.kernel_shape,
+                                                                 self.compute_output_shape(inputs.shape))
 
         else:
             raise ValueError('Unrecognized implementation mode: %d.'
@@ -783,7 +782,6 @@ class LocallyConnected3D(Layer):
         }
         base_config = super(LocallyConnected3D, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
-
 
     @staticmethod
     def local_conv(inputs,
@@ -859,7 +857,6 @@ class LocallyConnected3D(Layer):
 
         return K.permute_dimensions(output, permutation)
 
-
     @staticmethod
     def get_locallyconnected_mask(input_shape,
                                   kernel_shape,
@@ -920,7 +917,6 @@ class LocallyConnected3D(Layer):
 
         return mask
 
-
     @staticmethod
     def local_conv_matmul(inputs, kernel, kernel_mask, output_shape):
         """Apply N-D convolution with un-shared weights using a single matmul call.
@@ -969,9 +965,8 @@ class LocallyConnected3D(Layer):
 
         output_flat = tf.linalg.matmul(inputs_flat, kernel, b_is_sparse=True)
         output = K.reshape(output_flat,
-            [K.shape(output_flat)[0],] + output_shape.as_list()[1:])
+                           [K.shape(output_flat)[0], ] + output_shape.as_list()[1:])
         return output
-
 
     @staticmethod
     def local_conv_sparse_matmul(inputs, kernel, kernel_idxs, kernel_shape,
@@ -1004,10 +999,9 @@ class LocallyConnected3D(Layer):
 
         output_reshaped = K.reshape(
             output_flat_transpose,
-            [K.shape(output_flat_transpose)[0],] + output_shape.as_list()[1:]
+            [K.shape(output_flat_transpose)[0], ] + output_shape.as_list()[1:]
         )
         return output_reshaped
-
 
     @staticmethod
     def conv_kernel_idxs(input_shape, kernel_shape, strides, padding, filters_in,
@@ -1053,7 +1047,7 @@ class LocallyConnected3D(Layer):
             NotImplementedError: if `padding` is neither `"same"` nor `"valid"`.
         """
         if padding not in ('same', 'valid'):
-             raise NotImplementedError('Padding type %s not supported. '
+            raise NotImplementedError('Padding type %s not supported. '
                                       'Only "valid" and "same" '
                                       'are implemented.' % padding)
 
@@ -1071,7 +1065,7 @@ class LocallyConnected3D(Layer):
                              (stride_dims, in_dims, kernel_dims))
 
         output_shape = LocallyConnected3D.conv_output_shape(input_shape,
-            kernel_shape, strides, padding)
+                                                            kernel_shape, strides, padding)
         output_axes_ticks = [range(dim) for dim in output_shape]
 
         if data_format == 'channels_first':
@@ -1085,7 +1079,7 @@ class LocallyConnected3D(Layer):
 
         for output_position in itertools.product(*output_axes_ticks):
             input_axes_ticks = LocallyConnected3D.conv_connected_inputs(input_shape,
-                kernel_shape, output_position, strides, padding)
+                                                                        kernel_shape, output_position, strides, padding)
             for input_position in itertools.product(*input_axes_ticks):
                 for f_in in range(filters_in):
                     for f_out in range(filters_out):
@@ -1096,7 +1090,6 @@ class LocallyConnected3D(Layer):
                             multi_index=concat_idxs(input_position, f_in),
                             dims=concat_idxs(input_shape, filters_in))
                         yield (out_idx, in_idx)
-
 
     @staticmethod
     def conv_connected_inputs(input_shape, kernel_shape, output_position, strides,
@@ -1148,7 +1141,6 @@ class LocallyConnected3D(Layer):
 
         return ranges
 
-
     @staticmethod
     def conv_output_shape(input_shape, kernel_shape, strides, padding):
         """Return the output shape of an N-D convolution.
@@ -1174,7 +1166,6 @@ class LocallyConnected3D(Layer):
         output_shape = tuple(
             [0 if input_shape[d] == 0 else output_shape[d] for d in dims])
         return output_shape
-
 
     @staticmethod
     def make_2d(tensor, split_dim):
@@ -1205,75 +1196,74 @@ class LocalCrossLinear(Layer):
 
     input: [batch_size, *vol_size, nb_feats_1]
     output: [batch_size, *vol_size, nb_feats_2]
-    
+
     at each spatial voxel, there is a different linear relation learned.
     """
 
-    def __init__(self, output_features, 
+    def __init__(self, output_features,
                  mult_initializer=None,
                  bias_initializer=None,
                  mult_regularizer=None,
                  bias_regularizer=None,
                  use_bias=True,
                  **kwargs):
-        
+
         self.output_features = output_features
         self.mult_initializer = mult_initializer
         self.bias_initializer = bias_initializer
         self.mult_regularizer = mult_regularizer
         self.bias_regularizer = bias_regularizer
         self.use_bias = use_bias
-        
+
         super(LocalCrossLinear, self).__init__(**kwargs)
 
     def build(self, input_shape):
         # Create a trainable weight variable for this layer.
         mult_shape = [1] + list(input_shape)[1:] + [self.output_features]
-        
-        
+
         # verify initializer
         if self.mult_initializer is None:
-            mean = 1/input_shape[-1]
+            mean = 1 / input_shape[-1]
             stddev = 0.01
             self.mult_initializer = keras.initializers.RandomNormal(mean=mean, stddev=stddev)
-        
-        self.mult = self.add_weight(name='mult-kernel', 
-                                      shape=mult_shape,
-                                      initializer=self.mult_initializer,
-                                      regularizer=self.mult_regularizer,
-                                      trainable=True)
+
+        self.mult = self.add_weight(name='mult-kernel',
+                                    shape=mult_shape,
+                                    initializer=self.mult_initializer,
+                                    regularizer=self.mult_regularizer,
+                                    trainable=True)
 
         if self.use_bias:
             if self.bias_initializer is None:
-                mean = 1/input_shape[-1]
+                mean = 1 / input_shape[-1]
                 stddev = 0.01
                 self.bias_initializer = keras.initializers.RandomNormal(mean=mean, stddev=stddev)
-            
+
             bias_shape = [1] + list(input_shape)[1:-1] + [self.output_features]
-            self.bias = self.add_weight(name='bias-kernel', 
-                                          shape=bias_shape,
-                                          initializer=self.bias_initializer,
-                                          regularizer=self.bias_regularizer,
-                                          trainable=True)
+            self.bias = self.add_weight(name='bias-kernel',
+                                        shape=bias_shape,
+                                        initializer=self.bias_initializer,
+                                        regularizer=self.bias_regularizer,
+                                        trainable=True)
         super(LocalCrossLinear, self).build(input_shape)
 
     def call(self, x):
         map_fn = lambda z: self._single_matmul(z, self.mult[0, ...])
         y = tf.stack(tf.map_fn(map_fn, x, dtype=tf.float32), 0)
-        
+
         if self.use_bias:
             y = y + self.bias
-        
+
         return y
 
     def _single_matmul(self, x, mult):
         x = K.expand_dims(x, -2)
-        y = tf.matmul(x, mult)[...,0,:]
+        y = tf.matmul(x, mult)[..., 0, :]
         return y
 
     def compute_output_shape(self, input_shape):
         return tuple(list(input_shape)[:-1] + [self.output_features])
- 
+
 
 class LocalCrossLinearTrf(Layer):
     """ 
@@ -1281,11 +1271,11 @@ class LocalCrossLinearTrf(Layer):
 
     input: [batch_size, *vol_size, nb_feats_1]
     output: [batch_size, *vol_size, nb_feats_2]
-    
+
     at each spatial voxel, there is a different linear relation learned.
     """
 
-    def __init__(self, output_features, 
+    def __init__(self, output_features,
                  mult_initializer=None,
                  bias_initializer=None,
                  mult_regularizer=None,
@@ -1293,7 +1283,7 @@ class LocalCrossLinearTrf(Layer):
                  use_bias=True,
                  trf_mult=1,
                  **kwargs):
-        
+
         self.output_features = output_features
         self.mult_initializer = mult_initializer
         self.bias_initializer = bias_initializer
@@ -1302,55 +1292,54 @@ class LocalCrossLinearTrf(Layer):
         self.use_bias = use_bias
         self.trf_mult = trf_mult
         self.interp_method = 'linear'
-        
+
         super(LocalCrossLinearTrf, self).__init__(**kwargs)
 
     def build(self, input_shape):
         # Create a trainable weight variable for this layer.
         mult_shape = list(input_shape)[1:] + [self.output_features]
         ndims = len(list(input_shape)[1:-1])
-        
-        
+
         # verify initializer
         if self.mult_initializer is None:
-            mean = 1/input_shape[-1]
+            mean = 1 / input_shape[-1]
             stddev = 0.01
             self.mult_initializer = keras.initializers.RandomNormal(mean=mean, stddev=stddev)
-        
-        self.mult = self.add_weight(name='mult-kernel', 
-                                      shape=mult_shape,
-                                      initializer=self.mult_initializer,
-                                      regularizer=self.mult_regularizer,
-                                      trainable=True)
 
-        self.trf = self.add_weight(name='def-kernel', 
-                                      shape=mult_shape + [ndims],
-                                      initializer=keras.initializers.RandomNormal(mean=0, stddev=0.001),
-                                      trainable=True)
+        self.mult = self.add_weight(name='mult-kernel',
+                                    shape=mult_shape,
+                                    initializer=self.mult_initializer,
+                                    regularizer=self.mult_regularizer,
+                                    trainable=True)
+
+        self.trf = self.add_weight(name='def-kernel',
+                                   shape=mult_shape + [ndims],
+                                   initializer=keras.initializers.RandomNormal(
+                                       mean=0, stddev=0.001),
+                                   trainable=True)
 
         if self.use_bias:
             if self.bias_initializer is None:
-                mean = 1/input_shape[-1]
+                mean = 1 / input_shape[-1]
                 stddev = 0.01
                 self.bias_initializer = keras.initializers.RandomNormal(mean=mean, stddev=stddev)
-            
+
             bias_shape = list(input_shape)[1:-1] + [self.output_features]
-            self.bias = self.add_weight(name='bias-kernel', 
-                                          shape=bias_shape,
-                                          initializer=self.bias_initializer,
-                                          regularizer=self.bias_regularizer,
-                                          trainable=True)
-        
+            self.bias = self.add_weight(name='bias-kernel',
+                                        shape=bias_shape,
+                                        initializer=self.bias_initializer,
+                                        regularizer=self.bias_regularizer,
+                                        trainable=True)
+
         super(LocalCrossLinearTrf, self).build(input_shape)
 
     def call(self, x):
-        
 
         # for each element in the batch
         y = tf.map_fn(self._single_batch_trf, x, dtype=tf.float32)
-        
+
         return y
-    
+
     def _single_batch_trf(self, vol):
         # vol should be vol_shape + [nb_features]
         # self.trf should be vol_shape + [nb_features] + [ndims]
@@ -1363,19 +1352,19 @@ class LocalCrossLinearTrf(Layer):
         for j in range(self.output_features):
             new_vols[j] = tf.zeros(vol_shape[:-1], dtype=tf.float32)
             for i in range(nb_input_dims):
-                trf_vol = transform(vol[..., i], self.trf[..., i, j, :] * self.trf_mult, interp_method=self.interp_method)
+                trf_vol = transform(vol[..., i], self.trf[..., i, j, :] *
+                                    self.trf_mult, interp_method=self.interp_method)
                 trf_vol = tf.reshape(trf_vol, vol_shape[:-1])
                 new_vols[j] += trf_vol * self.mult[..., i, j]
 
                 if self.use_bias:
                     new_vols[j] += self.bias[..., j]
-        
-        return tf.stack(new_vols, -1)
 
+        return tf.stack(new_vols, -1)
 
     def compute_output_shape(self, input_shape):
         return tuple(list(input_shape)[:-1] + [self.output_features])
- 
+
 
 class LocalParamLayer(Layer):
     """ 
@@ -1401,15 +1390,14 @@ class LocalParamLayer(Layer):
                  mult=1.0,
                  **kwargs):
 
-        
         # some input checking
         if not name:
             prefix = 'local_param'
             name = prefix + '_' + str(backend.get_uid(prefix))
-            
+
         if not dtype:
             dtype = backend.floatx()
-        
+
         self.shape = [1, *shape]
         self.my_initializer = my_initializer
         self.mult = mult
@@ -1421,11 +1409,11 @@ class LocalParamLayer(Layer):
 
         # Create a trainable weight variable for this layer.
         with K.name_scope(self.name):
-            self.kernel = self.add_weight(name='kernel', 
-                                            shape=shape,
-                                            initializer=self.my_initializer,
-                                            dtype=dtype,
-                                            trainable=True)
+            self.kernel = self.add_weight(name='kernel',
+                                          shape=shape,
+                                          initializer=self.my_initializer,
+                                          dtype=dtype,
+                                          trainable=True)
 
         # prepare output tensor, which is essentially the kernel.
         output_tensor = K.expand_dims(self.kernel, 0) * self.mult
@@ -1435,26 +1423,26 @@ class LocalParamLayer(Layer):
         output_tensor._batch_input_shape = self.shape
 
         self.trainable = True
-        self.built = True    
+        self.built = True
         self.is_placeholder = False
 
         # create new node
         tensorflow.python.keras.engine.base_layer.node_module.Node(self,
-            inbound_layers=[],
-            node_indices=[],
-            tensor_indices=[],
-            input_tensors=[],
-            output_tensors=[output_tensor],
-            input_masks=[],
-            output_masks=[None],
-            input_shapes=[],
-            output_shapes=self.shape)
+                                                                   inbound_layers=[],
+                                                                   node_indices=[],
+                                                                   tensor_indices=[],
+                                                                   input_tensors=[],
+                                                                   output_tensors=[output_tensor],
+                                                                   input_masks=[],
+                                                                   output_masks=[None],
+                                                                   input_shapes=[],
+                                                                   output_shapes=self.shape)
 
     def get_config(self):
         config = {
-                'dtype': self.dtype,
-                'sparse': self.sparse,
-                'name': self.name
+            'dtype': self.dtype,
+            'sparse': self.sparse,
+            'name': self.name
         }
         return config
 
@@ -1494,7 +1482,7 @@ class LocalParamWithInput(Layer):
         return config
 
     def build(self, input_shape):
-        self.kernel = self.add_weight(name='kernel', 
+        self.kernel = self.add_weight(name='kernel',
                                       shape=self.shape,  # input_shape[1:]
                                       initializer=self.initializer,
                                       trainable=True)
@@ -1563,7 +1551,7 @@ def LocalParam(    # pylint: disable=invalid-name
     ```
     Raises:
         ValueError: in case of invalid arguments.
-    """   
+    """
     input_layer = LocalParamLayer(shape, name=name, dtype=dtype)
 
     # Return tensor including `_keras_history`.
@@ -1576,7 +1564,7 @@ def LocalParam(    # pylint: disable=invalid-name
 
 
 ##########################################
-## Stream layers
+# Stream layers
 ##########################################
 
 
@@ -1602,14 +1590,14 @@ class MeanStream(Layer):
         # These are weights because just maintaining variables don't get saved with the model, and we'd like
         # to have these numbers saved when we save the model.
         # But we need to make sure that the weights are untrainable.
-        self.mean = self.add_weight(name='mean', 
-                                      shape=input_shape[1:],
-                                      initializer='zeros',
-                                      trainable=False)
-        self.count = self.add_weight(name='count', 
-                                      shape=[1],
-                                      initializer='zeros',
-                                      trainable=False)
+        self.mean = self.add_weight(name='mean',
+                                    shape=input_shape[1:],
+                                    initializer='zeros',
+                                    trainable=False)
+        self.count = self.add_weight(name='count',
+                                     shape=[1],
+                                     initializer='zeros',
+                                     trainable=False)
 
         # self.mean = K.zeros(input_shape[1:], name='mean')
         # self.count = K.variable(0.0, name='count')
@@ -1620,24 +1608,24 @@ class MeanStream(Layer):
 
         # get batch shape:
         this_bs_int = K.shape(x)[0]
-        
+
         # prep for broadcasting :(
         p = tf.concat((K.reshape(this_bs_int, (1,)), K.shape(self.mean)), 0)
         z = tf.ones(p)
-        
+
         # If calling in inference mode, use moving stats
         if training is False:
-            return K.minimum(1., self.count/self.cap) * (z * K.expand_dims(self.mean, 0))
-        
+            return K.minimum(1., self.count / self.cap) * (z * K.expand_dims(self.mean, 0))
+
         # get new mean and count
         new_mean, new_count = _mean_update(self.mean, self.count, x, self.cap)
-        
+
         # update op
         self.count.assign(new_count)
         self.mean.assign(new_mean)
-        
+
         # the first few 1000 should not matter that much towards this cost
-        return K.minimum(1., new_count/self.cap) * (z * K.expand_dims(new_mean, 0))
+        return K.minimum(1., new_count / self.cap) * (z * K.expand_dims(new_mean, 0))
 
     def compute_output_shape(self, input_shape):
         return input_shape
@@ -1663,19 +1651,19 @@ class CovStream(Layer):
     def build(self, input_shape):
         # Create mean, cov and and count
         # See note in MeanStream.build()
-        self.mean = self.add_weight(name='mean', 
+        self.mean = self.add_weight(name='mean',
                                     shape=input_shape[1:],
                                     initializer='zeros',
                                     trainable=False)
         v = np.prod(input_shape[1:])
-        self.cov = self.add_weight(name='cov', 
-                                 shape=[v, v],
-                                 initializer='zeros',
-                                 trainable=False)
-        self.count = self.add_weight(name='count', 
-                                      shape=[1],
-                                      initializer='zeros',
-                                      trainable=False)
+        self.cov = self.add_weight(name='cov',
+                                   shape=[v, v],
+                                   initializer='zeros',
+                                   trainable=False)
+        self.count = self.add_weight(name='count',
+                                     shape=[1],
+                                     initializer='zeros',
+                                     trainable=False)
 
         super(CovStream, self).build(input_shape)  # Be sure to call this somewhere!
 
@@ -1691,17 +1679,17 @@ class CovStream(Layer):
 
         # If calling in inference mode, use moving stats
         if training is False:
-            return K.minimum(1., self.count/self.cap) * (z * K.expand_dims(self.cov, 0))
+            return K.minimum(1., self.count / self.cap) * (z * K.expand_dims(self.cov, 0))
 
         x_orig = x
 
         # update mean
-        new_mean, new_count = _mean_update(self.mean, self.count, x, self.cap) 
-        
+        new_mean, new_count = _mean_update(self.mean, self.count, x, self.cap)
+
         # x reshape
         this_bs = tf.cast(this_bs_int, 'float32')  # this batch size
         prev_count = self.count
-        x = K.batch_flatten(x)  # B x N       
+        x = K.batch_flatten(x)  # B x N
 
         # new C update. Should be B x N x N
         x = K.expand_dims(x, -1)
@@ -1717,7 +1705,7 @@ class CovStream(Layer):
         self.mean.assign(new_mean)
         self.cov.assign(new_cov)
 
-        return K.minimum(1., new_count/self.cap) * (z * K.expand_dims(new_cov, 0))
+        return K.minimum(1., new_count / self.cap) * (z * K.expand_dims(new_cov, 0))
 
     def compute_output_shape(self, input_shape):
         v = np.prod(input_shape[1:])
@@ -1729,13 +1717,13 @@ def _mean_update(pre_mean, pre_count, x, pre_cap=None):
     # compute this batch stats
     this_sum = tf.reduce_sum(x, 0)
     this_bs = tf.cast(K.shape(x)[0], 'float32')  # this batch size
-    
+
     # increase count and compute weights
     new_count = pre_count + this_bs
-    alpha = this_bs/K.minimum(new_count, pre_cap)
-    
+    alpha = this_bs / K.minimum(new_count, pre_cap)
+
     # compute new mean. Note that once we reach self.cap (e.g. 1000), the 'previous mean' matters less
-    new_mean = pre_mean * (1-alpha) + (this_sum/this_bs) * alpha
+    new_mean = pre_mean * (1 - alpha) + (this_sum / this_bs) * alpha
 
     return (new_mean, new_count)
 
@@ -1764,7 +1752,7 @@ def _get_training_value(training, trainable_flag):
 
 
 ##########################################
-## FFT Layers
+# FFT Layers
 ##########################################
 
 class FFT(Layer):
@@ -1791,10 +1779,10 @@ class FFT(Layer):
         super(FFT, self).build(input_shape)
 
     def call(self, inputx):
-        
+
         if not inputx.dtype in [tf.complex64, tf.complex128]:
             print('Warning: inputx is not complex. Converting.', file=sys.stderr)
-        
+
             # if inputx is float, this will assume 0 imag channel
             inputx = tf.cast(inputx, tf.complex64)
 
@@ -1808,8 +1796,9 @@ class FFT(Layer):
 
         perm_dims = [0, self.ndims + 1] + list(range(1, self.ndims + 1))
         invert_perm_ndims = [0] + list(range(2, self.ndims + 2)) + [1]
-        
-        perm_inputx = K.permute_dimensions(inputx, perm_dims)  # [batch_size, nb_features, *vol_size]
+
+        # [batch_size, nb_features, *vol_size]
+        perm_inputx = K.permute_dimensions(inputx, perm_dims)
         fft_inputx = fft(perm_inputx)
         return K.permute_dimensions(fft_inputx, invert_perm_ndims)
 
@@ -1841,13 +1830,13 @@ class IFFT(Layer):
         super(IFFT, self).build(input_shape)
 
     def call(self, inputx):
-        
+
         if not inputx.dtype in [tf.complex64, tf.complex128]:
             print('Warning: inputx is not complex. Converting.', file=sys.stderr)
-        
+
             # if inputx is float, this will assume 0 imag channel
             inputx = tf.cast(inputx, tf.complex64)
-        
+
         # get the right fft
         if self.ndims == 1:
             ifft = tf.ifft
@@ -1858,8 +1847,9 @@ class IFFT(Layer):
 
         perm_dims = [0, self.ndims + 1] + list(range(1, self.ndims + 1))
         invert_perm_ndims = [0] + list(range(2, self.ndims + 2)) + [1]
-        
-        perm_inputx = K.permute_dimensions(inputx, perm_dims)  # [batch_size, nb_features, *vol_size]
+
+        # [batch_size, nb_features, *vol_size]
+        perm_inputx = K.permute_dimensions(inputx, perm_dims)
         ifft_inputx = ifft(perm_inputx)
         return K.permute_dimensions(ifft_inputx, invert_perm_ndims)
 
@@ -1885,9 +1875,9 @@ class ComplexToChannels(Layer):
         super(ComplexToChannels, self).build(input_shape)
 
     def call(self, inputx):
-        
+
         assert inputx.dtype in [tf.complex64, tf.complex128], 'inputx is not complex.'
-        
+
         return tf.concat([tf.real(inputx), tf.imag(inputx)], -1)
 
     def compute_output_shape(self, input_shape):
@@ -1915,8 +1905,8 @@ class ChannelsToComplex(Layer):
 
     def call(self, inputx):
         nb_channels = inputx.shape[-1] // 2
-        return tf.complex(inputx[...,:nb_channels], inputx[...,nb_channels:])
-        
+        return tf.complex(inputx[..., :nb_channels], inputx[..., nb_channels:])
+
     def compute_output_shape(self, input_shape):
         i_s = list(input_shape)
         i_s[-1] = i_s[-1] // 2
@@ -2020,13 +2010,13 @@ class IFFTShift(Layer):
 
 
 ##########################################
-## Stochastic Sampling layers
+# Stochastic Sampling layers
 ##########################################
 
 class SampleNormalLogVar(Layer):
     """ 
     Keras Layer: Gaussian sample given mean and log_variance
-    
+
     If you find this class useful, please cite the original paper this was written for:
         Dalca AV, Guttag J, Sabuncu MR
         Anatomical Priors in Convolutional Networks for Unsupervised Biomedical Segmentation, 
@@ -2063,6 +2053,5 @@ class SampleNormalLogVar(Layer):
         noise = tf.random.normal(tf.shape(mu), 0, 1, dtype=tf.float32)
 
         # make it a sample from N(mu, sigma^2)
-        z = mu + tf.exp(log_var/2.0) * noise
+        z = mu + tf.exp(log_var / 2.0) * noise
         return z
-
