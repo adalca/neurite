@@ -42,7 +42,8 @@ def stack_models(models, connecting_node_ids=None):
 
     Parameters:
         models: a list of models, in order of: [input_model, second_model, ..., final_output_model]
-        connecting_node_ids (optional): a list of connecting node pointers from Nth model to N+1th model
+        connecting_node_ids (optional): a list of connecting node pointers from
+            Nth model to N+1th model
 
     Returns:
         new stacked model pointer
@@ -60,10 +61,10 @@ def stack_models(models, connecting_node_ids=None):
 
         if connecting_node_ids is None:
             conn_id = list(range(len(new_input_nodes)))
-            assert len(new_input_nodes) == len(models[mi-1].outputs), \
+            assert len(new_input_nodes) == len(models[mi - 1].outputs), \
                 'argument count does not match'
         else:
-            conn_id = connecting_node_ids[mi-1]
+            conn_id = connecting_node_ids[mi - 1]
 
         for out_idx, ii in enumerate(conn_id):
             new_input_nodes[ii] = output_tensors[out_idx]
@@ -140,10 +141,12 @@ def mod_submodel(orig_model,
                 node_indices = [node_indices]
 
             add = True
-            # if not empty. we need to check that we're not adding the same layers through the same node.
+            # if not empty. we need to check that we're not adding the same layers through
+            #   the same node.
             if len(dct.setdefault(node.outbound_layer, [])) > 0:
                 for li, layers in enumerate(dct[node.outbound_layer]):
-                    if layers == node.inbound_layers and dct_node_idx[node.outbound_layer][li] == node_indices:
+                    if layers == node.inbound_layers and \
+                            dct_node_idx[node.outbound_layer][li] == node_indices:
                         add = False
                         break
             if add:

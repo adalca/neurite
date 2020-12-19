@@ -15,7 +15,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from matplotlib.colors import Normalize
-from mpl_toolkits.axes_grid1 import make_axes_locatable # plotting
+from mpl_toolkits.axes_grid1 import make_axes_locatable  # plotting
+
 
 def slices(slices_in,           # the 2D slices
            titles=None,         # list of titles
@@ -37,9 +38,9 @@ def slices(slices_in,           # the 2D slices
     nb_plots = len(slices_in)
     for si, slice_in in enumerate(slices_in):
         if len(slice_in.shape) != 2:
-            assert len(slice_in.shape) == 3 and slice_in.shape[-1] == 3, 'each slice has to be 2d or RGB (3 channels)'
+            assert len(slice_in.shape) == 3 and slice_in.shape[-1] == 3, \
+                'each slice has to be 2d or RGB (3 channels)'
         slices_in[si] = slice_in.astype('float')
-        
 
     def input_check(inputs, nb_plots, name):
         ''' change input from None/single-link '''
@@ -62,7 +63,7 @@ def slices(slices_in,           # the 2D slices
     if grid:
         if isinstance(grid, bool):
             rows = np.floor(np.sqrt(nb_plots)).astype(int)
-            cols = np.ceil(nb_plots/rows).astype(int)
+            cols = np.ceil(nb_plots / rows).astype(int)
         else:
             assert isinstance(grid, (list, tuple)), \
                 "grid should either be bool or [rows,cols]"
@@ -78,7 +79,7 @@ def slices(slices_in,           # the 2D slices
 
     for i in range(nb_plots):
         col = np.remainder(i, cols)
-        row = np.floor(i/cols).astype(int)
+        row = np.floor(i / cols).astype(int)
 
         # get row and column axes
         row_axs = axs if rows == 1 else axs[row]
@@ -92,7 +93,8 @@ def slices(slices_in,           # the 2D slices
             ax.title.set_text(titles[i])
 
         # show figure
-        im_ax = ax.imshow(slices_in[i], cmap=cmaps[i], interpolation="nearest", norm=norms[i], **imshow_args[i])
+        im_ax = ax.imshow(slices_in[i], cmap=cmaps[i],
+                          interpolation="nearest", norm=norms[i], **imshow_args[i])
 
         # colorbars
         # http://stackoverflow.com/questions/18195758/set-matplotlib-colorbar-size-to-match-graph
@@ -100,11 +102,11 @@ def slices(slices_in,           # the 2D slices
             divider = make_axes_locatable(ax)
             cax = divider.append_axes("right", size="5%", pad=0.05)
             fig.colorbar(im_ax, cax=cax)
-    
+
     # clear axes that are unnecessary
-    for i in range(nb_plots, col*row):
+    for i in range(nb_plots, col * row):
         col = np.remainder(i, cols)
-        row = np.floor(i/cols).astype(int)
+        row = np.floor(i / cols).astype(int)
 
         # get row and column axes
         row_axs = axs if rows == 1 else axs[row]
@@ -114,8 +116,7 @@ def slices(slices_in,           # the 2D slices
             ax.axis('off')
 
     # show the plots
-    fig.set_size_inches(width, rows/cols*width)
-    
+    fig.set_size_inches(width, rows / cols * width)
 
     if show:
         plt.tight_layout()
@@ -127,7 +128,7 @@ def slices(slices_in,           # the 2D slices
 def volume3D(vols, slice_nos=None, **kwargs):
     """
     plot slices of a 3D volume by taking a middle slice of each axis
-    
+
     Parameters:
         vols: a 3d volume or list of 3d volumes
         slice_nos (optional): a list of 3 elements of the slice numbers for each axis, 
@@ -141,10 +142,10 @@ def volume3D(vols, slice_nos=None, **kwargs):
 
     slics = []
     for vi, vol in enumerate(vols):
-        
+
         these_slice_nos = slice_nos
         if slice_nos is None:
-            these_slice_nos = [f//2 for f in vol.shape]
+            these_slice_nos = [f // 2 for f in vol.shape]
         elif isinstance(slice_nos[0], (list, tuple)):
             these_slice_nos = slice_nos[vi]
         else:
@@ -166,7 +167,7 @@ def flow_legend():
     show quiver plot to indicate how arrows are colored in the flow() method.
     https://stackoverflow.com/questions/40026718/different-colours-for-arrows-in-quiver-plot
     """
-    ph = np.linspace(0, 2*np.pi, 13)
+    ph = np.linspace(0, 2 * np.pi, 13)
     x = np.cos(ph)
     y = np.sin(ph)
     u = np.cos(ph)
@@ -183,7 +184,7 @@ def flow_legend():
     plt.figure(figsize=(6, 6))
     plt.xlim(-2, 2)
     plt.ylim(-2, 2)
-    plt.quiver(x, y, u, v, color=colormap(norm(colors)),  angles='xy', scale_units='xy', scale=1)
+    plt.quiver(x, y, u, v, color=colormap(norm(colors)), angles='xy', scale_units='xy', scale=1)
     plt.show()
 
 
@@ -191,7 +192,7 @@ def flow(slices_in,           # the 2D slices
          titles=None,         # list of titles
          cmaps=None,          # list of colormaps
          width=15,            # width in in
-         indexing='ij',       # whether to plot vectors using matrix indexing 'ij' or cartesian indexing 'xy'
+         indexing='ij',       # plot vecs w/ matrix indexing 'ij' or cartesian indexing 'xy'
          img_indexing=True,   # whether to match the image view, i.e. flip y axis
          grid=False,          # option to plot the images in a grid or a single row
          show=True,           # option to actually show the plot (plt.show())
@@ -224,11 +225,12 @@ def flow(slices_in,           # the 2D slices
 
     if indexing == 'ij':
         for si, slc in enumerate(slices_in):
-            slices_in[si][:, :, 1] = -slices_in[si][:, :, 1] # Make y values negative so y-axis will point down in plot
+            # Make y values negative so y-axis will point down in plot
+            slices_in[si][:, :, 1] = -slices_in[si][:, :, 1]
 
     if img_indexing:
         for si, slc in enumerate(slices_in):
-            slices_in[si] = np.flipud(slc) # Flip vertical order of y values
+            slices_in[si] = np.flipud(slc)  # Flip vertical order of y values
 
     titles = input_check(titles, nb_plots, 'titles')
     cmaps = input_check(cmaps, nb_plots, 'cmaps')
@@ -238,7 +240,7 @@ def flow(slices_in,           # the 2D slices
     if grid:
         if isinstance(grid, bool):
             rows = np.floor(np.sqrt(nb_plots)).astype(int)
-            cols = np.ceil(nb_plots/rows).astype(int)
+            cols = np.ceil(nb_plots / rows).astype(int)
         else:
             assert isinstance(grid, (list, tuple)), \
                 "grid should either be bool or [rows,cols]"
@@ -254,7 +256,7 @@ def flow(slices_in,           # the 2D slices
 
     for i in range(nb_plots):
         col = np.remainder(i, cols)
-        row = np.floor(i/cols).astype(int)
+        row = np.floor(i / cols).astype(int)
 
         # get row and column axes
         row_axs = axs if rows == 1 else axs[row]
@@ -267,7 +269,7 @@ def flow(slices_in,           # the 2D slices
         if titles is not None and titles[i] is not None:
             ax.title.set_text(titles[i])
 
-        u, v = slices_in[i][...,0], slices_in[i][...,1]
+        u, v = slices_in[i][..., 0], slices_in[i][..., 1]
         colors = np.arctan2(u, v)
         colors[np.isnan(colors)] = 0
         norm = Normalize()
@@ -285,11 +287,11 @@ def flow(slices_in,           # the 2D slices
                   width=quiver_width,
                   scale=scale[i])
         ax.axis('equal')
-    
+
     # clear axes that are unnecessary
-    for i in range(nb_plots, col*row):
+    for i in range(nb_plots, col * row):
         col = np.remainder(i, cols)
-        row = np.floor(i/cols).astype(int)
+        row = np.floor(i / cols).astype(int)
 
         # get row and column axes
         row_axs = axs if rows == 1 else axs[row]
@@ -298,7 +300,7 @@ def flow(slices_in,           # the 2D slices
         ax.axis('off')
 
     # show the plots
-    fig.set_size_inches(width, rows/cols*width)
+    fig.set_size_inches(width, rows / cols * width)
     plt.tight_layout()
 
     if show:
@@ -316,7 +318,7 @@ def pca(pca, x, y):
     y_hat = x @ W + pca.mean_
 
     y_err = y_hat - y
-    y_rel_err = y_err / np.maximum(0.5*(np.abs(y)+np.abs(y_hat)), np.finfo('float').eps)
+    y_rel_err = y_err / np.maximum(0.5 * (np.abs(y) + np.abs(y_hat)), np.finfo('float').eps)
 
     plt.figure(figsize=(15, 7))
     plt.subplot(2, 3, 1)

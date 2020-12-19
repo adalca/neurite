@@ -9,11 +9,15 @@ CVPR 2018. https://arxiv.org/abs/1903.03148
 
 Copyright 2020 Adrian V. Dalca
 
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in 
+compliance with the License. You may obtain a copy of the License at
 
 http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+Unless required by applicable law or agreed to in writing, software distributed under the License is
+distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or 
+implied. See the License for the specific language governing permissions and limitations under 
+the License.
 """
 
 # core python
@@ -40,9 +44,11 @@ class MutualInformation:
       (e.g. probabilistic segmentaitons)
 
     More information/citation:
-    - Courtney K Guo. Multi-modal image registration with unsupervised deep learning. 
+    - Courtney K Guo. 
+      Multi-modal image registration with unsupervised deep learning. 
       PhD thesis, Massachusetts Institute of Technology, 2019.
-    - M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. Learning image registration without images.
+    - M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
+      Learning image registration without images.
       arXiv preprint arXiv:2004.10282, 2020. https://arxiv.org/abs/2004.10282
 
     # TODO: add local MI by using patches. This is quite memory consuming, though.
@@ -58,7 +64,12 @@ class MutualInformation:
     mi.maps
     """
 
-    def __init__(self, bin_centers=None, nb_bins=None, min_clip=None, max_clip=None, soft_bin_alpha=1):
+    def __init__(self,
+                 bin_centers=None,
+                 nb_bins=None,
+                 min_clip=None,
+                 max_clip=None,
+                 soft_bin_alpha=1):
         """
         Initialize the mutual information class
 
@@ -190,7 +201,7 @@ class MutualInformation:
 
         # move channels to first dimension
         ndims_k = len(x.shape)
-        permute = [ndims_k-1] + list(range(ndims_k-1))
+        permute = [ndims_k - 1] + list(range(ndims_k - 1))
         cx = tf.transpose(x, permute)                                # [C, bs, V]
         cy = tf.transpose(y, permute)                                # [C, bs, V]
 
@@ -199,7 +210,7 @@ class MutualInformation:
         cyq = self._soft_sim_map(cy)                                  # [C, bs, V, B]
 
         # get mi
-        def map_fn(x): return self.maps(*x)
+        map_fn = lambda x: self.maps(*x)
         cout = tf.map_fn(map_fn, [cxq, cyq], dtype=tf.float32)       # [C, bs]
 
         # permute back
@@ -399,7 +410,8 @@ class Dice:
         if self.input_type in ['prob', 'one_hot']:
 
             # Optionally re-normalize.
-            # Note that in some cases you explicitly don't wnat to, e.g. if you only return a subset of the labels
+            # Note that in some cases you explicitly don't wnat to, e.g. if you only return a
+            # subset of the labels
             if self.normalize:
                 y_true = tf.math.divide_no_nan(y_true, K.sum(y_true, axis=-1, keepdims=True))
                 y_pred = tf.math.divide_no_nan(y_pred, K.sum(y_pred, axis=-1, keepdims=True))
@@ -583,7 +595,7 @@ class CategoricalCrossentropy(tf.keras.losses.CategoricalCrossentropy):
 
     def cce(self, y_true, y_pred, sample_weight=None):
         D = y_pred.ndim
-        wts = tf.reshape(self.label_weights, [1] * (D-1) + [-1])
+        wts = tf.reshape(self.label_weights, [1] * (D - 1) + [-1])
 
         if sample_weight is None:
             sample_weight = 1
@@ -616,7 +628,7 @@ class MeanSquaredErrorProb(tf.keras.losses.MeanSquaredError):
 
     def mse(self, y_true, y_pred, sample_weight=None):
         D = y_pred.ndim
-        wts = tf.reshape(self.label_weights, [1] * (D-1) + [-1])
+        wts = tf.reshape(self.label_weights, [1] * (D - 1) + [-1])
 
         if sample_weight is None:
             sample_weight = 1

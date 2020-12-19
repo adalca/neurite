@@ -10,15 +10,11 @@ import six
 import nibabel as nib
 import numpy as np
 import scipy.ndimage.interpolation
-from tqdm import tqdm_notebook as tqdm # for verbosity for forloops
+from tqdm import tqdm_notebook as tqdm  # for verbosity for forloops
 import matplotlib.pyplot as plt
 
-# note sure if tqdm_notebook reverts back to 
-try:
-    get_ipython
-    from tqdm import tqdm_notebook as tqdm
-except:
-    from tqdm import tqdm as tqdm
+# note sure if tqdm_notebook reverts back to
+from tqdm import tqdm
 
 from subprocess import call
 
@@ -26,18 +22,12 @@ from subprocess import call
 import pystrum.pynd.ndutils as nd
 import re
 
-from imp import reload
-reload(nd)
-
-# from imp import reload # for re-loading modules, since some of the modules are still in development
-# reload(nd)
-
 
 def proc_mgh_vols(inpath,
                   outpath,
                   ext='.mgz',
                   label_idx=None,
-                  **kwargs): 
+                  **kwargs):
     ''' process mgh data from mgz format and save to numpy format
 
     1. load file
@@ -118,7 +108,7 @@ def scans_to_slices(inpath, outpath, slice_nrs,
             list_skipped_files += (files[fileidx], )
             print("Skipping %s\nError: %s" % (files[fileidx], str(e)), file=sys.stderr)
             continue
-            
+
         mult_fact = 255
         if label_idx is not None:
             vol_data = (vol_data == label_idx).astype(int)
@@ -126,7 +116,8 @@ def scans_to_slices(inpath, outpath, slice_nrs,
 
         # extract slice
         if slice_nrs is None:
-            slice_nrs_sel = range(vol_inner_pad_for_slice_nrs+slice_pad, vol_data.shape[dim_idx]-slice_pad-vol_inner_pad_for_slice_nrs)
+            slice_nrs_sel = range(vol_inner_pad_for_slice_nrs + slice_pad,
+                                  vol_data.shape[dim_idx] - slice_pad - vol_inner_pad_for_slice_nrs)
         else:
             slice_nrs_sel = slice_nrs
 
@@ -138,30 +129,34 @@ def scans_to_slices(inpath, outpath, slice_nrs,
                 vol_img = np.squeeze(vol_data[:, slice_nr_out, :])
             else:
                 vol_img = np.squeeze(vol_data[slice_nr_out, :, :])
-           
+
             # save file
             if out_ext == '.png':
                 # save png file
-                img = (vol_img*mult_fact).astype('uint8')
-                outname = os.path.splitext(os.path.join(outpath, files[fileidx]))[0] + '_slice%d.png' % slice_nr
+                img = (vol_img * mult_fact).astype('uint8')
+                outname = os.path.splitext(os.path.join(outpath, files[fileidx]))[
+                    0] + '_slice%d.png' % slice_nr
                 try:
                     from PIL import Image
                     Image.fromarray(img).convert('RGB').save(outname)
                 except ImportError:
-                    raise ImportError('Could not save "%s" since PIL has not been installed' % outname)
+                    raise ImportError(
+                        'Could not save "%s" since PIL has not been installed' % outname)
             else:
                 if slice_pad == 0:  # dimenion has collapsed
                     assert vol_img.ndim == 2
                     vol_img = np.expand_dims(vol_img, dim_idx)
                 # assuming nibabel saving image
-                nii = nib.Nifti1Image(vol_img, np.diag([1,1,1,1]))
-                outname = os.path.splitext(os.path.join(outpath, files[fileidx]))[0] + '_slice%d.nii.gz' % slice_nr
+                nii = nib.Nifti1Image(vol_img, np.diag([1, 1, 1, 1]))
+                outname = os.path.splitext(os.path.join(outpath, files[fileidx]))[
+                    0] + '_slice%d.nii.gz' % slice_nr
                 nib.save(nii, outname)
 
 
 def vol_proc(vol_data,
              crop=None,
-             resize_shape=None, # None (to not resize), or vector. If vector, third entry can be None
+             # None (to not resize), or vector. If vector, third entry can be None
+             resize_shape=None,
              interp_order=None,
              rescale=None,
              rescale_prctle=None,
@@ -186,7 +181,7 @@ def vol_proc(vol_data,
         # print("test")
         rescale = np.percentile(vol_data.flat, rescale_prctle)
         # print("rescaling by 1/%f" % (rescale))
-        vol_data = np.multiply(vol_data.astype(float), 1/rescale)
+        vol_data = np.multiply(vol_data.astype(float), 1 / rescale)
 
     if resize_slices is not None:
         resize_slices = [*resize_slices]
@@ -231,7 +226,6 @@ def vol_proc(vol_data,
 
 
 def prior_to_weights(prior_filename, nargout=1, min_freq=0, force_binary=False, verbose=False):
-    
     ''' transform a 4D prior (3D + nb_labels) into a class weight vector '''
 
     # load prior
@@ -242,7 +236,7 @@ def prior_to_weights(prior_filename, nargout=1, min_freq=0, force_binary=False, 
 
     # assumes prior is 4D.
     assert np.ndim(prior) == 4 or np.ndim(prior) == 3, "prior is the wrong number of dimensions"
-    prior_flat = np.reshape(prior, (np.prod(prior.shape[0:(np.ndim(prior)-1)]), prior.shape[-1]))
+    prior_flat = np.reshape(prior, (np.prod(prior.shape[0:(np.ndim(prior) - 1)]), prior.shape[-1]))
 
     if force_binary:
         nb_labels = prior_flat.shape[-1]
@@ -262,7 +256,7 @@ def prior_to_weights(prior_filename, nargout=1, min_freq=0, force_binary=False, 
         class_prior[class_prior == 0] = np.inf
 
     # compute weights from class frequencies
-    weights = 1/class_prior
+    weights = 1 / class_prior
     weights = weights / np.sum(weights)
     # weights[0] = 0 # explicitly don't care about bg
 
@@ -273,7 +267,7 @@ def prior_to_weights(prior_filename, nargout=1, min_freq=0, force_binary=False, 
         ax1.set_title('log class freq')
         ax2.bar(range(weights.size), weights)
         ax2.set_title('weights')
-        ax3.bar(range(weights.size), np.log((weights))-np.min(np.log((weights))))
+        ax3.bar(range(weights.size), np.log((weights)) - np.min(np.log((weights))))
         ax3.set_title('log(weights)-minlog')
         f.set_size_inches(12, 3)
         plt.show()
@@ -286,15 +280,14 @@ def prior_to_weights(prior_filename, nargout=1, min_freq=0, force_binary=False, 
         return (weights, prior)
 
 
-
-
 def filestruct_change(in_path, out_path, re_map,
                       mode='subj_to_type',
                       use_symlinks=False, name=""):
     """
     change from independent subjects in a folder to breakdown structure 
 
-    example: filestruct_change('/../in_path', '/../out_path', {'asegs.nii.gz':'asegs', 'norm.nii.gz':'vols'})
+    example: filestruct_change('/../in_path', '/../out_path',
+        {'asegs.nii.gz':'asegs', 'norm.nii.gz':'vols'})
 
 
     input structure: 
@@ -317,7 +310,6 @@ def filestruct_change(in_path, out_path, re_map,
             default:True
     """
 
-    
     if not os.path.isdir(out_path):
         os.mkdir(out_path)
 
@@ -331,10 +323,10 @@ def filestruct_change(in_path, out_path, re_map,
             # see which key matches. Make sure only one does.
             matches = [re.match(k, file) for k in re_map.keys()]
             nb_matches = sum([f is not None for f in matches])
-            assert nb_matches == 1, "Found %d matches for file %s/%s" %(nb_matches, file, subj)
+            assert nb_matches == 1, "Found %d matches for file %s/%s" % (nb_matches, file, subj)
 
             # get the matches key
-            match_idx = [i for i,f in enumerate(matches) if f is not None][0]
+            match_idx = [i for i, f in enumerate(matches) if f is not None][0]
             matched_dst = re_map[list(re_map.keys())[match_idx]]
             _, ext = os.path.splitext(file)
             if isinstance(matched_dst, tuple):
@@ -349,7 +341,7 @@ def filestruct_change(in_path, out_path, re_map,
             dst_file = os.path.join(dst_path, subj + ext)
 
             if use_symlinks:
-                # on windows there are permission problems. 
+                # on windows there are permission problems.
                 # Can try : call(['mklink', 'LINK', 'TARGET'], shell=True)
                 # or note https://stackoverflow.com/questions/6260149/os-symlink-support-in-windows
                 os.symlink(src_file, dst_file)
@@ -389,7 +381,7 @@ def ml_split(in_path, out_path,
 
     # go through each category
     for cat_idx, cat in enumerate(cat_titles):
-        if not os.path.isdir(os.path.join(out_path, cat)): 
+        if not os.path.isdir(os.path.join(out_path, cat)):
             os.mkdir(os.path.join(out_path, cat))
 
         cat_subj_idx = subj_order[cat_subj_start[cat_idx]:nb_cat_subj[cat_idx]]
@@ -398,7 +390,7 @@ def ml_split(in_path, out_path,
             dst_folder = os.path.join(out_path, cat, subjs[subj_idx])
 
             if use_symlinks:
-                # on windows there are permission problems. 
+                # on windows there are permission problems.
                 # Can try : call(['mklink', 'LINK', 'TARGET'], shell=True)
                 # or note https://stackoverflow.com/questions/6260149/os-symlink-support-in-windows
                 os.symlink(src_folder, dst_folder)
@@ -408,13 +400,3 @@ def ml_split(in_path, out_path,
                     shutil.copytree(src_folder, dst_folder)
                 else:
                     shutil.copyfile(src_folder, dst_folder)
-        
-
-
-
-
-
-
-
-
-

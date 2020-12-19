@@ -9,11 +9,15 @@ CVPR 2018. https://arxiv.org/abs/1903.03148
 
 Copyright 2020 Adrian V. Dalca
 
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in 
+compliance with the License. You may obtain a copy of the License at
 
 http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+Unless required by applicable law or agreed to in writing, software distributed under the License is
+distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or 
+implied. See the License for the specific language governing permissions and limitations under 
+the License.
 """
 
 # internal python imports
@@ -280,9 +284,11 @@ class GaussianBlur(Layer):
         self.nfeat = input_shape[-1]
 
     def call(self, x):
-        # TODO: switch to mutli-line if statement
         # TODO: this hsould be cleaned up a bit, no need to loop and concat...
-        return x if self.sigma == 0 else tf.concat([self.conv(x[..., n]) for n in range(self.nfeat)], -1)
+        if self.sigma == 0:
+            return x
+        else:
+            return tf.concat([self.conv(x[..., n]) for n in range(self.nfeat)], -1)
 
     def compute_output_shape(self, input_shape):
         return input_shape
@@ -600,8 +606,7 @@ class LocallyConnected3D(Layer):
         self.padding = conv_utils.normalize_padding(padding)
         if self.padding != 'valid' and implementation == 1:
             raise ValueError('Invalid border mode for LocallyConnected3D '
-                             '(only "valid" is supported if implementation is 1): '
-                             + padding)
+                             '(only "valid" is supported if implementation is 1): ' + padding)
         self.data_format = conv_utils.normalize_data_format(data_format)
         self.activation = tf.keras.activations.get(activation)
         self.use_bias = use_bias
@@ -739,18 +744,25 @@ class LocallyConnected3D(Layer):
 
     def call(self, inputs):
         if self.implementation == 1:
-            output = LocallyConnected3D.local_conv(inputs, self.kernel,
-                                                   self.kernel_size, self.strides,
-                                                   (self.output_row, self.output_col, self.output_z), self.data_format)
+            output = \
+                LocallyConnected3D.local_conv(inputs,
+                                              self.kernel,
+                                              self.kernel_size, self.strides,
+                                              (self.output_row, self.output_col, self.output_z),
+                                              self.data_format)
 
         elif self.implementation == 2:
             output = LocallyConnected3D.local_conv_matmul(inputs, self.kernel,
-                                                          self.kernel_mask, self.compute_output_shape(inputs.shape))
+                                                          self.kernel_mask,
+                                                          self.compute_output_shape(inputs.shape))
 
         elif self.implementation == 3:
-            output = LocallyConnected3D.local_conv_sparse_matmul(inputs,
-                                                                 self.kernel, self.kernel_idxs, self.kernel_shape,
-                                                                 self.compute_output_shape(inputs.shape))
+            output = \
+                LocallyConnected3D.local_conv_sparse_matmul(inputs,
+                                                            self.kernel,
+                                                            self.kernel_idxs,
+                                                            self.kernel_shape,
+                                                            self.compute_output_shape(inputs.shape))
 
         else:
             raise ValueError('Unrecognized implementation mode: %d.'
@@ -1079,7 +1091,10 @@ class LocallyConnected3D(Layer):
 
         for output_position in itertools.product(*output_axes_ticks):
             input_axes_ticks = LocallyConnected3D.conv_connected_inputs(input_shape,
-                                                                        kernel_shape, output_position, strides, padding)
+                                                                        kernel_shape,
+                                                                        output_position,
+                                                                        strides,
+                                                                        padding)
             for input_position in itertools.product(*input_axes_ticks):
                 for f_in in range(filters_in):
                     for f_out in range(filters_out):
@@ -1451,13 +1466,15 @@ class LocalParamWithInput(Layer):
     """ 
     Update 9/29/2019 - TODO: should try ne.layers.LocalParam() again after update.
 
-    The neuron.layers.LocalParam has an issue where _keras_shape gets lost upon calling get_output :(
+    The neuron.layers.LocalParam has an issue where _keras_shape 
+        gets lost upon calling get_output :(
 
     tried using call() but this requires an input (or i don't know how to fix it)
-    the fix was that after the return, for every time that tensor would be used i would need to do something like
-    new_vec._keras_shape = old_vec._keras_shape
-
-    which messed up the code. Instead, we'll do this quick version where we need an input, but we'll ignore it.
+    the fix was that after the return, for every time that tensor would be used i would 
+        need to do something like
+        new_vec._keras_shape = old_vec._keras_shape
+    which messed up the code. 
+        Instead, we'll do this quick version where we need an input, but we'll ignore it.
 
     this doesn't have the _keras_shape issue since we built on the input and use call()
 
@@ -1587,8 +1604,8 @@ class MeanStream(Layer):
 
     def build(self, input_shape):
         # Create mean and count
-        # These are weights because just maintaining variables don't get saved with the model, and we'd like
-        # to have these numbers saved when we save the model.
+        # These are weights because just maintaining variables don't get saved with the model,
+        # and we'd like to have these numbers saved when we save the model.
         # But we need to make sure that the weights are untrainable.
         self.mean = self.add_weight(name='mean',
                                     shape=input_shape[1:],
@@ -1722,7 +1739,8 @@ def _mean_update(pre_mean, pre_count, x, pre_cap=None):
     new_count = pre_count + this_bs
     alpha = this_bs / K.minimum(new_count, pre_cap)
 
-    # compute new mean. Note that once we reach self.cap (e.g. 1000), the 'previous mean' matters less
+    # compute new mean. Note that once we reach self.cap (e.g. 1000),
+    # the 'previous mean' matters less
     new_mean = pre_mean * (1 - alpha) + (this_sum / this_bs) * alpha
 
     return (new_mean, new_count)
@@ -1780,7 +1798,7 @@ class FFT(Layer):
 
     def call(self, inputx):
 
-        if not inputx.dtype in [tf.complex64, tf.complex128]:
+        if inputx.dtype not in [tf.complex64, tf.complex128]:
             print('Warning: inputx is not complex. Converting.', file=sys.stderr)
 
             # if inputx is float, this will assume 0 imag channel
@@ -1831,7 +1849,7 @@ class IFFT(Layer):
 
     def call(self, inputx):
 
-        if not inputx.dtype in [tf.complex64, tf.complex128]:
+        if inputx.dtype not in [tf.complex64, tf.complex128]:
             print('Warning: inputx is not complex. Converting.', file=sys.stderr)
 
             # if inputx is float, this will assume 0 imag channel

@@ -9,11 +9,15 @@ CVPR 2018. https://arxiv.org/abs/1903.03148
 
 Copyright 2020 Adrian V. Dalca
 
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in 
+compliance with the License. You may obtain a copy of the License at
 
 http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+Unless required by applicable law or agreed to in writing, software distributed under the License is
+distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or 
+implied. See the License for the specific language governing permissions and limitations under 
+the License.
 """
 
 # python imports
@@ -119,16 +123,17 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
         for c in cube_pts:
 
             # get nd values
-            # note re: indices above volumes via https://github.com/tensorflow/tensorflow/issues/15091
-            #   It works on GPU because we do not perform index validation checking on GPU -- it's too
-            #   expensive. Instead we fill the output with zero for the corresponding value. The CPU
-            #   version caught the bad index and returned the appropriate error.
+            # note re: indices above volumes via
+            #   https://github.com/tensorflow/tensorflow/issues/15091
+            #   It works on GPU because we do not perform index validation checking on GPU -- it's
+            #   too expensive. Instead we fill the output with zero for the corresponding value.
+            #   The CPU version caught the bad index and returned the appropriate error.
             subs = [locs[c[d]][d] for d in range(nb_dims)]
 
             # tf stacking is slow for large volumes, so we will use sub2ind and use single indexing.
             # indices = tf.stack(subs, axis=-1)
             # vol_val = tf.gather_nd(vol, indices)
-            # faster way to gather than gather_nd, because the latter needs tf.stack which is slow :(
+            # faster way to gather than gather_nd, because gather_nd needs tf.stack which is slow :(
             idx = sub2ind2d(vol.shape[:-1], subs)
             vol_reshape = tf.reshape(vol, [-1, volshape[-1]])
             vol_val = tf.gather(vol_reshape, idx)
@@ -147,7 +152,8 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
             interp_vol += wt * vol_val
 
     else:
-        assert interp_method == 'nearest', 'method should be linear or nearest, got: %s' % interp_method
+        assert interp_method == 'nearest', \
+            'method should be linear or nearest, got: %s' % interp_method
         roundloc = tf.cast(tf.round(loc), 'int32')
         roundloc = [tf.clip_by_value(roundloc[..., d], 0, max_loc[d]) for d in range(nb_dims)]
 
@@ -172,7 +178,8 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
 
 def resize(vol, zoom_factor, interp_method='linear'):
     """
-    if zoom_factor is a list, it will determine the ndims, in which case vol has to be of length ndims of ndims + 1
+    if zoom_factor is a list, it will determine the ndims, in which case vol has to be of 
+        length ndims of ndims + 1
 
     if zoom_factor is an integer, then vol must be of length ndims + 1
 
@@ -630,7 +637,8 @@ def sigmoid(x):
 def logistic_fixed_ends(x, start=-1., end=1., L=1., **kwargs):
     """
     f is logistic with fixed ends, so that f(start) = 0, and f(end) = L.
-    this is currently done a bit heuristically: it's a sigmoid, with a linear function added to correct the ends.
+    this is currently done a bit heuristically: it's a sigmoid, with a linear function added to 
+    correct the ends.
     """
     assert end > start, 'End of fixed points should be greater than start'
     # tf.assert_greater(end, start, message='assert')
