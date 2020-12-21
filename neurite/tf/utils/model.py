@@ -202,7 +202,7 @@ def mod_submodel(orig_model,
     if input_layers is None:  # if none provided, search for them
         # InputLayerClass = keras.engine.topology.InputLayer
         InputLayerClass = type(tf.keras.layers.InputLayer())
-        input_layers = [l for l in orig_model.layers if isinstance(l, InputLayerClass)]
+        input_layers = [f for f in orig_model.layers if isinstance(f, InputLayerClass)]
 
     else:
         if not isinstance(input_layers, (tuple, list)):
@@ -290,7 +290,7 @@ def copy_weights(src_model, dst_model):
         try:
             wts = src_model.get_layer(layer.name).get_weights()
             layer.set_weights(wts)
-        except:
+        except _:
             print('Could not copy weights of %s' % layer.name)
             continue
 

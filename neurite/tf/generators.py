@@ -170,7 +170,7 @@ def vol(volpath,
             file_name = os.path.join(volpath, volfiles[fileidx])
             vol_data = _load_medical_volume(file_name, ext, verbose)
             # print(file_name, " was loaded", vol_data.shape)
-        except:
+        except _:
             debug_error_msg = "#files: %d, fileidx: %d, nb_restart_cycle: %d. error: %s"
             print(debug_error_msg % (len(volfiles), fileidx, nb_restart_cycle, sys.exc_info()[0]))
             raise
@@ -886,7 +886,7 @@ def vol_sr_slices(volpath,
 
         try:
             vol_data = _load_medical_volume(os.path.join(volpath, volfiles[fileidx]), ext, verbose)
-        except:
+        except _:
             debug_error_msg = "#files: %d, fileidx: %d, nb_restart_cycle: %d. error: %s"
             print(debug_error_msg % (len(volfiles), fileidx, nb_restart_cycle, sys.exc_info()[0]))
             raise

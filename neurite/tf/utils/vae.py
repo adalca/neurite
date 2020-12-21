@@ -29,7 +29,7 @@ import numpy as np
 try:
     from sklearn.decomposition import PCA  # bad form, but avoiding some
 except Exception as e:
-    warnings.warn(str(e)) # avoiding https://github.com/scikit-learn/scikit-learn/issues/14485
+    warnings.warn(str(e))  # avoiding https://github.com/scikit-learn/scikit-learn/issues/14485
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import backend as K
@@ -80,7 +80,7 @@ def extract_z_dec(model, sample_layer_name, vis=False, wt_chk=False):
     if wt_chk:
         for layer in z_dec_model.layers:
             wts1 = layer.get_weights()
-            if layer.name not in [l.name for l in model.layers]:
+            if layer.name not in [f.name for f in model.layers]:
                 continue
             wts2 = model.get_layer(layer.name).get_weights()
             if len(wts1) > 0:
@@ -279,7 +279,7 @@ def pca_init_dense(model, mu_dense_layer_name, undense_layer_name, generator,
             node_idx = i
             break
 
-        except:
+        except _:
             if i == nb_inbound_nodes - 1:
                 raise Exception(
                     'Could not initialize pre_mu model. Something went wrong :(')
