@@ -18,16 +18,19 @@ Unless required by applicable law or agreed to in writing, software distributed 
 
 # internal python imports
 from tempfile import NamedTemporaryFile
+import warnings
 
 # third party imports
 import numpy as np
+try:
+    from sklearn.decomposition import PCA  # bad form, but avoiding some
+except Exception as e:
+    warnings.warn(str(e)) # avoiding https://github.com/scikit-learn/scikit-learn/issues/14485
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import backend as K
 from tqdm import tqdm as tqdm
 from tensorflow.keras import layers as KL
-from sklearn import decomposition
-from sklearn.decomposition import PCA
 from tensorflow.keras.utils import plot_model
 import matplotlib.pyplot as plt
 
