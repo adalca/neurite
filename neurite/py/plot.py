@@ -27,7 +27,7 @@ def slices(slices_in,           # the 2D slices
            width=15,            # width in in
            show=True,           # option to actually show the plot (plt.show())
            axes_off=True,
-           plot_block=True,    #option to plt.show()
+           plot_block=True,    # option to plt.show()
            imshow_args=None):
     '''
     plot a grid of slices (2d images)
@@ -185,7 +185,7 @@ def flow_legend(plot_block=True):
     plt.figure(figsize=(6, 6))
     plt.xlim(-2, 2)
     plt.ylim(-2, 2)
-    plt.quiver(x, y, u, v, color=colormap(norm(colors)),  angles='xy', scale_units='xy', scale=1)
+    plt.quiver(x, y, u, v, color=colormap(norm(colors)), angles='xy', scale_units='xy', scale=1)
     plt.show(block=plot_block)
 
 
@@ -198,7 +198,7 @@ def flow(slices_in,           # the 2D slices
          grid=False,          # option to plot the images in a grid or a single row
          show=True,           # option to actually show the plot (plt.show())
          quiver_width=None,
-         plot_block=True,    #option to plt.show()
+         plot_block=True,  # option to plt.show()
          scale=1):            # note quiver essentially draws quiver length = 1/scale
     '''
     plot a grid of flows (2d+2 images)
