@@ -9,11 +9,15 @@ CVPR 2018. https://arxiv.org/abs/1903.03148
 
 Copyright 2020 Adrian V. Dalca
 
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in 
+compliance with the License. You may obtain a copy of the License at
 
 http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+Unless required by applicable law or agreed to in writing, software distributed under the License is
+distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or 
+implied. See the License for the specific language governing permissions and limitations under 
+the License.
 """
 
 # internal python imports
@@ -38,7 +42,7 @@ class ModelWeightCheck(keras.callbacks.Callback):
 
     def __init__(self,
                  weight_diff=False,
-                 at_batch_end=False,                 
+                 at_batch_end=False,
                  at_epoch_end=True):
         """
         Params:
@@ -66,7 +70,8 @@ class ModelWeightCheck(keras.callbacks.Callback):
         for layer in self.model.layers:
             for wt in layer.get_weights():
                 assert ~np.any(np.isnan(wt)), 'Found nan weights in model layer %s' % layer.name
-                assert np.all(np.isfinite(wt)), 'Found infinite weights in model layer %s' % layer.name
+                assert np.all(np.isfinite(
+                    wt)), 'Found infinite weights in model layer %s' % layer.name
 
         # compute max change
         if self.weight_diff:
@@ -78,7 +83,7 @@ class ModelWeightCheck(keras.callbacks.Callback):
                     if len(w) > 0:
                         for si, sw in enumerate(w):
                             diff = np.maximum(diff, np.max(np.abs(sw - self.wts[wi][si])))
-                            
+
             self.wts = wts
             logs['max_diff'] = diff
             # print("max diff", diff)
@@ -127,12 +132,14 @@ class CheckLossTrend(keras.callbacks.Callback):
 
             if (this_loss) > (losses_mean + self.nb_std_err * losses_std):
                 print(logs)
-                err = "Found loss %f, which is much higher than %f + %f " % (this_loss, losses_mean, losses_std)
+                err = "Found loss %f, which is much higher than %f + %f " % (
+                    this_loss, losses_mean, losses_std)
                 # raise ValueError(err)
                 print(err, file=sys.stderr)
-            
+
             if (this_loss - losses_mean) > (losses_mean * 100):
-                err = "Found loss %f, which is much higher than %f * 100 " % (this_loss, losses_mean)
+                err = "Found loss %f, which is much higher than %f * 100 " % (
+                    this_loss, losses_mean)
                 raise ValueError(err)
 
             # cut the first loss and stack athe latest loss.
@@ -149,8 +156,8 @@ class PlotTestSlices(keras.callbacks.Callback):
                  generator,
                  vol_size,
                  run,   # object with fields: patch_size, patch_stride, grid_size
-                 data,  # object with fields:
-                 at_batch_end=None,     # None or number indicate when to execute (i.e. at_batch_end = 10 means execute every 10 batches)
+                 data,
+                 at_batch_end=None,
                  at_epoch_end=True,     # logical, whether to execute at epoch end
                  verbose=False,
                  period=1,
@@ -162,7 +169,8 @@ class PlotTestSlices(keras.callbacks.Callback):
             vol_size,
             run: object with fields: patch_size, patch_stride, grid_size
             data: object with fields:
-            at_batch_end=None: None or number indicate when to execute (i.e. at_batch_end = 10 means execute every 10 batches)
+                at_batch_end=None: None or number indicate when to execute (i.e. at_batch_end = 10 
+                means execute every 10 batches)
             at_epoch_end=True: logical, whether to execute at epoch end
             verbose=False:
             period=1
@@ -191,7 +199,7 @@ class PlotTestSlices(keras.callbacks.Callback):
         if prior is not None:
             data = np.load(prior)
             loc_vol = data['prior']
-            self.prior = np.expand_dims(loc_vol, axis=0) # reshape for model
+            self.prior = np.expand_dims(loc_vol, axis=0)  # reshape for model
 
     def on_batch_end(self, batch, logs={}):
         if self.at_batch_end is not None and np.mod(batch + 1, self.at_batch_end) == 0:
@@ -215,24 +223,25 @@ class PlotTestSlices(keras.callbacks.Callback):
 
             # TODO: show_example_prediction_result is actually in neuron_sandbox for now
             exampl = show_example_prediction_result(self.model,
-                                                                self.generator,
-                                                                self.run,
-                                                                self.data,
-                                                                test_batch_size=1,
-                                                                test_model_names=None,
-                                                                test_grid_size=self.run.grid_size,
-                                                                ccmap=None,
-                                                                collapse_2d=collapse_2d,
-                                                                slice_nr=None,
-                                                                plt_width=17,
-                                                                verbose=self.verbose)
+                                                    self.generator,
+                                                    self.run,
+                                                    self.data,
+                                                    test_batch_size=1,
+                                                    test_model_names=None,
+                                                    test_grid_size=self.run.grid_size,
+                                                    ccmap=None,
+                                                    collapse_2d=collapse_2d,
+                                                    slice_nr=None,
+                                                    plt_width=17,
+                                                    verbose=self.verbose)
 
             # save, then close
             figs = exampl[1:]
             for idx, fig in enumerate(figs):
                 dirn = "dirn_%d" % idx
                 slice_nr = 0
-                filename = self.savefilepath.format(epoch=epoch, iter=iter, axis=dirn, slice_nr=slice_nr)
+                filename = self.savefilepath.format(
+                    epoch=epoch, iter=iter, axis=dirn, slice_nr=slice_nr)
                 fig.savefig(filename)
             plt.close()
 
@@ -473,9 +482,10 @@ class ModelCheckpoint(keras.callbacks.Callback):
 
 class ModelCheckpointParallel(keras.callbacks.Callback):
     """
-    
-    borrow from: https://github.com/rmkemker/main/blob/master/machine_learning/model_checkpoint_parallel.py
-    
+
+    borrow from: 
+    https://github.com/rmkemker/main/blob/master/machine_learning/model_checkpoint_parallel.py
+
     Save the model after every epoch.
     `filepath` can contain named formatting options,
     which will be filled the value of `epoch` and
@@ -569,41 +579,44 @@ class ModelCheckpointParallel(keras.callbacks.Callback):
                     current = logs.get(self.monitor)
                     if current is None:
                         warnings.warn('Can save best model only with %s available, '
-                                    'skipping.' % (self.monitor), RuntimeWarning)
+                                      'skipping.' % (self.monitor), RuntimeWarning)
                     else:
                         if self.monitor_op(current, self.best):
                             if self.verbose > 0:
                                 print('Epoch %05d: Iter%05d: %s improved from %0.5f to %0.5f,'
-                                    ' saving model to %s'
-                                    % (epoch, iter, self.monitor, self.best,
-                                        current, filepath))
+                                      ' saving model to %s'
+                                      % (epoch, iter, self.monitor, self.best,
+                                         current, filepath))
                             self.best = current
                             if self.save_weights_only:
-                                self.model.layers[-(num_outputs+1)].save_weights(filepath, overwrite=True)
+                                self.model.layers[-(num_outputs + 1)
+                                                  ].save_weights(filepath, overwrite=True)
                             else:
-                                self.model.layers[-(num_outputs+1)].save(filepath, overwrite=True)
+                                self.model.layers[-(num_outputs + 1)].save(filepath, overwrite=True)
                         else:
                             if self.verbose > 0:
                                 print('Epoch %05d Iter%05d: %s did not improve' %
-                                    (epoch, iter, self.monitor))
+                                      (epoch, iter, self.monitor))
                 else:
                     if self.verbose > 0:
                         print('Epoch %05d: saving model to %s' % (epoch, filepath))
                     if self.save_weights_only:
-                        self.model.layers[-(num_outputs+1)].save_weights(filepath, overwrite=True)
+                        self.model.layers[-(num_outputs + 1)].save_weights(filepath, overwrite=True)
                     else:
-                        self.model.layers[-(num_outputs+1)].save(filepath, overwrite=True)
+                        self.model.layers[-(num_outputs + 1)].save(filepath, overwrite=True)
 
 
 class TimeHistory(keras.callbacks.Callback):
     """
-    taken from https://stackoverflow.com/questions/43178668/record-the-computation-time-for-each-epoch-in-keras-during-model-fit
+    taken from https://stackoverflow.com/questions/43178668/
+                record-the-computation-time-for-each-epoch-in-keras-during-model-fit
 
     usecase:
     time_callback = TimeHistory()
     model.fit(..., callbacks=[..., time_callback],...)
     times = time_callback.times
     """
+
     def on_train_begin(self, logs={}):
         self.times = []
 
@@ -623,11 +636,11 @@ def _generate_predictions(model, data_generator, batch_size, nb_samples, vol_par
     if vol_params is not None:
         for _ in range(nb_samples):  # assumes nr volume
             vols = ne.utils.seg.predict_volumes(model,
-                                             data_generator,
-                                             batch_size,
-                                             vol_params["patch_size"],
-                                             vol_params["patch_stride"],
-                                             vol_params["grid_size"])
+                                                data_generator,
+                                                batch_size,
+                                                vol_params["patch_size"],
+                                                vol_params["patch_stride"],
+                                                vol_params["grid_size"])
             vol_true, vol_pred = vols[0], vols[1]
             yield (vol_true, vol_pred)
 
@@ -636,4 +649,3 @@ def _generate_predictions(model, data_generator, batch_size, nb_samples, vol_par
         for _ in range(nb_samples):  # assumes nr batches
             vol_pred, vol_true = ne.utils.seg.next_label(model, data_generator)
             yield (vol_true, vol_pred)
-

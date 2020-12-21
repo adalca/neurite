@@ -9,15 +9,20 @@ CVPR 2018. https://arxiv.org/abs/1903.03148
 
 Copyright 2020 Adrian V. Dalca
 
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in 
+compliance with the License. You may obtain a copy of the License at
 
 http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+Unless required by applicable law or agreed to in writing, software distributed under the License is
+distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or 
+implied. See the License for the specific language governing permissions and limitations under 
+the License.
 """
 
 # core python
-import sys, warnings
+import sys
+import warnings
 
 # third party
 import numpy as np
@@ -39,9 +44,11 @@ class MutualInformation:
       (e.g. probabilistic segmentaitons)
 
     More information/citation:
-    - Courtney K Guo. Multi-modal image registration with unsupervised deep learning. 
+    - Courtney K Guo. 
+      Multi-modal image registration with unsupervised deep learning. 
       PhD thesis, Massachusetts Institute of Technology, 2019.
-    - M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. Learning image registration without images.
+    - M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
+      Learning image registration without images.
       arXiv preprint arXiv:2004.10282, 2020. https://arxiv.org/abs/2004.10282
 
     # TODO: add local MI by using patches. This is quite memory consuming, though.
@@ -57,10 +64,15 @@ class MutualInformation:
     mi.maps
     """
 
-    def __init__(self, bin_centers=None, nb_bins=None, min_clip=None, max_clip=None, soft_bin_alpha=1):
+    def __init__(self,
+                 bin_centers=None,
+                 nb_bins=None,
+                 min_clip=None,
+                 max_clip=None,
+                 soft_bin_alpha=1):
         """
         Initialize the mutual information class
-        
+
         Arguments below are related to soft quantizing of volumes, which is done automatically 
         in functions that comptue MI over volumes (e.g. volumes(), volume_seg(), channelwise()) 
         using these parameters
@@ -76,11 +88,11 @@ class MutualInformation:
         """
 
         self.bin_centers = None
-        if bin_centers is not None: 
+        if bin_centers is not None:
             self.bin_centers = tf.convert_to_tensor(bin_centers, dtype=tf.float32)
             assert nb_bins is None, 'cannot provide both bin_centers and nb_bins'
             nb_bins = bin_centers.shape[0]
-        
+
         self.nb_bins = nb_bins
         if bin_centers is None and nb_bins is None:
             self.nb_bins = 16
@@ -95,11 +107,10 @@ class MutualInformation:
 
         self.soft_bin_alpha = soft_bin_alpha
 
-
     def volumes(self, x, y):
         """
         Mutual information for each item in a batch of volumes. 
-        
+
         Algorithm: 
         - use neurite.utils.soft_quantize() to create a soft quantization (binning) of 
           intensities in each channel
@@ -107,7 +118,7 @@ class MutualInformation:
 
         Parameters:
             x and y:  [bs, ..., 1]
-            
+
         Returns:
             Tensor of size [bs]
         """
@@ -121,7 +132,6 @@ class MutualInformation:
         # volume mi
         return K.flatten(self.channelwise(x, y))
 
-
     def segs(self, x, y):
         """
         Mutual information between two probabilistic segmentation maps. 
@@ -129,13 +139,12 @@ class MutualInformation:
 
         Parameters:
             x and y:  [bs, ..., nb_labels]
-            
+
         Returns:
             Tensor of size [bs]
-        """ 
+        """
         # volume mi
         return self.maps(x, y)
-
 
     def volume_seg(self, x, y):
         """
@@ -146,16 +155,17 @@ class MutualInformation:
             x and y: a volume and a probabilistic (soft) segmentation. Either:
               - x: [bs, ..., 1] and y: [bs, ..., nb_labels], Or:
               - x: [bs, ..., nb_labels] and y: [bs, ..., 1]
-            
+
         Returns:
             Tensor of size [bs]
-        """ 
+        """
         # check shapes
         tensor_channels_x = K.shape(x)[-1]
         tensor_channels_y = K.shape(y)[-1]
         msg = 'volume_seg_mi requires one single-channel volume.'
         tf.debugging.assert_equal(tf.minimum(tensor_channels_x, tensor_channels_y), 1, msg)
-        msg = 'volume_seg_mi requires one multi-channel segmentation.' # otherwise we don't know which one is which
+        # otherwise we don't know which one is which
+        msg = 'volume_seg_mi requires one multi-channel segmentation.'
         tf.debugging.assert_greater(tf.maximum(tensor_channels_x, tensor_channels_y), 1, msg)
 
         # transform volume to soft-quantized volume
@@ -164,8 +174,7 @@ class MutualInformation:
         else:
             y = self._soft_sim_map(y[..., 0])                       # [bs, ..., B]
 
-        return self.maps(x, y) # [bs]
-
+        return self.maps(x, y)  # [bs]
 
     def channelwise(self, x, y):
         """
@@ -175,7 +184,7 @@ class MutualInformation:
 
         Parameters:
             x and y:  [bs, ..., C]
-            
+
         Returns:
             Tensor of size [bs, C]
         """
@@ -183,7 +192,7 @@ class MutualInformation:
         tensor_shape_x = K.shape(x)
         tensor_shape_y = K.shape(y)
         tf.debugging.assert_equal(tensor_shape_x, tensor_shape_y, 'volume shapes do not match')
-        
+
         # reshape to [bs, V, C]
         if len(tensor_shape_x) != 3:
             new_shape = K.stack([tensor_shape_x[0], -1, tensor_shape_x[-1]])
@@ -192,7 +201,7 @@ class MutualInformation:
 
         # move channels to first dimension
         ndims_k = len(x.shape)
-        permute = [ndims_k-1] + list(range(ndims_k-1))
+        permute = [ndims_k - 1] + list(range(ndims_k - 1))
         cx = tf.transpose(x, permute)                                # [C, bs, V]
         cy = tf.transpose(y, permute)                                # [C, bs, V]
 
@@ -203,10 +212,9 @@ class MutualInformation:
         # get mi
         map_fn = lambda x: self.maps(*x)
         cout = tf.map_fn(map_fn, [cxq, cyq], dtype=tf.float32)       # [C, bs]
-        
+
         # permute back
         return tf.transpose(cout, [1, 0])                            # [bs, C]
-
 
     def maps(self, x, y):
         """
@@ -234,7 +242,7 @@ class MutualInformation:
         tf.debugging.assert_non_negative(y)
 
         eps = K.epsilon()
-        
+
         # reshape to [bs, V, B]
         if len(tensor_shape_x) != 3:
             new_shape = K.stack([tensor_shape_x[0], -1, tensor_shape_x[-1]])
@@ -245,7 +253,7 @@ class MutualInformation:
         x_trans = tf.transpose(x, (0, 2, 1))                         # [bs, B1, V]
         pxy = K.batch_dot(x_trans, y)                                # [bs, B1, B2]
         pxy = pxy / (K.sum(pxy, axis=[1, 2], keepdims=True) + eps)   # [bs, B1, B2]
-        
+
         # x probability for each batch entry
         px = K.sum(x, 1, keepdims=True)                              # [bs, 1, B1]
         px = px / (K.sum(px, 2, keepdims=True) + eps)                # [bs, 1, B1]
@@ -263,7 +271,6 @@ class MutualInformation:
         log_term = K.log(pxy / pxpy_eps + eps)                       # [bs, B1, B2]
         mi = K.sum(pxy * log_term, axis=[1, 2])                      # [bs]
         return mi
-
 
     def _soft_log_sim_map(self, x):
         """
@@ -286,7 +293,6 @@ class MutualInformation:
                                       max_clip=self.max_clip,
                                       return_log=True)               # [bs, ..., B]
 
-
     def _soft_sim_map(self, x):
         """
         See neurite.utils.soft_quantize
@@ -304,7 +310,6 @@ class MutualInformation:
                                       min_clip=self.min_clip,
                                       max_clip=self.max_clip,
                                       return_log=False)              # [bs, ..., B]
-
 
     def _soft_prob_map(self, x, **kwargs):
         """
@@ -343,7 +348,7 @@ class Dice:
                  normalize=False):  # regularization for bottom of Dice coeff
         """
         Dice of two Tensors. 
-        
+
         If Tensors are probablistic/one-hot, should be size 
             [batch_size, *vol_size, nb_labels], where vol_size is the size of the volume (n-dims)
             e.g. for a 2D vol, y has 4 dimensions, where each entry is a prob for that voxel
@@ -403,9 +408,10 @@ class Dice:
 
         # input checks
         if self.input_type in ['prob', 'one_hot']:
-            
-            # Optionally re-normalize. 
-            # Note that in some cases you explicitly don't wnat to, e.g. if you only return a subset of the labels
+
+            # Optionally re-normalize.
+            # Note that in some cases you explicitly don't wnat to, e.g. if you only return a
+            # subset of the labels
             if self.normalize:
                 y_true = tf.math.divide_no_nan(y_true, K.sum(y_true, axis=-1, keepdims=True))
                 y_pred = tf.math.divide_no_nan(y_pred, K.sum(y_pred, axis=-1, keepdims=True))
@@ -416,7 +422,7 @@ class Dice:
             tf.debugging.assert_greater_equal(y_pred, 0., msg)
             tf.debugging.assert_less_equal(y_true, 1., msg)
             tf.debugging.assert_less_equal(y_pred, 1., msg)
-            
+
         # Prepare the volumes to operate on
         # If we're doing 'hard' Dice, then we will prepare one_hot-based matrices of size
         # [batch_size, nb_voxels, nb_labels], where for each voxel in each batch entry,
@@ -426,10 +432,10 @@ class Dice:
             # if given predicted probability, transform to "hard max""
             if self.input_type == 'prob':
                 # this breaks differentiability, since argmax is not differentiable.
-                warnings.warn('You are using ne.metrics.Dice with probabilistic inputs' \
-                              'and computing *hard* dice. \n For this, we use argmax to' \
-                              'get the optimal label at each location, which is not' \
-                              'differentiable. Do not use expecting gradients.')                
+                warnings.warn('You are using ne.metrics.Dice with probabilistic inputs'
+                              'and computing *hard* dice. \n For this, we use argmax to'
+                              'get the optimal label at each location, which is not'
+                              'differentiable. Do not use expecting gradients.')
 
                 if self.nb_labels is None:
                     self.nb_labels = y_pred.shape.as_list()[-1]
@@ -440,11 +446,11 @@ class Dice:
             # transform to one hot notation
             y_pred = K.one_hot(y_pred, self.nb_labels)
             y_true = K.one_hot(y_true, self.nb_labels)
-      
+
         # reshape to [batch_size, nb_voxels, nb_labels]
         y_true = ne.utils.batch_channel_flatten(y_true)
         y_pred = ne.utils.batch_channel_flatten(y_pred)
-        
+
         # compute dice for each entry in batch.
         # dice will now be [batch_size, nb_labels]
         top = 2 * K.sum(y_true * y_pred, 1)
@@ -483,8 +489,8 @@ class Dice:
         """
         Deprecate anytime after 12/01/2021
         """
-        warnings.warn('ne.metrics.*.loss functions are deprecated.' \
-                     'Please use the ne.losses.*.loss functions.')
+        warnings.warn('ne.metrics.*.loss functions are deprecated.'
+                      'Please use the ne.losses.*.loss functions.')
 
         return - self.mean_dice(y_true, y_pred)
 
@@ -531,6 +537,7 @@ class HardDice(Dice):
       Unsupervised Biomedical Segmentation. CVPR 2018. https://arxiv.org/abs/1903.03148
         [paper for which we developed this method]
     """
+
     def __init__(self,
                  nb_labels,
                  input_type='max_label',
@@ -538,7 +545,7 @@ class HardDice(Dice):
                  normalize=False):
         """
         hard Dice score, inherits from Dice() class
-        
+
         Tensors are assumed to be optimal label ids at each location. 
         If you wish to compute Hard Dice with Tensors 
 
@@ -588,7 +595,7 @@ class CategoricalCrossentropy(tf.keras.losses.CategoricalCrossentropy):
 
     def cce(self, y_true, y_pred, sample_weight=None):
         D = y_pred.ndim
-        wts = tf.reshape(self.label_weights, [1] * (D-1) + [-1])
+        wts = tf.reshape(self.label_weights, [1] * (D - 1) + [-1])
 
         if sample_weight is None:
             sample_weight = 1
@@ -621,7 +628,7 @@ class MeanSquaredErrorProb(tf.keras.losses.MeanSquaredError):
 
     def mse(self, y_true, y_pred, sample_weight=None):
         D = y_pred.ndim
-        wts = tf.reshape(self.label_weights, [1] * (D-1) + [-1])
+        wts = tf.reshape(self.label_weights, [1] * (D - 1) + [-1])
 
         if sample_weight is None:
             sample_weight = 1
@@ -643,7 +650,7 @@ def multiple_metrics_decorator(metrics, weights=None):
         weights (list or np.array, optional): weight for each metric.
             Defaults to None.
     """
-        
+
     if weights is None:
         weights = np.ones(len(metrics))
 
