@@ -715,6 +715,22 @@ def minmax_norm(x):
     return tf.compat.v1.div_no_nan(x - x_min, x_max - x_min)
 
 
+def whiten(x, mean=0., std=1.):
+    """
+    whiteninng, with optional mean and std modification
+
+    Args:
+        x (Tensor): data to be whitenened
+        mean (float, optional): output mean. Defaults to 0..
+        std (float, optional): output standard deviation. Defaults to 1..
+
+    Returns:
+        Tensor: whitened Tensor
+    """
+    x = x - tf.reduce_mean(x)
+    return x / tf.math.reduce_std(x) * std + mean
+
+
 ###############################################################################
 # other
 ###############################################################################
