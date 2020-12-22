@@ -70,6 +70,7 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
     if isinstance(loc, (list, tuple)):
         loc = tf.stack(loc, -1)
     nb_dims = loc.shape[-1]
+    input_vol_shape = vol.shape
 
     if len(vol.shape) not in [nb_dims, nb_dims + 1]:
         raise Exception("Number of loc Tensors %d does not match volume dimension %d"
@@ -173,6 +174,11 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
         interp_vol *= tf.cast(tf.logical_not(out_of_bounds), out_type)
         interp_vol += tf.cast(out_of_bounds, out_type) * fill_value
 
+    # if only inputted volume without channels C, then return only that channel
+    if len(input_vol_shape) == nb_dims:
+        assert interp_vol.shape[-1] == 1, 'Something went wrong with interpn channels'
+        interp_vol = interp_vol[..., 0]
+
     return interp_vol
 
 
@@ -220,7 +226,7 @@ zoom = resize
 # volumetric / axis operations
 ###############################################################################
 
-def tf_map_fn_axis(fn, elems, axis, **kwargs):
+def map_fn_axis(fn, elems, axis, **kwargs):
     """
     apply tf.map_fn along a specific axis
 
@@ -240,6 +246,9 @@ def tf_map_fn_axis(fn, elems, axis, **kwargs):
         elems = [elems]
         assert not isinstance(axis, (tuple, list)), 'axis cannot be list if elements are not list'
         axis = [axis]
+    else:
+        if not isinstance(axis, (tuple, list)):
+            axis = [axis] * len(elems)
 
     elems_perm = []
     for xi, x in enumerate(elems):
@@ -257,7 +266,8 @@ def tf_map_fn_axis(fn, elems, axis, **kwargs):
         elems_perm = elems_perm[0]
 
     x_perm_trf = tf.map_fn(fn, elems_perm, **kwargs)
-    if not islist:
+    output_is_list = isinstance(x_perm_trf, (tuple, list))
+    if not output_is_list:
         x_perm_trf = [x_perm_trf]
 
     # move in_channels back to end
@@ -271,7 +281,7 @@ def tf_map_fn_axis(fn, elems, axis, **kwargs):
         perm = list(range(1, a + 1)) + [0] + list(range(a + 1, s))
         elems_trf.append(K.permute_dimensions(x, perm))
 
-    if not islist:
+    if not output_is_list:
         elems_trf = elems_trf[0]
 
     return elems_trf
