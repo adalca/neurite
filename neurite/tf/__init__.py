@@ -7,3 +7,4 @@ from . import models
 from . import utils
 from . import layers
 from . import regularizers
+from . import data
