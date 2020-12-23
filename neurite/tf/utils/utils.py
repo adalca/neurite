@@ -915,7 +915,7 @@ def soft_quantize(x,
 
 def batch_channel_flatten(x):
     """
-    flatten volume elements outside for each batch and channel
+    flatten volume elements outside of batch and channel
 
     using naming based on keras backend
 
@@ -935,7 +935,18 @@ flatten_batch_channel = batch_channel_flatten
 
 def flatten_axes(x, axes):
     """
-    assumes axes is a list or tuple and are contiguous
+    Flatten the axes[0], ..., axes[-1] of a Tensor x
+
+    Example:
+        v = tf.random.uniform((3, 4, 5, 6))
+        ne.utils.flatten_axes(v, [1, 2]).shape # returns TensorShape([3, 20, 6])
+
+    Args:
+        x (Tensor): Tensor to flatten axes
+        axes: list of axes to flatten
+
+    Returns:
+        Tensor: with flattened axes
 
     See Also:
         batch_channel_flatten
@@ -944,11 +955,15 @@ def flatten_axes(x, axes):
     assert isinstance(axes, (list, tuple, range)), \
         'axes must be list or tuple of axes to be flattened'
     assert np.all(np.diff(axes) == 1), 'axes need to be contiguous'
-    assert axes[0] >= 0, 'axis %d has to be non-negative' % axes[0]
+    if axes[0] < 0:
+        assert axes[-1] < 0, 'if one axis is negative, all have to be negative'
     assert axes[-1] < K.ndim(x), 'axis %d outside max axis %d' % (axes[-1], K.ndim(x) - 1)
 
     shp = K.shape(x)
-    reshape = tf.concat([shp[:axes[0]], - tf.ones((1,), dtype=tf.int32), shp[axes[-1] + 1:]], 0)
+    lst = [shp[:axes[0]], - tf.ones((1,), dtype=tf.int32)]
+    if axes[-1] < len(x.shape) - 1 and not (axes[-1] == -1):
+        lst.append(shp[axes[-1] + 1:])
+    reshape = tf.concat(lst, 0)
     return K.reshape(x, reshape)
 
 
