@@ -117,6 +117,9 @@ def unet(nb_features,
     Parameters:
         nb_features: the number of features at each convolutional level
             see below for `feat_mult` and `layer_nb_feats` for modifiers to this number
+            if nb_features is a list of lists, they will be taken to specify
+            the number of filters and layers at each level
+            overriding other options such as nb_levels and feat_mult
         input_shape: input layer shape, vector of size ndims + 1 (nb_channels)
         conv_size: the convolution kernel size
         nb_levels: the number of Unet levels (number of downsamples) in the "encoder" 
@@ -151,6 +154,22 @@ def unet(nb_features,
     ndims = len(input_shape) - 1
     if isinstance(pool_size, int):
         pool_size = (pool_size,) * ndims
+
+    # if nb_features is a list of lists use it to specify the # of levels
+    # and the number of filters at each level (in each sublist)
+    if isinstance(nb_features, list):
+        if nb_levels is not None:
+            warnings.warn('nb_levels is not None while ' + 
+                          'nb_features list of lists specified - overriding')
+
+        if feat_mult is not None:
+            warnings.warn('feat_mult is not None while ' + 
+                          'nb_features list of lists specified - overriding')
+
+        warnings.warn('warning: list of lists for unet features is experimental')
+        nb_levels = len(nb_features)
+        assert isinstance(nb_features[0], list), \
+            'nb_features must be a scalar or a list of lists (not a list of scalars)'
 
     # get encoding model
     enc_model = conv_enc(nb_features,
@@ -667,7 +686,18 @@ def conv_enc(nb_features,
     lfidx = 0
     for level in range(nb_levels):
         lvl_first_tensor = last_tensor
-        nb_lvl_feats = np.round(nb_features * feat_mult**level).astype(int)
+
+        # if nb_features is a list of lists use it to specify the # of levels
+        # and the number of filters at each level (in each sublist)
+        if isinstance(nb_features, list):
+            lfidx = 0
+            if isinstance(nb_features[level], list):
+                layer_nb_feats = nb_features[level]
+                nb_conv_per_level = len(layer_nb_feats)
+            else:  # not supported yet
+                nb_lvl_feats = nb_conv_per_level * [nb_features[level]]
+        else:
+            nb_lvl_feats = np.round(nb_features * feat_mult**level).astype(int)
         conv_kwargs['dilation_rate'] = dilation_rate_mult**level
 
         for conv in range(nb_conv_per_level):
@@ -807,7 +837,18 @@ def conv_dec(nb_features,
     #    (approx via up + conv + ReLu) + merge + conv + ReLu + conv + ReLu
     lfidx = 0
     for level in range(nb_levels - 1):
-        nb_lvl_feats = np.round(nb_features * feat_mult**(nb_levels - 2 - level)).astype(int)
+        # if nb_features is a list of lists use it to specify the # of levels
+        # and the number of filters at each level (in each sublist)
+        if isinstance(nb_features, list):
+            lfidx = 0  # this will index into list of num filters
+            lindex = nb_levels - level - 2
+            if isinstance(nb_features[lindex], list):
+                layer_nb_feats = nb_features[lindex]
+                nb_conv_per_level = len(layer_nb_feats)
+            else:  # not supported yet
+                nb_lvl_feats = nb_features[lindex]
+        else:
+            nb_lvl_feats = np.round(nb_features * feat_mult**(nb_levels - 2 - level)).astype(int)
         conv_kwargs['dilation_rate'] = dilation_rate_mult**(nb_levels - 2 - level)
 
         # upsample matching the max pooling layers size
@@ -821,6 +862,7 @@ def conv_dec(nb_features,
             conv_name = '%s_conv_downarm_%d_%d' % (
                 prefix, nb_levels - 2 - level, nb_conv_per_level - 1)
             cat_tensor = input_model.get_layer(conv_name).output
+
             name = '%s_merge_%d' % (prefix, nb_levels + level)
             last_tensor = KL.concatenate([cat_tensor, last_tensor], axis=ndims + 1, name=name)
 
