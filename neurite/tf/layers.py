@@ -1897,7 +1897,8 @@ IFFTShift = functools.partial(FFTShift, inverse=True)
 
 class ComplexToChannels(Layer):
     """
-    Transform from Complex Tensors to hacing the read and imaginary parts along channels
+    Split a complex tensor into a real tensor with features corresponding to the
+    real and imaginary components.
 
     If you find this class useful, please cite the original paper this was written for:
         Deep-learning-based Optimization of the Under-sampling Pattern in MRI 
@@ -1906,27 +1907,25 @@ class ComplexToChannels(Layer):
     """
 
     def __init__(self, **kwargs):
-        super(ComplexToChannels, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
     def build(self, input_shape):
-        # super
-        super(ComplexToChannels, self).build(input_shape)
+        super().build(input_shape)
 
-    def call(self, inputx):
-
-        assert inputx.dtype in [tf.complex64, tf.complex128], 'inputx is not complex.'
-
-        return tf.concat([tf.real(inputx), tf.imag(inputx)], -1)
+    def call(self, x):
+        assert x.dtype in (tf.complex64, tf.complex128), f'non-complex input to {self.name}'
+        return tf.concat((tf.math.real(x), tf.math.imag(x)), axis=-1)
 
     def compute_output_shape(self, input_shape):
-        i_s = list(input_shape)
-        i_s[-1] *= 2
-        return tuple(i_s)
+        shape = list(input_shape)
+        shape[-1] *= 2
+        return tuple(shape)
 
 
 class ChannelsToComplex(Layer):
     """
-    going from data along difference channels to a Complex Tensor
+    Convert a real tensor with an even number N of features into a complex N/2-feature tensor.
+    The first N/2 features will be taken as real, the last N/2 features as imaginary components.
 
     If you find this class useful, please cite the original paper this was written for:
         Deep-learning-based Optimization of the Under-sampling Pattern in MRI 
@@ -1935,20 +1934,21 @@ class ChannelsToComplex(Layer):
     """
 
     def __init__(self, **kwargs):
-        super(ChannelsToComplex, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
     def build(self, input_shape):
-        # super
-        super(ChannelsToComplex, self).build(input_shape)
+        assert input_shape[-1] % 2 == 0, f'{input_shape[-1]} is an odd number of features'
+        super().build(input_shape)
 
-    def call(self, inputx):
-        nb_channels = inputx.shape[-1] // 2
-        return tf.complex(inputx[..., :nb_channels], inputx[..., nb_channels:])
+    def call(self, x):
+        assert x.dtype not in (tf.complex64, tf.complex128), f'complex input to {self.name}'
+        nchan = x.shape[-1] // 2
+        return tf.complex(x[..., :nchan], x[..., nchan:])
 
     def compute_output_shape(self, input_shape):
-        i_s = list(input_shape)
-        i_s[-1] = i_s[-1] // 2
-        return tuple(i_s)
+        shape = list(input_shape)
+        shape[-1] = shape[-1] // 2
+        return tuple(shape)
 
 
 ##########################################
