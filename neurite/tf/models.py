@@ -738,7 +738,7 @@ def synth(
     if warp_std_dev > 0:
         # Velocity field.
         vel_scale = np.asarray(warp_shape_factor) / 2
-        vel_draw = lambda x: utils.synth.draw_perlin(
+        vel_draw = lambda x: utils.augment.draw_perlin(
             vel_shape, scales=vel_scale, max_std=warp_std_dev, modulate=warp_modulate)
         # One per batch.
         vel_field = KL.Lambda(lambda x: tf.map_fn(
@@ -838,7 +838,7 @@ def synth(
     # Bias field.
     bias_scale = bias_shape_factor
     bias_shape = (*out_shape, 1)
-    bias_draw = lambda x: utils.synth.draw_perlin(
+    bias_draw = lambda x: utils.augment.draw_perlin(
         bias_shape, scales=bias_scale, max_std=bias_std_dev, modulate=bias_modulate)
     # One per batch.
     bias_field = KL.Lambda(lambda x: tf.map_fn(bias_draw, x, fn_output_signature='float32'))(labels)

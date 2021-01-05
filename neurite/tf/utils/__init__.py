@@ -3,4 +3,4 @@ from .utils import *
 from . import seg
 from . import model
 from . import vae
-from . import synth
+from . import augment
