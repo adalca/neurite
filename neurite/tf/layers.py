@@ -2279,4 +2279,3 @@ class HyperConv3DFromDense(HyperConvFromDense):
 
     def __init__(self, *args, **kwargs):
         super().__init__(3, *args, **kwargs)
-
