@@ -23,7 +23,6 @@ the License.
 # internal python imports
 import sys
 import itertools
-import functools
 
 # third party
 import numpy as np
@@ -1788,8 +1787,8 @@ class FFT(Layer):
     respectively. The output tensor will be complex.
 
     If you find this class useful, please cite the original paper this was written for:
-        Deep-learning-based Optimization of the Under-sampling Pattern in MRI 
-        C. Bahadir‡, A.Q. Wang‡, A.V. Dalca, M.R. Sabuncu. 
+        Deep-learning-based Optimization of the Under-sampling Pattern in MRI
+        C. Bahadir, A.Q. Wang, A.V. Dalca, M.R. Sabuncu.
         IEEE TCP: Transactions on Computational Imaging. 6. pp. 1139-1152. 2020.
     """
 
@@ -1853,6 +1852,26 @@ class FFT(Layer):
         return input_shape
 
 
+class IFFT(FFT):
+    """
+    Apply the inverse fast Fourier transform (iFFT) to a tensor. The transformed axes can be
+    specified. The first and last dimensions of the input tensor are supposed to indicate
+    batches and features, respectively. The output tensor will be complex. For more information
+    see ne.layers.FFT.
+
+    If you find this class useful, please cite the original paper this was written for:
+        Deep-learning-based Optimization of the Under-sampling Pattern in MRI
+        C. Bahadir, A.Q. Wang, A.V. Dalca, M.R. Sabuncu.
+        IEEE TCP: Transactions on Computational Imaging. 6. pp. 1139-1152. 2020.
+    """
+    def __init__(self, *args, **kwargs):
+        """
+        Parameters:
+            axes: Spatial axes along which to take the iFFT. Defaults to None, which means all.
+        """
+        super().__init__(*args, inverse=True, **kwargs)
+
+
 class FFTShift(Layer):
     """
     Shift the zero-frequency component to the center of the tensor.
@@ -1898,8 +1917,23 @@ class FFTShift(Layer):
         return input_shape
 
 
-IFFT = functools.partial(FFT, inverse=True)
-IFFTShift = functools.partial(FFTShift, inverse=True)
+class IFFTShift(FFTShift):
+    """
+    Undo the effect of applying FFTShift. While FFTShift and IFFTShift are identical for
+    even-size tensor dimensions, their effect differs by one voxel for dimensions of odd
+    size. For more information, see ne.layers.FFTShift.
+
+    If you find this class useful, please cite the original paper this was written for:
+        Deep-learning-based Optimization of the Under-sampling Pattern in MRI
+        C. Bahadir, A.Q. Wang, A.V. Dalca, M.R. Sabuncu.
+        IEEE TCP: Transactions on Computational Imaging. 6. pp. 1139-1152. 2020.
+    """
+    def __init__(self, *args, **kwargs):
+        """
+        Parameters:
+            axes: Spatial axes along which to shift the spectrum. Defaults to None, meaning all.
+        """
+        super().__init__(*args, inverse=True, **kwargs)
 
 
 class ComplexToChannels(Layer):
@@ -2245,4 +2279,3 @@ class HyperConv3DFromDense(HyperConvFromDense):
 
     def __init__(self, *args, **kwargs):
         super().__init__(3, *args, **kwargs)
-
