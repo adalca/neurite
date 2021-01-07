@@ -23,6 +23,7 @@ the License.
 # internal python imports
 import sys
 import itertools
+import functools
 
 # third party
 import numpy as np
@@ -1781,9 +1782,10 @@ def _get_training_value(training, trainable_flag):
 
 class FFT(Layer):
     """
-    fft layer, assuming the real/imag are input/output via two features
-    Input: tf.complex of size [batch_size, ..., nb_feats]
-    Output: tf.complex of size [batch_size, ..., nb_feats]
+    Apply the fast Fourier transform (FFT) to a tensor. Supports forward and backward
+    (inverse) transforms, and the transformed axes can be specified. The first and last
+    dimensions of the input tensor are supposed to indicate batches and features,
+    respectively. The output tensor will be complex.
 
     If you find this class useful, please cite the original paper this was written for:
         Deep-learning-based Optimization of the Under-sampling Pattern in MRI 
@@ -1791,246 +1793,169 @@ class FFT(Layer):
         IEEE TCP: Transactions on Computational Imaging. 6. pp. 1139-1152. 2020.
     """
 
-    def __init__(self, **kwargs):
-        super(FFT, self).__init__(**kwargs)
+    def __init__(self, axes=None, inverse=False, shift=False, **kwargs):
+        """
+        Parameters:
+            axes: Spatial axes along which to take the FFT. Defaults to None, which means all.
+            inverse: Whether to perform a backward (inverse) transform. Defaults to False.
+        """
+        self.axes = axes
+        self.inverse = inverse
+        self.shift = shift
+        super().__init__(**kwargs)
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'axes': self.axes,
+            'inverse': self.inverse,
+        })
+        return config
 
     def build(self, input_shape):
-        # some input checking
         self.ndims = len(input_shape) - 2
-        assert self.ndims in [1, 2, 3], 'only 1D, 2D or 3D supported'
+        assert self.ndims in (1, 2, 3), 'only 1D, 2D or 3D supported'
 
-        # super
-        super(FFT, self).build(input_shape)
+        spatial_dim = tuple(range(1, self.ndims + 1))
+        if self.axes is None:
+            self.axes = spatial_dim
+        if np.isscalar(self.axes):
+            self.axes = (self.axes,)
+        self.axes = tuple(set(self.axes))
+        assert all(i in spatial_dim for i in self.axes), f'{self.axes} are not all spatial axes'
 
-    def call(self, inputx):
+        self.naxes = len(self.axes)
+        super().build(input_shape)
 
-        if inputx.dtype not in [tf.complex64, tf.complex128]:
-            print('Warning: inputx is not complex. Converting.', file=sys.stderr)
+    def call(self, x):
+        if x.dtype not in (tf.complex64, tf.complex128):
+            x = tf.cast(x, tf.complex64)
 
-            # if inputx is float, this will assume 0 imag channel
-            inputx = tf.cast(inputx, tf.complex64)
+        # Select the adequate functions.
+        transform = 'fft'
+        if self.naxes > 1:
+            transform += str(self.naxes) + 'd'
+        if self.inverse:
+            transform = 'i' + transform
+        transform = getattr(tf.signal, transform)
 
-        # get the right fft
-        if self.ndims == 1:
-            fft = tf.fft
-        elif self.ndims == 2:
-            fft = tf.fft2d
-        else:
-            fft = tf.fft3d
+        # Permute: the ND FFT operates on the N rightmost dimensions.
+        ignored_dim = tuple(set(range(len(x.shape))) - set(self.axes))
+        forward = (*ignored_dim, *self.axes)
+        backward = np.argsort(forward)
 
-        perm_dims = [0, self.ndims + 1] + list(range(1, self.ndims + 1))
-        invert_perm_ndims = [0] + list(range(2, self.ndims + 2)) + [1]
-
-        # [batch_size, nb_features, *vol_size]
-        perm_inputx = K.permute_dimensions(inputx, perm_dims)
-        fft_inputx = fft(perm_inputx)
-        return K.permute_dimensions(fft_inputx, invert_perm_ndims)
+        x = tf.transpose(x, perm=forward)
+        x = transform(x)
+        x = tf.transpose(x, perm=backward)
+        return x
 
     def compute_output_shape(self, input_shape):
         return input_shape
-
-
-class IFFT(Layer):
-    """
-    ifft layer, assuming the real/imag are input/output via two features
-    Input: tf.complex of size [batch_size, ..., nb_feats]
-    Output: tf.complex of size [batch_size, ..., nb_feats]
-
-    If you find this class useful, please cite the original paper this was written for:
-        Deep-learning-based Optimization of the Under-sampling Pattern in MRI 
-        C. Bahadir‡, A.Q. Wang‡, A.V. Dalca, M.R. Sabuncu. 
-        IEEE TCP: Transactions on Computational Imaging. 6. pp. 1139-1152. 2020.
-    """
-
-    def __init__(self, **kwargs):
-        super(IFFT, self).__init__(**kwargs)
-
-    def build(self, input_shape):
-        # some input checking
-        self.ndims = len(input_shape) - 2
-        assert self.ndims in [1, 2, 3], 'only 1D, 2D or 3D supported'
-
-        # super
-        super(IFFT, self).build(input_shape)
-
-    def call(self, inputx):
-
-        if inputx.dtype not in [tf.complex64, tf.complex128]:
-            print('Warning: inputx is not complex. Converting.', file=sys.stderr)
-
-            # if inputx is float, this will assume 0 imag channel
-            inputx = tf.cast(inputx, tf.complex64)
-
-        # get the right fft
-        if self.ndims == 1:
-            ifft = tf.ifft
-        elif self.ndims == 2:
-            ifft = tf.ifft2d
-        else:
-            ifft = tf.ifft3d
-
-        perm_dims = [0, self.ndims + 1] + list(range(1, self.ndims + 1))
-        invert_perm_ndims = [0] + list(range(2, self.ndims + 2)) + [1]
-
-        # [batch_size, nb_features, *vol_size]
-        perm_inputx = K.permute_dimensions(inputx, perm_dims)
-        ifft_inputx = ifft(perm_inputx)
-        return K.permute_dimensions(ifft_inputx, invert_perm_ndims)
-
-    def compute_output_shape(self, input_shape):
-        return input_shape
-
-
-class ComplexToChannels(Layer):
-    """
-    Transform from Complex Tensors to hacing the read and imaginary parts along channels
-
-    If you find this class useful, please cite the original paper this was written for:
-        Deep-learning-based Optimization of the Under-sampling Pattern in MRI 
-        C. Bahadir‡, A.Q. Wang‡, A.V. Dalca, M.R. Sabuncu. 
-        IEEE TCP: Transactions on Computational Imaging. 6. pp. 1139-1152. 2020.
-    """
-
-    def __init__(self, **kwargs):
-        super(ComplexToChannels, self).__init__(**kwargs)
-
-    def build(self, input_shape):
-        # super
-        super(ComplexToChannels, self).build(input_shape)
-
-    def call(self, inputx):
-
-        assert inputx.dtype in [tf.complex64, tf.complex128], 'inputx is not complex.'
-
-        return tf.concat([tf.real(inputx), tf.imag(inputx)], -1)
-
-    def compute_output_shape(self, input_shape):
-        i_s = list(input_shape)
-        i_s[-1] *= 2
-        return tuple(i_s)
-
-
-class ChannelsToComplex(Layer):
-    """
-    going from data along difference channels to a Complex Tensor
-
-    If you find this class useful, please cite the original paper this was written for:
-        Deep-learning-based Optimization of the Under-sampling Pattern in MRI 
-        C. Bahadir‡, A.Q. Wang‡, A.V. Dalca, M.R. Sabuncu. 
-        IEEE TCP: Transactions on Computational Imaging. 6. pp. 1139-1152. 2020.
-    """
-
-    def __init__(self, **kwargs):
-        super(ChannelsToComplex, self).__init__(**kwargs)
-
-    def build(self, input_shape):
-        # super
-        super(ChannelsToComplex, self).build(input_shape)
-
-    def call(self, inputx):
-        nb_channels = inputx.shape[-1] // 2
-        return tf.complex(inputx[..., :nb_channels], inputx[..., nb_channels:])
-
-    def compute_output_shape(self, input_shape):
-        i_s = list(input_shape)
-        i_s[-1] = i_s[-1] // 2
-        return tuple(i_s)
 
 
 class FFTShift(Layer):
     """
-    fftshift for keras tensors (so only inner dimensions get shifted)
-
-    modified from
-    https://gist.github.com/Gurpreetsingh9465/f76cc9e53107c29fd76515d64c294d3f
-
-    Shift the zero-frequency component to the center of the spectrum.
-    This function swaps half-spaces for all axes listed (defaults to all).
-    Note that ``y[0]`` is the Nyquist component only if ``len(x)`` is even.
-    Parameters
-    ----------
-    x : array_like, Tensor
-        Input array.
-    axes : int or shape tuple, optional
-        Axes over which to shift.  Default is None, which shifts all axes.
-    Returns
-    -------
-    y : Tensor.
+    Shift the zero-frequency component to the center of the tensor.
     """
 
-    def __init__(self, axes=None, **kwargs):
+    def __init__(self, axes=None, inverse=False, **kwargs):
+        """
+        Parameters:
+            axes: Spatial axes along which to shift the spectrum. Defaults to None, meaning all.
+            inverse: Whether to undo the shift operation. Defaults to False.
+        """
         self.axes = axes
-        super(FFTShift, self).__init__(**kwargs)
+        self.inverse = inverse
+        super().__init__(**kwargs)
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'axes': self.axes,
+            'inverse': self.inverse,
+        })
+        return config
 
     def build(self, input_shape):
-        # some input checking
         self.ndims = len(input_shape) - 2
-        assert self.ndims in [1, 2, 3], 'only 1D, 2D or 3D supported'
+        assert self.ndims in (1, 2, 3), 'only 1D, 2D or 3D supported'
 
-        # super
-        super(FFTShift, self).build(input_shape)
+        spatial_dim = tuple(range(1, self.ndims + 1))
+        if self.axes is None:
+            self.axes = spatial_dim
+        if np.isscalar(self.axes):
+            self.axes = (self.axes,)
+        self.axes = tuple(set(self.axes))
+        assert all(i in spatial_dim for i in self.axes), f'{self.axes} are not all spatial axes'
+
+        super().build(input_shape)
 
     def call(self, x):
-        axes = self.axes
-        if axes is None:
-            axes = tuple(range(K.ndim(x)))
-            shift = [0] + [dim // 2 for dim in x.shape] + [0]
-        elif isinstance(axes, int):
-            shift = x.shape[axes] // 2
-        else:
-            shift = [x.shape[ax] // 2 for ax in axes]
-
-        return _roll(x, shift, axes)
+        f = tf.signal.ifftshift if self.inverse else tf.signal.fftshift
+        return f(x, axes=self.axes)
 
     def compute_output_shape(self, input_shape):
         return input_shape
 
 
-class IFFTShift(Layer):
+IFFT = functools.partial(FFT, inverse=True)
+IFFTShift = functools.partial(FFTShift, inverse=True)
+
+
+class ComplexToChannels(Layer):
     """
-    ifftshift for keras tensors (so only inner dimensions get shifted)
+    Split a complex tensor into a real tensor with features corresponding to the
+    real and imaginary components.
 
-    modified from
-    https://gist.github.com/Gurpreetsingh9465/f76cc9e53107c29fd76515d64c294d3f
-
-    The inverse of `fftshift`. Although identical for even-length `x`, the
-    functions differ by one sample for odd-length `x`.
-    Parameters
-    ----------
-    x : array_like, Tensor.
-    axes : int or shape tuple, optional
-        Axes over which to calculate.  Defaults to None, which shifts all axes.
-    Returns
-    -------
-    y : Tensor.
+    If you find this class useful, please cite the original paper this was written for:
+        Deep-learning-based Optimization of the Under-sampling Pattern in MRI 
+        C. Bahadir‡, A.Q. Wang‡, A.V. Dalca, M.R. Sabuncu. 
+        IEEE TCP: Transactions on Computational Imaging. 6. pp. 1139-1152. 2020.
     """
 
-    def __init__(self, axes=None, **kwargs):
-        self.axes = axes
-        super(IFFTShift, self).__init__(**kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def build(self, input_shape):
-        # some input checking
-        self.ndims = len(input_shape) - 2
-        assert self.ndims in [1, 2, 3], 'only 1D, 2D or 3D supported'
-
-        # super
-        super(IFFTShift, self).build(input_shape)
+        super().build(input_shape)
 
     def call(self, x):
-        axes = self.axes
-        if axes is None:
-            axes = tuple(range(K.ndim(x)))
-            shift = [0] + [-(dim // 2) for dim in x.shape.as_list()[1:-1]] + [0]
-        elif isinstance(axes, int):
-            shift = -(x.shape[axes] // 2)
-        else:
-            shift = [-(x.shape[ax] // 2) for ax in axes]
-
-        return _roll(x, shift, axes)
+        assert x.dtype in (tf.complex64, tf.complex128), f'non-complex input to {self.name}'
+        return tf.concat((tf.math.real(x), tf.math.imag(x)), axis=-1)
 
     def compute_output_shape(self, input_shape):
-        return input_shape
+        shape = list(input_shape)
+        shape[-1] *= 2
+        return tuple(shape)
+
+
+class ChannelsToComplex(Layer):
+    """
+    Convert a real tensor with an even number N of features into a complex N/2-feature tensor.
+    The first N/2 features will be taken as real, the last N/2 features as imaginary components.
+
+    If you find this class useful, please cite the original paper this was written for:
+        Deep-learning-based Optimization of the Under-sampling Pattern in MRI 
+        C. Bahadir‡, A.Q. Wang‡, A.V. Dalca, M.R. Sabuncu. 
+        IEEE TCP: Transactions on Computational Imaging. 6. pp. 1139-1152. 2020.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def build(self, input_shape):
+        assert input_shape[-1] % 2 == 0, f'{input_shape[-1]} is an odd number of features'
+        super().build(input_shape)
+
+    def call(self, x):
+        assert x.dtype not in (tf.complex64, tf.complex128), f'complex input to {self.name}'
+        nchan = x.shape[-1] // 2
+        return tf.complex(x[..., :nchan], x[..., nchan:])
+
+    def compute_output_shape(self, input_shape):
+        shape = list(input_shape)
+        shape[-1] = shape[-1] // 2
+        return tuple(shape)
 
 
 ##########################################
