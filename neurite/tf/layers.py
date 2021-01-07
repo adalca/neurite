@@ -34,8 +34,15 @@ from tensorflow.keras.layers import Layer, InputLayer, Input
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.engine.input_spec import InputSpec
+from tensorflow.python.framework.tensor_shape import TensorShape
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras import backend
+from tensorflow.python.keras import activations
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import math_ops
+from tensorflow import roll as _roll
 
 # local imports
 from . import utils
@@ -1997,3 +2004,245 @@ class SampleNormalLogVar(Layer):
         # make it a sample from N(mu, sigma^2)
         z = mu + tf.exp(log_var / 2.0) * noise
         return z
+
+
+##########################################
+# HyperMorph Layers
+##########################################
+
+class HyperConv(Layer):
+    """
+    Private, abstract N-D hyper-convolution layer for use in hypernetworks.
+    This layer has no trainable weights, as it performs a convolution
+    using externel kernel (and bias) weights that are provided as
+    input tensors. The expected layer input is a tensor list:
+
+        [input_features, kernel_weights, bias_weights]
+
+    Parameters:
+        rank: Rank of the convolution.
+        filters: The dimensionality of the output space.
+        kernel_size: An int or int list specifying the convolution window size.
+        strides: An int or int list specifying the stride of the convolution. Default is 1.
+        padding: One of 'valid' or 'same' (case-insensitive). Default is 'valid'.
+        dilation_rate: Dilation rate to use for dilated convolution. Default is 1.
+        activation: Activation function. Default is None.
+        use_bias: Whether the layer applies a bias. Default is True.
+        name: Layer name.
+    """
+
+    def __init__(self,
+                 rank,
+                 filters,
+                 kernel_size,
+                 strides=1,
+                 padding='valid',
+                 dilation_rate=1,
+                 activation=None,
+                 use_bias=True,
+                 name=None,
+                 **kwargs):
+
+        super().__init__(name=name, **kwargs)
+        self.rank = rank
+        self.filters = filters
+        self.kernel_size = conv_utils.normalize_tuple(kernel_size, rank, 'kernel_size')
+        self.strides = conv_utils.normalize_tuple(strides, rank, 'strides')
+        self.padding = conv_utils.normalize_padding(padding)
+        if self.padding == 'causal':
+            raise ValueError('Causal padding is not supported for HyperConv')
+        self.dilation_rate = conv_utils.normalize_tuple(dilation_rate, rank, 'dilation_rate')
+        self.activation = activations.get(activation)
+        self.use_bias = use_bias
+
+    def build(self, input_shape):
+        self._build_conv_op(TensorShape(input_shape[0]))
+        self.built = True
+
+    def _build_conv_op(self, input_shape):
+        kernel_shape = TensorShape(self.kernel_size + (int(input_shape[-1]), self.filters))
+        self._convolution_op = nn_ops.Convolution(
+            input_shape,
+            filter_shape=kernel_shape,
+            dilation_rate=self.dilation_rate,
+            strides=self.strides,
+            padding=self.padding.upper(),
+            data_format=conv_utils.convert_data_format('channels_last', self.rank + 2))
+
+    def call(self, inputs):
+        outputs = tf.map_fn(self._convolve_batch, inputs, dtype=tf.float32)
+        if self.activation is not None:
+            outputs = self.activation(outputs)
+        return outputs
+
+    def _convolve_batch(self, inputs):
+        features_input = tf.expand_dims(inputs[0], axis=0)  # add batch axis for input layer
+        kernel_weights = inputs[1]
+        outputs = self._convolution_op(features_input, kernel_weights)
+        if self.use_bias:
+            bias_weights = inputs[2]
+            outputs = nn.bias_add(outputs, bias_weights, data_format='NHWC')
+        outputs = outputs[0]  # remove added batch axis
+        return outputs
+
+    def compute_output_shape(self, input_shape):
+        input_shape = input_shape[0]  # grab features input tensor
+        input_shape = TensorShape(input_shape).as_list()
+        space = input_shape[1:-1]
+        new_space = []
+        for i in range(len(space)):
+            new_dim = conv_utils.conv_output_length(
+                space[i],
+                self.kernel_size[i],
+                padding=self.padding,
+                stride=self.strides[i],
+                dilation=self.dilation_rate[i]
+            )
+            new_space.append(new_dim)
+        return TensorShape([input_shape[0]] + new_space + [self.filters])
+
+    def get_config(self):
+        config = {
+            'filters': self.filters,
+            'kernel_size': self.kernel_size,
+            'strides': self.strides,
+            'padding': self.padding,
+            'dilation_rate': self.dilation_rate,
+            'activation': activations.serialize(self.activation),
+            'use_bias': self.use_bias,
+        }
+        base_config = super().get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+
+class HyperConv2D(HyperConv):
+    """
+    2D hyper-convolution layer for use in hypernetworks.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(2, *args, **kwargs)
+
+
+class HyperConv3D(HyperConv):
+    """
+    3D hyper-convolution layer for use in hypernetworks.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(3, *args, **kwargs)
+
+
+class HyperConvFromDense(HyperConv):
+    """
+    Private, abstract N-D hyper-convolution wrapping layer that
+    includes the dense mapping from a final hypernetwork layer to the
+    internal kernel/bias weights. The expected layer input is a
+    tensor list:
+
+        [input_features, last_hypernetwork_output]
+
+    Parameters:
+        rank: Rank of the convolution.
+        filters: The dimensionality of the output space.
+        kernel_size: An int or int list specifying the convolution window size.
+        hyperkernel_use_bias: Enable bias in hyper-kernel mapping. Default is True.
+        hyperbias_use_bias: Enable bias in hyper-bias mapping. Default is True.
+        hyperkernel_activation: Activation for the hyper-kernel mapping. Default is tanh.
+        hyperbias_activation: Activation for the hyper-bias mapping. Default is tanh.
+        name: Layer name.
+        kwargs: Forwarded to the HyperConv constructor.
+    """
+
+    def __init__(self,
+                 rank,
+                 filters,
+                 kernel_size,
+                 hyperkernel_use_bias=True,
+                 hyperbias_use_bias=True,
+                 hyperkernel_activation='tanh',
+                 hyperbias_activation='tanh',
+                 name=None,
+                 **kwargs):
+
+        super().__init__(rank, filters, kernel_size, name=name, **kwargs)
+        self.hyperkernel_use_bias = True
+        self.hyperbias_use_bias = True
+        self.hyperkernel_activation = activations.get(hyperkernel_activation)
+        self.hyperbias_activation = activations.get(hyperbias_activation)
+
+    def build(self, input_shape):
+        last_dim = int(input_shape[1][-1])
+        kernel_shape = TensorShape(self.kernel_size + (int(input_shape[0][-1]), self.filters))
+        self.hyperkernel = self._build_dense_pseudo_layer(
+            name='hyperkernel',
+            last_dim=last_dim,
+            target_shape=kernel_shape,
+            use_bias=self.hyperkernel_use_bias,
+            activation=self.hyperkernel_activation)
+        if self.use_bias:
+            self.hyperbias = self._build_dense_pseudo_layer(
+                name='hyperbias',
+                last_dim=last_dim,
+                target_shape=[self.filters],
+                use_bias=self.hyperbias_use_bias,
+                activation=self.hyperbias_activation)
+        self._build_conv_op(TensorShape(input_shape[0]))
+        self.built = True
+
+    def call(self, inputs):
+        kernel = self._call_dense_pseudo_layer(inputs[1], self.hyperkernel)
+        if self.use_bias:
+            bias = self._call_dense_pseudo_layer(inputs[1], self.hyperbias)
+            return super().call([inputs[0], kernel, bias])
+        return super().call([inputs[0], kernel])
+
+    def _build_dense_pseudo_layer(self, name, last_dim, target_shape, use_bias, activation):
+        target_shape = TensorShape(target_shape)
+        units = np.prod(target_shape.as_list())
+        kernel = self.add_weight(
+            name='%s_kernel' % name,
+            shape=[last_dim, units],
+            dtype=tf.float32,
+            trainable=True)
+        if use_bias:
+            bias = self.add_weight(
+                name='%s_bias' % name,
+                shape=[units],
+                dtype=tf.float32,
+                trainable=True)
+        else:
+            bias = None
+        return (kernel, bias, activation, target_shape)
+
+    def _call_dense_pseudo_layer(self, inputs, params):
+        kernel, bias, activation, target_shape = params
+        inputs = math_ops.cast(inputs, self._compute_dtype)
+        if K.is_sparse(inputs):
+            outputs = sparse_ops.sparse_tensor_dense_matmul(inputs, kernel)
+        else:
+            outputs = gen_math_ops.mat_mul(inputs, kernel)
+        if bias is not None:
+            outputs = nn.bias_add(outputs, bias)
+        if activation is not None:
+            outputs = activation(outputs)
+        return tf.reshape(outputs, (-1, *target_shape))
+
+
+class HyperConv2DFromDense(HyperConvFromDense):
+    """
+    2D hyper-convolution dense wrapping layer for use in hypernetworks.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(2, *args, **kwargs)
+
+
+class HyperConv3DFromDense(HyperConvFromDense):
+    """
+    3D hyper-convolution dense wrapping layer for use in hypernetworks.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(3, *args, **kwargs)
+
