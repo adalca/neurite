@@ -27,21 +27,18 @@ import itertools
 # third party
 import numpy as np
 import tensorflow as tf
-from tensorflow import keras
 from tensorflow.keras import backend as K
-from tensorflow.keras.layers import Layer, InputLayer, Input
-from tensorflow.python.keras.engine import base_layer
+from tensorflow.keras.layers import Layer, InputLayer, Input, InputSpec
+
+# keras internal utils
 from tensorflow.python.keras.utils import conv_utils
-from tensorflow.python.keras.engine.input_spec import InputSpec
-from tensorflow.python.framework.tensor_shape import TensorShape
 from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.keras import backend
-from tensorflow.python.keras import activations
-from tensorflow.python.ops import nn
+
+# tensorflow ops (direct import required)
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import gen_math_ops
-from tensorflow.python.ops import math_ops
-from tensorflow import roll as _roll
+from tensorflow.python.ops import gen_sparse_ops
 
 # local imports
 from . import utils
@@ -1011,7 +1008,7 @@ class LocallyConnected3D(Layer):
             Output (N+2)-D dense tensor with shape `output_shape`.
         """
         inputs_flat = K.reshape(inputs, (K.shape(inputs)[0], -1))
-        output_flat = backend.sparse_ops.sparse_tensor_dense_mat_mul(
+        output_flat = gen_sparse_ops.sparse_tensor_dense_mat_mul(
             kernel_idxs, kernel, kernel_shape, inputs_flat, adjoint_b=True)
         output_flat_transpose = K.transpose(output_flat)
 
@@ -1246,7 +1243,7 @@ class LocalCrossLinear(Layer):
         if self.mult_initializer is None:
             mean = 1 / input_shape[-1]
             stddev = 0.01
-            self.mult_initializer = keras.initializers.RandomNormal(mean=mean, stddev=stddev)
+            self.mult_initializer = tf.keras.initializers.RandomNormal(mean=mean, stddev=stddev)
 
         self.mult = self.add_weight(name='mult-kernel',
                                     shape=mult_shape,
@@ -1258,7 +1255,7 @@ class LocalCrossLinear(Layer):
             if self.bias_initializer is None:
                 mean = 1 / input_shape[-1]
                 stddev = 0.01
-                self.bias_initializer = keras.initializers.RandomNormal(mean=mean, stddev=stddev)
+                self.bias_initializer = tf.keras.initializers.RandomNormal(mean=mean, stddev=stddev)
 
             bias_shape = [1] + list(input_shape)[1:-1] + [self.output_features]
             self.bias = self.add_weight(name='bias-kernel',
@@ -1325,7 +1322,7 @@ class LocalCrossLinearTrf(Layer):
         if self.mult_initializer is None:
             mean = 1 / input_shape[-1]
             stddev = 0.01
-            self.mult_initializer = keras.initializers.RandomNormal(mean=mean, stddev=stddev)
+            self.mult_initializer = tf.keras.initializers.RandomNormal(mean=mean, stddev=stddev)
 
         self.mult = self.add_weight(name='mult-kernel',
                                     shape=mult_shape,
@@ -1335,7 +1332,7 @@ class LocalCrossLinearTrf(Layer):
 
         self.trf = self.add_weight(name='def-kernel',
                                    shape=mult_shape + [ndims],
-                                   initializer=keras.initializers.RandomNormal(
+                                   initializer=tf.keras.initializers.RandomNormal(
                                        mean=0, stddev=0.001),
                                    trainable=True)
 
@@ -1343,7 +1340,7 @@ class LocalCrossLinearTrf(Layer):
             if self.bias_initializer is None:
                 mean = 1 / input_shape[-1]
                 stddev = 0.01
-                self.bias_initializer = keras.initializers.RandomNormal(mean=mean, stddev=stddev)
+                self.bias_initializer = tf.keras.initializers.RandomNormal(mean=mean, stddev=stddev)
 
             bias_shape = list(input_shape)[1:-1] + [self.output_features]
             self.bias = self.add_weight(name='bias-kernel',
@@ -1414,10 +1411,10 @@ class LocalParamLayer(Layer):
         # some input checking
         if not name:
             prefix = 'local_param'
-            name = prefix + '_' + str(backend.get_uid(prefix))
+            name = prefix + '_' + str(K.get_uid(prefix))
 
         if not dtype:
-            dtype = backend.floatx()
+            dtype = K.floatx()
 
         self.shape = [1, *shape]
         self.my_initializer = my_initializer
@@ -1440,7 +1437,7 @@ class LocalParamLayer(Layer):
         output_tensor = K.expand_dims(self.kernel, 0) * self.mult
         output_tensor._keras_shape = self.shape
         output_tensor._uses_learning_phase = False
-        output_tensor._keras_history = base_layer.KerasHistory(self, 0, 0)
+        output_tensor._keras_history = tf.python.keras.engine.base_layer.KerasHistory(self, 0, 0)
         output_tensor._batch_input_shape = self.shape
 
         self.trainable = True
@@ -1448,16 +1445,16 @@ class LocalParamLayer(Layer):
         self.is_placeholder = False
 
         # create new node
-        tensorflow.python.keras.engine.base_layer.node_module.Node(self,
-                                                                   inbound_layers=[],
-                                                                   node_indices=[],
-                                                                   tensor_indices=[],
-                                                                   input_tensors=[],
-                                                                   output_tensors=[output_tensor],
-                                                                   input_masks=[],
-                                                                   output_masks=[None],
-                                                                   input_shapes=[],
-                                                                   output_shapes=self.shape)
+        tf.python.keras.engine.base_layer.node_module.Node(self,
+                                                           inbound_layers=[],
+                                                           node_indices=[],
+                                                           tensor_indices=[],
+                                                           input_tensors=[],
+                                                           output_tensors=[output_tensor],
+                                                           input_masks=[],
+                                                           output_masks=[None],
+                                                           input_shapes=[],
+                                                           output_shapes=self.shape)
 
     def get_config(self):
         config = {
@@ -1980,7 +1977,7 @@ class FFTShift(Layer):
         else:
             shift = [x.shape[ax] // 2 for ax in axes]
 
-        return _roll(x, shift, axes)
+        return tf.roll(x, shift, axes)
 
     def compute_output_shape(self, input_shape):
         return input_shape
@@ -2027,7 +2024,7 @@ class IFFTShift(Layer):
         else:
             shift = [-(x.shape[ax] // 2) for ax in axes]
 
-        return _roll(x, shift, axes)
+        return tf.roll(x, shift, axes)
 
     def compute_output_shape(self, input_shape):
         return input_shape
@@ -2127,15 +2124,15 @@ class HyperConv(Layer):
         if self.padding == 'causal':
             raise ValueError('Causal padding is not supported for HyperConv')
         self.dilation_rate = conv_utils.normalize_tuple(dilation_rate, rank, 'dilation_rate')
-        self.activation = activations.get(activation)
+        self.activation = tf.keras.activations.get(activation)
         self.use_bias = use_bias
 
     def build(self, input_shape):
-        self._build_conv_op(TensorShape(input_shape[0]))
+        self._build_conv_op(tf.TensorShape(input_shape[0]))
         self.built = True
 
     def _build_conv_op(self, input_shape):
-        kernel_shape = TensorShape(self.kernel_size + (int(input_shape[-1]), self.filters))
+        kernel_shape = tf.TensorShape(self.kernel_size + (int(input_shape[-1]), self.filters))
         self._convolution_op = nn_ops.Convolution(
             input_shape,
             filter_shape=kernel_shape,
@@ -2156,13 +2153,13 @@ class HyperConv(Layer):
         outputs = self._convolution_op(features_input, kernel_weights)
         if self.use_bias:
             bias_weights = inputs[2]
-            outputs = nn.bias_add(outputs, bias_weights, data_format='NHWC')
+            outputs = tf.nn.bias_add(outputs, bias_weights, data_format='NHWC')
         outputs = outputs[0]  # remove added batch axis
         return outputs
 
     def compute_output_shape(self, input_shape):
         input_shape = input_shape[0]  # grab features input tensor
-        input_shape = TensorShape(input_shape).as_list()
+        input_shape = tf.TensorShape(input_shape).as_list()
         space = input_shape[1:-1]
         new_space = []
         for i in range(len(space)):
@@ -2174,16 +2171,17 @@ class HyperConv(Layer):
                 dilation=self.dilation_rate[i]
             )
             new_space.append(new_dim)
-        return TensorShape([input_shape[0]] + new_space + [self.filters])
+        return tf.TensorShape([input_shape[0]] + new_space + [self.filters])
 
     def get_config(self):
         config = {
+            'rank': self.rank,
             'filters': self.filters,
             'kernel_size': self.kernel_size,
             'strides': self.strides,
             'padding': self.padding,
             'dilation_rate': self.dilation_rate,
-            'activation': activations.serialize(self.activation),
+            'activation': tf.keras.activations.serialize(self.activation),
             'use_bias': self.use_bias,
         }
         base_config = super().get_config()
@@ -2243,12 +2241,12 @@ class HyperConvFromDense(HyperConv):
         super().__init__(rank, filters, kernel_size, name=name, **kwargs)
         self.hyperkernel_use_bias = True
         self.hyperbias_use_bias = True
-        self.hyperkernel_activation = activations.get(hyperkernel_activation)
-        self.hyperbias_activation = activations.get(hyperbias_activation)
+        self.hyperkernel_activation = tf.keras.activations.get(hyperkernel_activation)
+        self.hyperbias_activation = tf.keras.activations.get(hyperbias_activation)
 
     def build(self, input_shape):
         last_dim = int(input_shape[1][-1])
-        kernel_shape = TensorShape(self.kernel_size + (int(input_shape[0][-1]), self.filters))
+        kernel_shape = tf.TensorShape(self.kernel_size + (int(input_shape[0][-1]), self.filters))
         self.hyperkernel = self._build_dense_pseudo_layer(
             name='hyperkernel',
             last_dim=last_dim,
@@ -2262,7 +2260,7 @@ class HyperConvFromDense(HyperConv):
                 target_shape=[self.filters],
                 use_bias=self.hyperbias_use_bias,
                 activation=self.hyperbias_activation)
-        self._build_conv_op(TensorShape(input_shape[0]))
+        self._build_conv_op(tf.TensorShape(input_shape[0]))
         self.built = True
 
     def call(self, inputs):
@@ -2273,7 +2271,7 @@ class HyperConvFromDense(HyperConv):
         return super().call([inputs[0], kernel])
 
     def _build_dense_pseudo_layer(self, name, last_dim, target_shape, use_bias, activation):
-        target_shape = TensorShape(target_shape)
+        target_shape = tf.TensorShape(target_shape)
         units = np.prod(target_shape.as_list())
         kernel = self.add_weight(
             name='%s_kernel' % name,
@@ -2292,16 +2290,26 @@ class HyperConvFromDense(HyperConv):
 
     def _call_dense_pseudo_layer(self, inputs, params):
         kernel, bias, activation, target_shape = params
-        inputs = math_ops.cast(inputs, self._compute_dtype)
+        inputs = tf.cast(inputs, self._compute_dtype)
         if K.is_sparse(inputs):
             outputs = sparse_ops.sparse_tensor_dense_matmul(inputs, kernel)
         else:
             outputs = gen_math_ops.mat_mul(inputs, kernel)
         if bias is not None:
-            outputs = nn.bias_add(outputs, bias)
+            outputs = tf.nn.bias_add(outputs, bias)
         if activation is not None:
             outputs = activation(outputs)
         return tf.reshape(outputs, (-1, *target_shape))
+
+    def get_config(self):
+        config = {
+            'hyperkernel_use_bias': self.hyperkernel_use_bias,
+            'hyperbias_use_bias': self.hyperbias_use_bias,
+            'hyperkernel_activation': tf.keras.activations.serialize(self.hyperkernel_activation),
+            'hyperbias_activation': tf.keras.activations.serialize(self.hyperbias_activation)
+        }
+        base_config = super().get_config()
+        return dict(list(base_config.items()) + list(config.items()))
 
 
 class HyperConv2DFromDense(HyperConvFromDense):
@@ -2320,4 +2328,3 @@ class HyperConv3DFromDense(HyperConvFromDense):
 
     def __init__(self, *args, **kwargs):
         super().__init__(3, *args, **kwargs)
-
