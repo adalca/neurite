@@ -448,12 +448,13 @@ def flatten(v):
 
 
 def take(x, indices, axis):
-    """ Take elements from an array along axis. Similar to np.take. 
-    This just wraps tf.gather, but gather can be overwhleming at times :)
+    """
+    Take elements from an array along axis. Similar to np.take.
+    This just wraps tf.gather, but gather can be overwhelming at times :)
 
     Args:
         x (Tensor): the ND volume to be indexed into
-        indices (Tensor, int, or list): indexes along axis. 
+        indices (Tensor, int, or list): indexes along axis.
             If given int or Tensor of shape (), then returned volume will be one lower dim.
             If given list of Tensor of shape (?, ), then returned volume will be same dim, 
             even if list or Tensor have only one element.
@@ -708,7 +709,7 @@ def odd_shifted_relu(x, shift=-0.5, scale=2.0):
 
 def minmax_norm(x):
     """
-    Min-max normalize tensor using a save division.
+    Min-max normalize tensor using a safe division.
     """
     x_min = tf.reduce_min(x)
     x_max = tf.reduce_max(x)
