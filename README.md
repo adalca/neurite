@@ -25,12 +25,6 @@ pip install neurite
 - [plot](neurite/tf/plot.py): plotting tools, mostly for debugging models  
 
 
-## Requirements:
-- tensorflow, keras and all of their requirements (e.g. hyp5) 
-- numpy, scipy, tqdm  
-- [pystrum](https://github.com/adalca/pystrum)
- 
-
 ## Papers:
 If you use this code, please cite:
 
