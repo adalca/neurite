@@ -1789,7 +1789,7 @@ class FFT(Layer):
         IEEE TCP: Transactions on Computational Imaging. 6. pp. 1139-1152. 2020.
     """
 
-    def __init__(self, axes=None, inverse=False, shift=False, **kwargs):
+    def __init__(self, axes=None, inverse=False, **kwargs):
         """
         Parameters:
             axes: Spatial axes along which to take the FFT. Defaults to None, which means all.
@@ -1797,7 +1797,6 @@ class FFT(Layer):
         """
         self.axes = axes
         self.inverse = inverse
-        self.shift = shift
         super().__init__(**kwargs)
 
     def get_config(self):
