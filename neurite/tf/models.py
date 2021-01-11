@@ -627,7 +627,7 @@ def single_ae(enc_size,
     return model
 
 
-def synth(
+def label_to_image(
     in_shape,
     in_label_list,
     out_label_list=None,
