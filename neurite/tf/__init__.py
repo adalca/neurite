@@ -1,4 +1,5 @@
 # neurite main tools
+from . import modelio
 from . import generators
 from . import callbacks
 from . import metrics
