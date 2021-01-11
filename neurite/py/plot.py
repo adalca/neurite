@@ -99,7 +99,7 @@ def slices(slices_in,           # the 2D slices
 
         # colorbars
         # http://stackoverflow.com/questions/18195758/set-matplotlib-colorbar-size-to-match-graph
-        if do_colorbars and cmaps[i] is not None:
+        if do_colorbars:  # and cmaps[i] is not None
             divider = make_axes_locatable(ax)
             cax = divider.append_axes("right", size="5%", pad=0.05)
             fig.colorbar(im_ax, cax=cax)
