@@ -800,7 +800,7 @@ def perlin_vol(vol_shape, min_scale=0, max_scale=None, interp_method='linear', w
 
         # interpolated rand volume to upper side
         reshape_factor = [vol_shape[d] / sc[d] for d in range(len(vol_shape))]
-        interp_vol = zoom(rand_vol, reshape_factor, interp_method=interp_method)[..., 0]
+        interp_vol = zoom(rand_vol, reshape_factor, interp_method=interp_method)
 
         # add to existing volume
         vol = vol + wts[sci] * interp_vol
