@@ -27,6 +27,7 @@ import warnings
 
 # third party imports
 from tensorflow import keras
+import tensorflow.keras.backend as K
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -625,6 +626,19 @@ class TimeHistory(keras.callbacks.Callback):
 
     def on_epoch_end(self, batch, logs={}):
         self.times.append(time.time() - self.epoch_time_start)
+
+
+class LRLog(keras.callbacks.Callback):
+    """
+    add learning rate to log
+    """
+
+    def on_train_begin(self, logs={}):
+        logs = logs or {}
+        logs['lr'] = K.get_value(self.model.optimizer.lr)
+
+    def on_epoch_end(self, batch, logs={}):
+        logs['lr'] = K.get_value(self.model.optimizer.lr)
 
 
 ##################################################################################################
