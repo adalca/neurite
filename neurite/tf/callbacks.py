@@ -633,15 +633,23 @@ class LRLog(keras.callbacks.Callback):
     add learning rate to log
     """
 
-    def __init__(self, lr_log_name='lr'):
+    def __init__(self, lr_log_name='lr', print_on_epoch_end=False):
         self.lr_log_name = lr_log_name
+        self.print_on_epoch_end = print_on_epoch_end
 
     def on_train_begin(self, logs={}):
         logs = logs or {}
         logs[self.lr_log_name] = K.get_value(self.model.optimizer.lr)
 
     def on_epoch_end(self, batch, logs={}):
-        logs[self.lr_log_name] = K.get_value(self.model.optimizer.lr)
+        lr = K.get_value(self.model.optimizer.lr)
+
+        # print
+        if self.print_on_epoch_end:
+            print('lr: %2.2e ' % lr)
+
+        # add to history logs
+        logs[self.lr_log_name] = lr
 
 
 ##################################################################################################
