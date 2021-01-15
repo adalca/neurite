@@ -646,7 +646,7 @@ class LRLog(keras.callbacks.Callback):
 
         # print
         if self.print_on_epoch_end:
-            print('lr: %2.2e ' % lr)
+            print('T   - lr: %2.2e ' % lr, end=" ")
 
         # add to history logs
         logs[self.lr_log_name] = lr
