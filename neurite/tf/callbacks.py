@@ -638,7 +638,9 @@ class LRLog(keras.callbacks.Callback):
         self.print_on_epoch_end = print_on_epoch_end
 
     def on_train_begin(self, logs={}):
-        logs = logs or {}
+        logs[self.lr_log_name] = K.get_value(self.model.optimizer.lr)
+
+    def on_batch_end(self, batch, logs={}):
         logs[self.lr_log_name] = K.get_value(self.model.optimizer.lr)
 
     def on_epoch_end(self, batch, logs={}):
