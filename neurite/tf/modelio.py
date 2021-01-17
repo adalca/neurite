@@ -3,6 +3,7 @@ import h5py
 import json
 import inspect
 import functools
+import warnings
 
 
 def store_config_args(func):
@@ -45,7 +46,7 @@ def store_config_args(func):
 
 class ModelConfig:
     """
-    A seperate class to contain the model config so that tensorflow
+    A separate class to contain the model config so that tensorflow
     doesn't try to wrap it when making checkpoints.
     """
 
@@ -65,6 +66,10 @@ class LoadableModel(tf.keras.Model):
     are automatically saved into the object (in self.config) if the __init__ method
     is decorated with the @store_config_args utility.
     """
+
+    def __call__(self, *args, **kwargs):
+        warnings.warn('Calling a LoadableModel will create a separate graph', UserWarning)
+        return super().__call__(*args, **kwargs)
 
     def get_config(self):
         """
@@ -87,7 +92,7 @@ class LoadableModel(tf.keras.Model):
     def load(cls, path, by_name=False):
         """
         Loads model config and weights from an H5 file. This first constructs a model using
-        the config parameters stored in the H5 and then seperately loads the weights. The
+        the config parameters stored in the H5 and then separately loads the weights. The
         keras load function is not used directly because it expects all training parameters,
         like custom losses, to be defined, which we don't want to do.
         """
