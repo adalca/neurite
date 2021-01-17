@@ -630,28 +630,15 @@ class TimeHistory(keras.callbacks.Callback):
 
 class LRLog(keras.callbacks.Callback):
     """
-    add learning rate to log
+    Callback that adds learning rate to Keras logs.
     """
 
-    def __init__(self, lr_log_name='lr', print_on_epoch_end=False):
+    def __init__(self, lr_log_name='lr'):
+        self._supports_tf_logs = True
         self.lr_log_name = lr_log_name
-        self.print_on_epoch_end = print_on_epoch_end
-
-    def on_train_begin(self, logs={}):
-        logs[self.lr_log_name] = K.get_value(self.model.optimizer.lr)
 
     def on_batch_end(self, batch, logs={}):
         logs[self.lr_log_name] = K.get_value(self.model.optimizer.lr)
-
-    def on_epoch_end(self, batch, logs={}):
-        lr = K.get_value(self.model.optimizer.lr)
-
-        # print
-        if self.print_on_epoch_end:
-            print('T   - lr: %2.2e ' % lr, end=" ")
-
-        # add to history logs
-        logs[self.lr_log_name] = lr
 
 
 ##################################################################################################
