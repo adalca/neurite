@@ -2286,3 +2286,162 @@ class HyperConv3DFromDense(HyperConvFromDense):
 
     def __init__(self, *args, **kwargs):
         super().__init__(3, *args, **kwargs)
+
+
+class HyperDense(Layer):
+    """
+    Hyper-dense layer for use in hypernetworks. This layer has no
+    trainable weights, as it performs a dense operation using externel kernel
+    (and bias) weights that are provided as input tensors. The expected layer
+    input is a tensor list:
+
+        [input, kernel_weights, bias_weights]
+
+    Parameters:
+        units: Dimensionality of the output space.
+        activation: Activation function. Default is None.
+        use_bias: Whether the layer applies a bias. Default is True.
+    """
+
+    def __init__(self,
+                 units,
+                 activation=None,
+                 use_bias=True,
+                 **kwargs):
+
+        super().__init__(**kwargs)
+
+        self.units = int(units) if not isinstance(units, int) else units
+        self.activation = tf.keras.activations.get(activation)
+        self.use_bias = use_bias
+        self.supports_masking = True
+
+    def call(self, inputs):
+        outputs = tf.map_fn(self._call_batch, inputs, dtype=tf.float32)
+        if self.activation is not None:
+            outputs = self.activation(outputs)
+        return outputs
+
+    def _call_batch(self, inputs):
+        x = tf.expand_dims(inputs[0], axis=0)  # add batch axis for input layer
+        x = tf.cast(x, self._compute_dtype)
+        kernel = inputs[1]
+        if K.is_sparse(x):
+            outputs = sparse_ops.sparse_tensor_dense_matmul(x, kernel)
+        else:
+            outputs = gen_math_ops.mat_mul(x, kernel)
+        if self.use_bias:
+            outputs = tf.nn.bias_add(outputs, inputs[2])
+        outputs = outputs[0]  # remove added batch axis
+        return outputs
+
+    def compute_output_shape(self, input_shape):
+        input_shape = input_shape[0]  # grab 'true' input tensor
+        input_shape = tf.TensorShape(input_shape).with_rank_at_least(2)
+        return input_shape[:-1].concatenate(self.units)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'units': self.units,
+            'activation': activations.serialize(self.activation),
+            'use_bias': self.use_bias
+        })
+        return config
+
+
+class HyperDenseFromDense(HyperDense):
+    """
+    Hyper-dense wrapping layer that includes the dense mapping from a
+    final hypernetwork layer to the internal kernel/bias weights. The
+    expected layer input is a tensor list:
+
+        [input_features, last_hypernetwork_output]
+
+    Parameters:
+        units: Dimensionality of the output space.
+        hyperkernel_use_bias: Enable bias in hyper-kernel mapping. Default is True.
+        hyperbias_use_bias: Enable bias in hyper-bias mapping. Default is True.
+        hyperkernel_activation: Activation for the hyper-kernel mapping. Default is tanh.
+        hyperbias_activation: Activation for the hyper-bias mapping. Default is tanh.
+        kwargs: Forwarded to the HyperDense constructor.
+    """
+
+    def __init__(self,
+                 units,
+                 hyperkernel_use_bias=True,
+                 hyperbias_use_bias=True,
+                 hyperkernel_activation='tanh',
+                 hyperbias_activation='tanh',
+                 **kwargs):
+
+        super().__init__(units, **kwargs)
+        self.hyperkernel_use_bias = True
+        self.hyperbias_use_bias = True
+        self.hyperkernel_activation = tf.keras.activations.get(hyperkernel_activation)
+        self.hyperbias_activation = tf.keras.activations.get(hyperbias_activation)
+
+    def build(self, input_shape):
+        last_dim = int(input_shape[1][-1])
+        self.hyperkernel = self._build_dense_pseudo_layer(
+            name='hyperkernel',
+            last_dim=last_dim,
+            target_shape=[int(input_shape[0][-1]), self.units],
+            use_bias=self.hyperkernel_use_bias,
+            activation=self.hyperkernel_activation)
+        if self.use_bias:
+            self.hyperbias = self._build_dense_pseudo_layer(
+                name='hyperbias',
+                last_dim=last_dim,
+                target_shape=[self.units],
+                use_bias=self.hyperbias_use_bias,
+                activation=self.hyperbias_activation)
+        self.built = True
+
+    def call(self, inputs):
+        kernel = self._call_dense_pseudo_layer(inputs[1], self.hyperkernel)
+        if self.use_bias:
+            bias = self._call_dense_pseudo_layer(inputs[1], self.hyperbias)
+            return super().call([inputs[0], kernel, bias])
+        return super().call([inputs[0], kernel])
+
+    def _build_dense_pseudo_layer(self, name, last_dim, target_shape, use_bias, activation):
+        target_shape = tf.TensorShape(target_shape)
+        units = np.prod(target_shape.as_list())
+        kernel = self.add_weight(
+            name='%s_kernel' % name,
+            shape=[last_dim, units],
+            dtype=tf.float32,
+            trainable=True)
+        if use_bias:
+            bias = self.add_weight(
+                name='%s_bias' % name,
+                shape=[units],
+                dtype=tf.float32,
+                trainable=True)
+        else:
+            bias = None
+        return (kernel, bias, activation, target_shape)
+
+    def _call_dense_pseudo_layer(self, inputs, params):
+        kernel, bias, activation, target_shape = params
+        inputs = tf.cast(inputs, self._compute_dtype)
+        if K.is_sparse(inputs):
+            outputs = sparse_ops.sparse_tensor_dense_matmul(inputs, kernel)
+        else:
+            outputs = gen_math_ops.mat_mul(inputs, kernel)
+        if bias is not None:
+            outputs = tf.nn.bias_add(outputs, bias)
+        if activation is not None:
+            outputs = activation(outputs)
+        return tf.reshape(outputs, (-1, *target_shape))
+
+    def get_config(self):
+        config = {
+            'hyperkernel_use_bias': self.hyperkernel_use_bias,
+            'hyperbias_use_bias': self.hyperbias_use_bias,
+            'hyperkernel_activation': tf.keras.activations.serialize(self.hyperkernel_activation),
+            'hyperbias_activation': tf.keras.activations.serialize(self.hyperbias_activation)
+        }
+        base_config = super().get_config()
+        return dict(list(base_config.items()) + list(config.items()))
