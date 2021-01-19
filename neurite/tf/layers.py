@@ -2344,7 +2344,7 @@ class HyperDense(Layer):
         config = super().get_config()
         config.update({
             'units': self.units,
-            'activation': activations.serialize(self.activation),
+            'activation': tf.keras.activations.serialize(self.activation),
             'use_bias': self.use_bias
         })
         return config
