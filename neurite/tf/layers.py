@@ -2074,13 +2074,18 @@ class HyperConv(Layer):
                  **kwargs):
 
         super().__init__(name=name, **kwargs)
+
+        # TODO: filters doesn't actually need to be specified as it can be
+        # determined by the input kernel size
         self.rank = rank
         self.filters = filters
         self.kernel_size = conv_utils.normalize_tuple(kernel_size, rank, 'kernel_size')
         self.strides = conv_utils.normalize_tuple(strides, rank, 'strides')
         self.padding = conv_utils.normalize_padding(padding)
+
         if self.padding == 'causal':
             raise ValueError('Causal padding is not supported for HyperConv')
+
         self.dilation_rate = conv_utils.normalize_tuple(dilation_rate, rank, 'dilation_rate')
         self.activation = tf.keras.activations.get(activation)
         self.use_bias = use_bias
@@ -2090,6 +2095,9 @@ class HyperConv(Layer):
         self.built = True
 
     def _build_conv_op(self, input_shape):
+        """
+        Configures the convolutional op for the input tensors, given the input shape.
+        """
         kernel_shape = tf.TensorShape(self.kernel_size + (int(input_shape[-1]), self.filters))
         self._convolution_op = nn_ops.Convolution(
             input_shape,
@@ -2100,26 +2108,46 @@ class HyperConv(Layer):
             data_format=conv_utils.convert_data_format('channels_last', self.rank + 2))
 
     def call(self, inputs):
+        """
+        Runs per-batch convolution on the inputs, consisting of input features, kernels weights,
+        and optional bias weights (when use_bias is True).
+        """
         outputs = tf.map_fn(self._convolve_batch, inputs, dtype=tf.float32)
         if self.activation is not None:
             outputs = self.activation(outputs)
         return outputs
 
     def _convolve_batch(self, inputs):
-        features_input = tf.expand_dims(inputs[0], axis=0)  # add batch axis for input layer
+        """
+        Performs convolution on a single batch of input features, kernels weights,
+        and optional bias weights.
+        """
+
+        # add batch axis for input layer
+        features_input = tf.expand_dims(inputs[0], axis=0)
         kernel_weights = inputs[1]
+
+        # convolve
         outputs = self._convolution_op(features_input, kernel_weights)
+
+        # add bias weights
         if self.use_bias:
             bias_weights = inputs[2]
             outputs = tf.nn.bias_add(outputs, bias_weights, data_format='NHWC')
-        outputs = outputs[0]  # remove added batch axis
+
+        # remove added batch axis
+        outputs = outputs[0]
         return outputs
 
     def compute_output_shape(self, input_shape):
+        """
+        Computes output tensor shape.
+        """
         input_shape = input_shape[0]  # grab features input tensor
         input_shape = tf.TensorShape(input_shape).as_list()
         space = input_shape[1:-1]
         new_space = []
+
         for i in range(len(space)):
             new_dim = conv_utils.conv_output_length(
                 space[i],
@@ -2129,6 +2157,7 @@ class HyperConv(Layer):
                 dilation=self.dilation_rate[i]
             )
             new_space.append(new_dim)
+
         return tf.TensorShape([input_shape[0]] + new_space + [self.filters])
 
     def get_config(self):
@@ -2203,14 +2232,25 @@ class HyperConvFromDense(HyperConv):
         self.hyperbias_activation = tf.keras.activations.get(hyperbias_activation)
 
     def build(self, input_shape):
+        """
+        Builds a hyper-conv layer from a tensor with two internal dense operations,
+        'pseudo dense layers', that predict convolutional kernel and optional bias weights,
+        if use_bias is True.
+        """
         last_dim = int(input_shape[1][-1])
         kernel_shape = tf.TensorShape(self.kernel_size + (int(input_shape[0][-1]), self.filters))
+
+        # builds the internal dense layer (kernel and bias weights that
+        # create the hyper-conv kernel weights)
         self.hyperkernel = self._build_dense_pseudo_layer(
             name='hyperkernel',
             last_dim=last_dim,
             target_shape=kernel_shape,
             use_bias=self.hyperkernel_use_bias,
             activation=self.hyperkernel_activation)
+
+        # builds the internal dense layer (kernel and bias weights that
+        # create the hyper-conv bias weights)
         if self.use_bias:
             self.hyperbias = self._build_dense_pseudo_layer(
                 name='hyperbias',
@@ -2218,24 +2258,40 @@ class HyperConvFromDense(HyperConv):
                 target_shape=[self.filters],
                 use_bias=self.hyperbias_use_bias,
                 activation=self.hyperbias_activation)
+
+        # build the convolutional op (see HyperConv)
         self._build_conv_op(tf.TensorShape(input_shape[0]))
         self.built = True
 
     def call(self, inputs):
+        """
+        Calls the internal dense layers that compute the hyper kernel and bias
+        weights, then convolves the input features with those computed weights.
+        """
         kernel = self._call_dense_pseudo_layer(inputs[1], self.hyperkernel)
+
         if self.use_bias:
             bias = self._call_dense_pseudo_layer(inputs[1], self.hyperbias)
             return super().call([inputs[0], kernel, bias])
+
         return super().call([inputs[0], kernel])
 
     def _build_dense_pseudo_layer(self, name, last_dim, target_shape, use_bias, activation):
+        """
+        Creates weights for an internal dense 'pseudo-layer' described
+        in the build() documentation.
+        """
         target_shape = tf.TensorShape(target_shape)
         units = np.prod(target_shape.as_list())
+
+        # create dense kernel weights
         kernel = self.add_weight(
             name='%s_kernel' % name,
             shape=[last_dim, units],
             dtype=tf.float32,
             trainable=True)
+
+        # create dense bias weights
         if use_bias:
             bias = self.add_weight(
                 name='%s_bias' % name,
@@ -2244,19 +2300,27 @@ class HyperConvFromDense(HyperConv):
                 trainable=True)
         else:
             bias = None
+
         return (kernel, bias, activation, target_shape)
 
     def _call_dense_pseudo_layer(self, inputs, params):
+        """
+        Calls an internal dense 'pseudo-layer' described in the build() documentation.
+        """
         kernel, bias, activation, target_shape = params
         inputs = tf.cast(inputs, self._compute_dtype)
+
         if K.is_sparse(inputs):
             outputs = sparse_ops.sparse_tensor_dense_matmul(inputs, kernel)
         else:
             outputs = gen_math_ops.mat_mul(inputs, kernel)
+
         if bias is not None:
             outputs = tf.nn.bias_add(outputs, bias)
+
         if activation is not None:
             outputs = activation(outputs)
+
         return tf.reshape(outputs, (-1, *target_shape))
 
     def get_config(self):
@@ -2311,31 +2375,50 @@ class HyperDense(Layer):
 
         super().__init__(**kwargs)
 
+        # TODO: units doesn't actually need to be specified as it can be
+        # determined by the input kernel size
         self.units = int(units) if not isinstance(units, int) else units
         self.activation = tf.keras.activations.get(activation)
         self.use_bias = use_bias
         self.supports_masking = True
 
     def call(self, inputs):
+        """
+        Runs per-batch dense operation on the inputs, consisting of input features,
+        kernels weights, and optional bias weights (when use_bias is True).
+        """
         outputs = tf.map_fn(self._call_batch, inputs, dtype=tf.float32)
+
+        # apply activation to all batches
         if self.activation is not None:
             outputs = self.activation(outputs)
+
         return outputs
 
     def _call_batch(self, inputs):
+        """
+        Performs dense operation on a single batch of input features,
+        kernels weights, and optional bias weights.
+        """
         x = tf.expand_dims(inputs[0], axis=0)  # add batch axis for input layer
         x = tf.cast(x, self._compute_dtype)
         kernel = inputs[1]
+
         if K.is_sparse(x):
             outputs = sparse_ops.sparse_tensor_dense_matmul(x, kernel)
         else:
             outputs = gen_math_ops.mat_mul(x, kernel)
+
         if self.use_bias:
             outputs = tf.nn.bias_add(outputs, inputs[2])
+
         outputs = outputs[0]  # remove added batch axis
         return outputs
 
     def compute_output_shape(self, input_shape):
+        """
+        Computes output tensor shape.
+        """
         input_shape = input_shape[0]  # grab 'true' input tensor
         input_shape = tf.TensorShape(input_shape).with_rank_at_least(2)
         return input_shape[:-1].concatenate(self.units)
@@ -2382,13 +2465,24 @@ class HyperDenseFromDense(HyperDense):
         self.hyperbias_activation = tf.keras.activations.get(hyperbias_activation)
 
     def build(self, input_shape):
+        """
+        Builds a hyper-dense layer from a tensor with two internal dense operations,
+        'pseudo dense layers', that predict hyper-dense kernel and optional bias weights,
+        if use_bias is True.
+        """
         last_dim = int(input_shape[1][-1])
+
+        # builds the internal dense layer (kernel and bias weights that
+        # create the hyper-dense kernel weights)
         self.hyperkernel = self._build_dense_pseudo_layer(
             name='hyperkernel',
             last_dim=last_dim,
             target_shape=[int(input_shape[0][-1]), self.units],
             use_bias=self.hyperkernel_use_bias,
             activation=self.hyperkernel_activation)
+
+        # builds the internal dense layer (kernel and bias weights that
+        # create the hyper-dense bias weights)
         if self.use_bias:
             self.hyperbias = self._build_dense_pseudo_layer(
                 name='hyperbias',
@@ -2396,23 +2490,39 @@ class HyperDenseFromDense(HyperDense):
                 target_shape=[self.units],
                 use_bias=self.hyperbias_use_bias,
                 activation=self.hyperbias_activation)
+
         self.built = True
 
     def call(self, inputs):
+        """
+        Calls the internal dense layers that compute the hyper kernel and bias
+        weights, then calls the real dense operation on the input layer with
+        those computed weights.
+        """
         kernel = self._call_dense_pseudo_layer(inputs[1], self.hyperkernel)
+
         if self.use_bias:
             bias = self._call_dense_pseudo_layer(inputs[1], self.hyperbias)
             return super().call([inputs[0], kernel, bias])
+
         return super().call([inputs[0], kernel])
 
     def _build_dense_pseudo_layer(self, name, last_dim, target_shape, use_bias, activation):
+        """
+        Creates weights for an internal dense 'pseudo-layer' described
+        in the build() documentation.
+        """
         target_shape = tf.TensorShape(target_shape)
         units = np.prod(target_shape.as_list())
+
+        # create dense kernel weights
         kernel = self.add_weight(
             name='%s_kernel' % name,
             shape=[last_dim, units],
             dtype=tf.float32,
             trainable=True)
+
+        # create dense bias weights
         if use_bias:
             bias = self.add_weight(
                 name='%s_bias' % name,
@@ -2421,19 +2531,27 @@ class HyperDenseFromDense(HyperDense):
                 trainable=True)
         else:
             bias = None
+
         return (kernel, bias, activation, target_shape)
 
     def _call_dense_pseudo_layer(self, inputs, params):
+        """
+        Calls an internal dense 'pseudo-layer' described in the build() documentation.
+        """
         kernel, bias, activation, target_shape = params
         inputs = tf.cast(inputs, self._compute_dtype)
+
         if K.is_sparse(inputs):
             outputs = sparse_ops.sparse_tensor_dense_matmul(inputs, kernel)
         else:
             outputs = gen_math_ops.mat_mul(inputs, kernel)
+
         if bias is not None:
             outputs = tf.nn.bias_add(outputs, bias)
+
         if activation is not None:
             outputs = activation(outputs)
+
         return tf.reshape(outputs, (-1, *target_shape))
 
     def get_config(self):
