@@ -3,7 +3,6 @@ import h5py
 import json
 import inspect
 import functools
-import warnings
 
 
 def store_config_args(func):
@@ -66,10 +65,6 @@ class LoadableModel(tf.keras.Model):
     are automatically saved into the object (in self.config) if the __init__ method
     is decorated with the @store_config_args utility.
     """
-
-    def __call__(self, *args, **kwargs):
-        warnings.warn('Calling a LoadableModel will create a separate graph', UserWarning)
-        return super().__call__(*args, **kwargs)
 
     def get_config(self):
         """
