@@ -471,7 +471,14 @@ def take(x, indices, axis):
 ###############################################################################
 
 
-def gaussian_kernel(sigma, windowsize=None, indexing='ij', separate=False, random=False, min_sigma=0):
+def gaussian_kernel(
+    sigma,
+    windowsize=None,
+    indexing='ij',
+    separate=False,
+    random=False,
+    min_sigma=0,
+):
     '''
     Construct an N-dimensional Gaussian kernel.
 
