@@ -471,7 +471,7 @@ def take(x, indices, axis):
 ###############################################################################
 
 
-def gaussian_kernel(sigma, windowsize=None, indexing='ij', separate=False, random=False):
+def gaussian_kernel(sigma, windowsize=None, indexing='ij', separate=False, random=False, min_sigma=0):
     '''
     Construct an N-dimensional Gaussian kernel.
 
@@ -482,7 +482,9 @@ def gaussian_kernel(sigma, windowsize=None, indexing='ij', separate=False, rando
             Ignored if the kernel is separated.
         separate: Whether the kernel is returned as N separate 1D filters.
         random: Whether each standard deviation is uniformily sampled from the
-            interval (0, sigma].
+            interval [min_sigma, sigma).
+        min_sigma: Lower bound of the standard deviation, only considered for
+            random sampling.
 
     Returns:
         ND Gaussian kernel where N is the number of input sigmas. If separated,
@@ -498,7 +500,10 @@ def gaussian_kernel(sigma, windowsize=None, indexing='ij', separate=False, rando
     '''
     if not isinstance(sigma, (list, tuple)):
         sigma = [sigma]
-    sigma = [np.maximum(f, np.finfo('float32').eps) for f in sigma]
+    if not isinstance(min_sigma, (list, tuple)):
+        min_sigma = [min_sigma] * len(sigma)
+    sigma = [max(f, np.finfo('float32').eps) for f in sigma]
+    min_sigma = [max(f, np.finfo('float32').eps) for f in min_sigma]
 
     # Kernel width.
     if windowsize is None:
@@ -519,7 +524,7 @@ def gaussian_kernel(sigma, windowsize=None, indexing='ij', separate=False, rando
     # Exponents.
     if random:
         max_sigma = sigma
-        sigma = [tf.random.uniform((1,), minval=1e-6, maxval=x) for x in max_sigma]
+        sigma = [tf.random.uniform((1,), minval=x, maxval=y) for x, y in zip(min_sigma, sigma)]
     exponent = [m / s**2 for m, s in zip(mesh, sigma)]
 
     # Kernel.
