@@ -1860,6 +1860,7 @@ class IFFT(FFT):
         C. Bahadir, A.Q. Wang, A.V. Dalca, M.R. Sabuncu.
         IEEE TCP: Transactions on Computational Imaging. 6. pp. 1139-1152. 2020.
     """
+
     def __init__(self, *args, **kwargs):
         """
         Parameters:
@@ -1924,6 +1925,7 @@ class IFFTShift(FFTShift):
         C. Bahadir, A.Q. Wang, A.V. Dalca, M.R. Sabuncu.
         IEEE TCP: Transactions on Computational Imaging. 6. pp. 1139-1152. 2020.
     """
+
     def __init__(self, *args, **kwargs):
         """
         Parameters:
