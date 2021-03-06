@@ -627,7 +627,7 @@ def single_ae(enc_size,
     return model
 
 
-def label_to_image(
+def labels_to_image(
     in_shape,
     in_label_list,
     out_label_list=None,
