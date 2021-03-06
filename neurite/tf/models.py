@@ -627,7 +627,7 @@ def single_ae(enc_size,
     return model
 
 
-def label_to_image(
+def labels_to_image(
     in_shape,
     in_label_list,
     out_label_list=None,
@@ -637,17 +637,17 @@ def label_to_image(
     mean_max=None,
     std_min=None,
     std_max=None,
-    warp_shape_factor=[16],
-    warp_std_dev=0.5,
+    draw_background=True,
+    warp_res=[16],
+    warp_std=0.5,
     warp_modulate=True,
-    bias_shape_factor=40,
-    bias_std_dev=0.3,
+    bias_res=40,
+    bias_std=0.3,
     bias_modulate=True,
-    blur_background=True,
-    blur_std_dev=1,
+    blur_std=1,
     blur_modulate=True,
     normalize=True,
-    gamma_std_dev=0.25,
+    gamma_std=0.25,
     dc_offset=0,
     one_hot=True,
     return_vel=False,
@@ -681,30 +681,30 @@ def label_to_image(
         std_max (optional): List of upper bounds on the SDs drawn to generate
             the intensities for each label. Defaults to 25 for each label.
             25 for all other labels.
-        warp_shape_factor (optional): List of factors N determining the
+        draw_background (bool, optional): Whether the background is drawn as
+            all other labels. Defaults to True.
+        warp_res (optional): List of factors N determining the
             resultion 1/N relative to the inputs at which the SVF is drawn.
             Defaults to 16.
-        warp_std_dev (float, optional): Upper bound on the SDs used when drawing
+        warp_std (float, optional): Upper bound on the SDs used when drawing
             the SVF. Defaults to 0.5.
         warp_modulate (bool, optional): Whether to draw the SVF with random SDs.
             If disabled, each batch will use the maximum SD. Defaults to True.
-        bias_shape_factor (optional): List of factors N determining the
+        bias_res (optional): List of factors N determining the
             resultion 1/N relative to the inputs at which the bias field is
             drawn. Defaults to 40.
-        bias_std_dev (float, optional): Upper bound on the SDs used when drawing
+        bias_std (float, optional): Upper bound on the SDs used when drawing
             the bias field. Defaults to 0.3.
         bias_modulate (bool, optional): Whether to draw the bias field with
             random SDs. If disabled, each batch will use the maximum SD.
             Defaults to True.
-        blur_std_dev (float, optional): Upper bound on the SD of the kernel used
+        blur_std (float, optional): Upper bound on the SD of the kernel used
             for Gaussian image blurring. Defaults to 1.
         blur_modulate (bool, optional): Whether to draw random blurring SDs.
             If disabled, each batch will use the maximum SD. Defaults to True.
-        blur_background (bool, optional): Whether the background is blurred as
-            all other labels. Defaults to True.
         normalize (bool, optional): Whether the image is min-max normalized.
             Defaults to True.
-        gamma_std_dev (float, optional): SD of random global intensity
+        gamma_std (float, optional): SD of random global intensity
             exponentiation, i.e. gamma augmentation. Defaults to 0.25.
         dc_offset (float, optional): Upper bound on global DC offset drawn and
             added to the image after normalization. Defaults to 0.
@@ -735,11 +735,11 @@ def label_to_image(
     labels = KL.Lambda(lambda x: tf.gather(in_lut, tf.cast(x, dtype='int32')))(labels_input)
 
     vel_shape = (*out_shape // 2, num_dim)
-    if warp_std_dev > 0:
+    if warp_std > 0:
         # Velocity field.
-        vel_scale = np.asarray(warp_shape_factor) / 2
+        vel_scale = np.asarray(warp_res) / 2
         vel_draw = lambda x: utils.augment.draw_perlin(
-            vel_shape, scales=vel_scale, max_std=warp_std_dev, modulate=warp_modulate)
+            vel_shape, scales=vel_scale, max_std=warp_std, modulate=warp_modulate)
         # One per batch.
         vel_field = KL.Lambda(lambda x: tf.map_fn(
             vel_draw, x, fn_output_signature='float32'), name=f'vel_{id}')(labels)
@@ -747,15 +747,10 @@ def label_to_image(
         def_field = vxm.layers.VecInt(int_steps=5, name=f'vec_int_{id}')(vel_field)
         def_field = layers.RescaleValues(2)(def_field)
         def_field = layers.Resize(2, interp_method='linear', name=f'def_{id}')(def_field)
-    else:
-        draw_zeros = lambda x, d: tf.zeros((tf.shape(x)[0], *d), dtype='float32')
-        vel_field = KL.Lambda(lambda x: draw_zeros(x, vel_shape), name=f'vel_{id}')(labels)
-        def_field = KL.Lambda(lambda x: draw_zeros(
-            x, (*out_shape, num_dim)), name=f'def_{id}')(labels)
+        # Resampling.
+        labels = vxm.layers.SpatialTransformer(
+            interp_method='nearest', fill_value=0, name=f'trans_{id}')([labels, def_field])
 
-    # Resampling.
-    labels = vxm.layers.SpatialTransformer(
-        interp_method='nearest', fill_value=0, name=f'trans_{id}')([labels, def_field])
     labels = KL.Lambda(lambda x: tf.cast(x, dtype='int32'))(labels)
 
     # Intensity means and standard deviations.
@@ -788,12 +783,12 @@ def label_to_image(
     gather = KL.Lambda(lambda x: tf.map_fn(im_take, x, fn_output_signature='float32'))
     means = gather([means, im_ind])
     stds = gather([stds, im_ind])
-    image = KL.Multiply(name=f'mul_std_dev_{id}')([image, stds])
+    image = KL.Multiply(name=f'mul_std_{id}')([image, stds])
     image = KL.Add(name=f'add_means_{id}')([image, means])
 
     # Blur.
     blur_draw = lambda _: utils.gaussian_kernel(
-        [blur_std_dev] * num_dim, separate=True, random=blur_modulate)
+        [blur_std] * num_dim, separate=True, random=blur_modulate)
     kernels = KL.Lambda(lambda x: tf.map_fn(
         blur_draw, x, fn_output_signature=['float32'] * num_dim))(image)
     blur_apply = lambda x: utils.separable_conv(x[0], x[1])
@@ -807,7 +802,7 @@ def label_to_image(
     blurred_mask = None
     out = [None] * num_chan
     for i in range(num_chan):
-        if blur_background:
+        if draw_background:
             rand_flip = KL.Lambda(lambda x: tf.greater(
                 tf.random.uniform((1,), 0, 1), 0.8), name=f'bool_{i}_{id}')([])
             out[i] = KL.Lambda(lambda x: K.switch(x[0], x[1] * x[2], x[1])
@@ -836,10 +831,9 @@ def label_to_image(
     image = KL.Concatenate(axis=-1)(out) if num_chan > 1 else out[0]
 
     # Bias field.
-    bias_scale = bias_shape_factor
     bias_shape = (*out_shape, 1)
     bias_draw = lambda x: utils.augment.draw_perlin(
-        bias_shape, scales=bias_scale, max_std=bias_std_dev, modulate=bias_modulate)
+        bias_shape, scales=bias_res, max_std=bias_std, modulate=bias_modulate)
     # One per batch.
     bias_field = KL.Lambda(lambda x: tf.map_fn(bias_draw, x, fn_output_signature='float32'))(labels)
     bias_field = KL.Lambda(lambda x: tf.exp(x), name=f'bias_{id}')(bias_field)
@@ -849,8 +843,8 @@ def label_to_image(
     image = KL.Lambda(lambda x: tf.clip_by_value(x, 0, 255), name=f'clip_{id}')(image)
     if normalize:
         image = KL.Lambda(lambda x: tf.map_fn(utils.minmax_norm, x))(image)
-    if gamma_std_dev > 0:
-        gamma_apply = lambda x: tf.pow(x, tf.exp(tf.random.normal((1,), stddev=gamma_std_dev)))
+    if gamma_std > 0:
+        gamma_apply = lambda x: tf.pow(x, tf.exp(tf.random.normal((1,), stddev=gamma_std)))
         image = KL.Lambda(lambda x: tf.map_fn(
             gamma_apply, x, fn_output_signature='float32'), name=f'gamma_{id}')(image)
     if dc_offset > 0:
