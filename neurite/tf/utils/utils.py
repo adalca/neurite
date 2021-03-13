@@ -478,6 +478,7 @@ def gaussian_kernel(
     separate=False,
     random=False,
     min_sigma=0,
+    seed=None,
 ):
     '''
     Construct an N-dimensional Gaussian kernel.
@@ -492,6 +493,8 @@ def gaussian_kernel(
             interval [min_sigma, sigma).
         min_sigma: Lower bound of the standard deviation, only considered for
             random sampling.
+        seed: Integer for reproducible randomization. It is possible that this parameter only
+            has an effect if the function is wrapped in a Lambda layer.
 
     Returns:
         ND Gaussian kernel where N is the number of input sigmas. If separated,
@@ -530,8 +533,11 @@ def gaussian_kernel(
 
     # Exponents.
     if random:
+        seeds = np.random.default_rng(seed).integers(np.iinfo(int).max, size=len(sigma))
         max_sigma = sigma
-        sigma = [tf.random.uniform((1,), minval=x, maxval=y) for x, y in zip(min_sigma, sigma)]
+        sigma = []
+        for a, b, s in zip(min_sigma, max_sigma, seeds):
+            sigma.append(tf.random.uniform(shape=(1,), minval=a, maxval=b, seed=s))
     exponent = [m / s**2 for m, s in zip(mesh, sigma)]
 
     # Kernel.
