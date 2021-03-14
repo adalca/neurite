@@ -1,5 +1,5 @@
 """
-models (networks) for the neuron project
+models (networks) for the neurite project
 
 If you use this code, please cite the following, and read function docs for further info/citations
 Dalca AV, Guttag J, Sabuncu MR
@@ -637,7 +637,7 @@ def labels_to_image(
     mean_max=None,
     std_min=None,
     std_max=None,
-    draw_background=True,
+    zero_background=0.2,
     warp_res=[16],
     warp_std=0.5,
     warp_modulate=True,
@@ -650,6 +650,7 @@ def labels_to_image(
     gamma_std=0.25,
     dc_offset=0,
     one_hot=True,
+    seeds={},
     return_vel=False,
     return_def=False,
     id=0,
@@ -681,8 +682,8 @@ def labels_to_image(
         std_max (optional): List of upper bounds on the SDs drawn to generate
             the intensities for each label. Defaults to 25 for each label.
             25 for all other labels.
-        draw_background (bool, optional): Whether the background is drawn as
-            all other labels. Defaults to True.
+        zero_background (float, optional): Probability that the background is set
+            to zero. Defaults to 0.2.
         warp_res (optional): List of factors N determining the
             resultion 1/N relative to the inputs at which the SVF is drawn.
             Defaults to 16.
@@ -710,6 +711,7 @@ def labels_to_image(
             added to the image after normalization. Defaults to 0.
         one_hot (bool, optional): Whether output label maps are one-hot encoded.
             Only the specified output labels will be included. Defaults to True.
+        seeds (dictionary, optional): Integers for reproducible randomization.
         return_vel (bool, optional): Whether to append the half-resolution SVF
             to the model outputs. Defaults to False.
         return_def (bool, optional): Whether to append the combined displacement
@@ -724,22 +726,30 @@ def labels_to_image(
     in_shape, out_shape = map(np.asarray, (in_shape, out_shape))
     num_dim = len(in_shape)
 
+    # Inputs.
+    labels_input = KL.Input(shape=(*in_shape, 1), name=f'labels_input_{id}')
+    labels = labels_input
+    if not labels.dtype.is_integer:
+        labels = tf.cast(labels, tf.int32)
+    batch_size = tf.shape(labels)[0]
+
     # Transform labels into [0, 1, ..., N-1].
-    in_label_list = np.unique(in_label_list).astype('int32')
+    in_label_list = np.int32(np.unique(in_label_list))
     num_in_labels = len(in_label_list)
     new_in_label_list = np.arange(num_in_labels)
-    in_lut = np.zeros(np.max(in_label_list) + 1, dtype='float32')
+    in_lut = np.zeros(np.max(in_label_list) + 1, dtype=np.float32)
     for i, lab in enumerate(in_label_list):
         in_lut[lab] = i
-    labels_input = KL.Input(shape=(*in_shape, 1), name=f'labels_input_{id}')
-    labels = KL.Lambda(lambda x: tf.gather(in_lut, tf.cast(x, dtype='int32')))(labels_input)
+    labels = tf.gather(in_lut, indices=labels)
 
-    vel_shape = (*out_shape // 2, num_dim)
     if warp_std > 0:
         # Velocity field.
+        vel_shape = (*out_shape // 2, num_dim)
         vel_scale = np.asarray(warp_res) / 2
         vel_draw = lambda x: utils.augment.draw_perlin(
-            vel_shape, scales=vel_scale, max_std=warp_std, modulate=warp_modulate)
+            vel_shape, scales=vel_scale, max_std=warp_std, modulate=warp_modulate,
+            seed=seeds.get('warp')
+        )
         # One per batch.
         vel_field = KL.Lambda(lambda x: tf.map_fn(
             vel_draw, x, fn_output_signature='float32'), name=f'vel_{id}')(labels)
@@ -751,7 +761,7 @@ def labels_to_image(
         labels = vxm.layers.SpatialTransformer(
             interp_method='nearest', fill_value=0, name=f'trans_{id}')([labels, def_field])
 
-    labels = KL.Lambda(lambda x: tf.cast(x, dtype='int32'))(labels)
+    labels = tf.cast(labels, tf.int32)
 
     # Intensity means and standard deviations.
     if mean_min is None:
@@ -767,90 +777,69 @@ def labels_to_image(
         x = np.asarray(x)
         int_range[i] = x[..., None] if np.ndim(x) == 1 else x
     m0, m1, s0, s1 = int_range
-    mean_draw = lambda x: tf.random.uniform(
-        (tf.shape(x)[0], num_in_labels, num_chan), minval=m0, maxval=m1)
-    std_draw = lambda x: tf.random.uniform(
-        (tf.shape(x)[0], num_in_labels, num_chan), minval=s0, maxval=s1)
-    means = KL.Lambda(mean_draw)(labels)
-    stds = KL.Lambda(std_draw)(labels)
+    mean = tf.random.uniform(
+        shape=(batch_size, num_in_labels, num_chan),
+        minval=m0, maxval=m1,
+        seed=seeds.get('mean'),
+    )
+    std = tf.random.uniform(
+        shape=(batch_size, num_in_labels, num_chan),
+        minval=s0, maxval=s1,
+        seed=seeds.get('std'),
+    )
 
     # Synthetic image.
-    image = KL.Lambda(lambda x: tf.random.normal(tf.shape(x)),
-                      name=f'sample_normal_{id}')(labels)
-    im_cat = lambda x: tf.concat([x + num_in_labels * i for i in range(num_chan)], axis=-1)
-    im_ind = KL.Lambda(im_cat, name=f'ind_{id}')(labels)
-    im_take = lambda x: tf.gather(tf.reshape(x[0], shape=(-1,)), x[1])
-    gather = KL.Lambda(lambda x: tf.map_fn(im_take, x, fn_output_signature='float32'))
-    means = gather([means, im_ind])
-    stds = gather([stds, im_ind])
-    image = KL.Multiply(name=f'mul_std_{id}')([image, stds])
-    image = KL.Add(name=f'add_means_{id}')([image, means])
+    image = tf.random.normal(tf.shape(labels), seed=seeds.get('noise'))
+    indices = tf.concat([labels + i * num_in_labels for i in range(num_chan)], axis=-1)
+    gather = lambda x: tf.gather(tf.reshape(x[0], (-1,)), x[1])
+    mean = KL.Lambda(lambda x: tf.map_fn(gather, x, fn_output_signature='float32'))([mean, indices])
+    std = KL.Lambda(lambda x: tf.map_fn(gather, x, fn_output_signature='float32'))([std, indices])
+    image = image * std + mean
+
+    # Zero background.
+    if zero_background > 0:
+        rand_flip = tf.random.uniform(
+            shape=(batch_size, *[1] * num_dim, num_chan), seed=seeds.get('background'),
+        )
+        rand_flip = tf.less(rand_flip, zero_background)
+        image *= 1. - tf.cast(tf.logical_and(labels == 0, rand_flip), image.dtype)
 
     # Blur.
-    blur_draw = lambda _: utils.gaussian_kernel(
-        [blur_std] * num_dim, separate=True, random=blur_modulate)
-    kernels = KL.Lambda(lambda x: tf.map_fn(
-        blur_draw, x, fn_output_signature=['float32'] * num_dim))(image)
-    blur_apply = lambda x: utils.separable_conv(x[0], x[1])
-    image = KL.Lambda(lambda x: tf.map_fn(blur_apply, x, fn_output_signature='float32'),
-                      name=f'apply_blur_{id}')([image, kernels])
-
-    # Background voodoo.
-    mask = KL.Lambda(lambda x: tf.cast(tf.greater(x, 0), 'float32'))(labels)
-    channels = KL.Lambda(lambda x: tf.split(x, num_or_size_splits=num_chan,
-                                            axis=-1))(image) if num_chan > 1 else [image]
-    blurred_mask = None
-    out = [None] * num_chan
-    for i in range(num_chan):
-        if draw_background:
-            rand_flip = KL.Lambda(lambda x: tf.greater(
-                tf.random.uniform((1,), 0, 1), 0.8), name=f'bool_{i}_{id}')([])
-            out[i] = KL.Lambda(lambda x: K.switch(x[0], x[1] * x[2], x[1])
-                               )([rand_flip, channels[i], mask])
-        else:
-            if blurred_mask is None:
-                blurred_mask = KL.Lambda(lambda x: tf.map_fn(
-                    blur_apply, x, fn_output_signature='float32'))([mask, kernels])
-            out[i] = KL.Lambda(lambda x: x[0] / (x[1] + K.epsilon()),
-                               name=f'masked_blurring_{i}_{id}')([channels[i], blurred_mask])
-            bg_mean = KL.Lambda(lambda x: tf.random.uniform(
-                (1,), 0, 10), name=f'bg_mean_{i}_{id}')([])
-            bg_std = KL.Lambda(lambda x: tf.random.uniform(
-                (1,), 0, 5), name=f'bg_std_{i}_{id}')([])
-            rand_flip = KL.Lambda(lambda x: tf.greater(
-                tf.random.uniform((1,), 0, 1), 0.5), name=f'boolx_{i}_{id}')([])
-            bg_mean = KL.Lambda(lambda x: K.switch(x[0], tf.zeros_like(
-                x[1]), x[1]), name=f'switch_backgd_mean_{i}_{id}')([rand_flip, bg_mean])
-            bg_std = KL.Lambda(lambda x: K.switch(x[0], tf.zeros_like(
-                x[1]), x[1]), name=f'switch_backgd_std_{i}_{id}')([rand_flip, bg_std])
-            background = KL.Lambda(lambda x: tf.random.normal(tf.shape(x[0]), mean=x[1],
-                                                              stddev=x[2]),
-                                   name=f'gaussian_bg_{i}_{id}')([channels[i], bg_mean, bg_std])
-            out[i] = KL.Lambda(lambda x: tf.where(tf.cast(x[1], dtype='bool'), x[0], x[2]),
-                               name=f'mask_blurred_image_{i}_{id}')([out[i], mask, background])
-    image = KL.Concatenate(axis=-1)(out) if num_chan > 1 else out[0]
+    if blur_std > 0:
+        prop = dict(separate=True, random=blur_modulate, seed=seeds.get('blur'))
+        blur_draw = lambda _: utils.gaussian_kernel([blur_std] * num_dim, **prop)
+        kernels = KL.Lambda(lambda x: tf.map_fn(
+            blur_draw, x, fn_output_signature=['float32'] * num_dim))(image)
+        blur_apply = lambda x: utils.separable_conv(x[0], x[1])
+        image = KL.Lambda(lambda x: tf.map_fn(
+            blur_apply, x, fn_output_signature='float32'))([image, kernels])
 
     # Bias field.
-    bias_shape = (*out_shape, 1)
-    bias_draw = lambda x: utils.augment.draw_perlin(
-        bias_shape, scales=bias_res, max_std=bias_std, modulate=bias_modulate)
-    # One per batch.
-    bias_field = KL.Lambda(lambda x: tf.map_fn(bias_draw, x, fn_output_signature='float32'))(labels)
-    bias_field = KL.Lambda(lambda x: tf.exp(x), name=f'bias_{id}')(bias_field)
-    image = KL.multiply([bias_field, image], name=f'apply_bias_{id}')
+    if bias_std > 0:
+        bias_shape = (*out_shape, 1)
+        bias_draw = lambda x: utils.augment.draw_perlin(
+            bias_shape, scales=bias_res, max_std=bias_std,
+            modulate=bias_modulate, seed=seeds.get('bias'),
+        )
+        bias_field = KL.Lambda(lambda x: tf.map_fn(
+            bias_draw, x, fn_output_signature='float32'))(labels)
+        image *= tf.exp(bias_field, name=f'bias_{id}')
 
     # Intensity manipulations.
-    image = KL.Lambda(lambda x: tf.clip_by_value(x, 0, 255), name=f'clip_{id}')(image)
+    image = tf.clip_by_value(image, clip_value_min=0, clip_value_max=255, name=f'clip_{id}')
     if normalize:
         image = KL.Lambda(lambda x: tf.map_fn(utils.minmax_norm, x))(image)
     if gamma_std > 0:
-        gamma_apply = lambda x: tf.pow(x, tf.exp(tf.random.normal((1,), stddev=gamma_std)))
-        image = KL.Lambda(lambda x: tf.map_fn(
-            gamma_apply, x, fn_output_signature='float32'), name=f'gamma_{id}')(image)
+        gamma = tf.random.normal(
+            shape=(batch_size, *[1] * num_dim, num_chan), stddev=gamma_std, seed=seeds.get('gamma'),
+        )
+        image = tf.pow(image, tf.exp(gamma), name=f'gamma_{id}')
     if dc_offset > 0:
-        dc_apply = lambda x: tf.add(x, tf.random.uniform((1,), maxval=dc_offset))
-        image = KL.Lambda(lambda x: tf.map_fn(dc_apply, x, fn_output_signature='float32'),
-                          name=f'dc_offset_{id}')(image)
+        image += tf.random.uniform(
+            shape=(batch_size, *[1] * num_dim, num_chan),
+            maxval=dc_offset,
+            seed=seeds.get('dc_offset'),
+        )
 
     # Lookup table for converting the index labels back to the original values,
     # setting unwanted labels to background. If the output labels are provided
@@ -876,11 +865,9 @@ def labels_to_image(
         out_lut = hot_lut[out_lut]
 
     # Convert indices to output labels only once.
-    out_conv = lambda x: tf.gather(out_lut, x)
-    labels = KL.Lambda(out_conv, name=f'labels_back_{id}')(labels)
+    labels = tf.gather(out_lut, labels, name=f'labels_back_{id}')
     if one_hot:
-        depth = len(hot_label_list)
-        labels = KL.Lambda(lambda x: tf.one_hot(x[..., 0], depth), name=f'one_hot_{id}')(labels)
+        labels = tf.one_hot(labels[..., 0], depth=len(hot_label_list), name=f'one_hot_{id}')
 
     outputs = [image, labels]
     if return_vel:

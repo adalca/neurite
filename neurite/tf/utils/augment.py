@@ -3,7 +3,7 @@ import tensorflow as tf
 import neurite as ne
 
 
-def draw_perlin(out_shape, scales, max_std=1, modulate=True):
+def draw_perlin(out_shape, scales, max_std=1, modulate=True, seed=None):
     '''Generate Perlin noise by drawing from Gaussian distributions at different
     resolutions, upsampling and summing. There are a couple of key differences
     between this function and the Neurite equivalent ne.utils.perlin_vol, which
@@ -30,17 +30,21 @@ def draw_perlin(out_shape, scales, max_std=1, modulate=True):
             A scale 2 means half resolution relative to the output shape.
         max_std: Maximum standard deviation (SD) for drawing noise volumes.
         modulate: Whether the SD for each scale is drawn from [0, max_std].
+        seed: Integer for reproducible randomization. This may only have an
+            effect if the function is wrapped in a Lambda layer.
     '''
+    out_shape = np.asarray(out_shape, dtype=np.int32)
     if np.isscalar(scales):
         scales = [scales]
 
-    out_shape = np.asarray(out_shape, dtype='int32')
+    rand = np.random.default_rng(seed)
+    next_seed = lambda: rand.integers(np.iinfo(int).max)
     out = tf.zeros(out_shape)
     for scale in scales:
         sample_shape = np.ceil(out_shape[:-1] / scale).astype(int)
         sample_shape = (*sample_shape, out_shape[-1])
-        std = tf.random.uniform((1,), maxval=max_std) if modulate else max_std
-        gauss = tf.random.normal(sample_shape, stddev=std)
+        std = tf.random.uniform((1,), maxval=max_std, seed=next_seed()) if modulate else max_std
+        gauss = tf.random.normal(sample_shape, stddev=std, seed=next_seed())
         zoom = [o / s for o, s in zip(out_shape, sample_shape)]
         out += gauss if scale == 1 else ne.utils.resize(gauss, zoom[:-1])
 
