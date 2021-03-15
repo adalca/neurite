@@ -103,13 +103,17 @@ def fs_lut_to_cmap(lut):
     fs_cmap = ne.py.utils.fs_lut_to_cmap(lut)
 
     Args:
-        lut (dict): with keys being integers (label ids), and each value should be a 
+        lut (dict/str): string (path to LUT file) or 
+            dict with keys being integers (label ids), and each value should be a 
             dictionary with the key 'color' which is a list with 3 elements, 
             the RGB colors (0 to 255)
 
     Returns:
         matplotlib ListedColormap: [description]
     """
+    if isinstance(lut, str):
+        lut = load_fs_lut(lut)
+
     keys = list(lut.keys())
     rgb = np.zeros((np.array(keys).max() + 1, 3), dtype='float')
     for key in keys:
