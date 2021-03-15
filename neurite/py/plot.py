@@ -41,7 +41,6 @@ def slices(slices_in,           # the 2D slices
         if len(slice_in.shape) != 2:
             assert len(slice_in.shape) == 3 and slice_in.shape[-1] == 3, \
                 'each slice has to be 2d or RGB (3 channels)'
-        slices_in[si] = slice_in.astype('float')
 
     def input_check(inputs, nb_plots, name):
         ''' change input from None/single-link '''
