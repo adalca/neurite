@@ -44,7 +44,7 @@ def rebase_lab(labels):
     return lab_to_ind, ind_to_lab
 
 
-def load_label_table(filename):
+def load_fs_lut(filename):
     """
     Reads a label lookup-table from file. File is expected to
     define the anatomical name and color for each label ID.
@@ -74,10 +74,10 @@ def load_label_table(filename):
     return label_table
 
 
-def color_seg(seg, label_table):
+def seg_to_rgb_fs_lut(seg, label_table):
     """
     Converts a hard segmentation into an RGB color image given a
-    label lookup-table dictionary.
+    freesurfer-style label lookup-table dictionary.
 
     Parameters:
         seg (ndarray): Hard segmentation array.
@@ -99,7 +99,7 @@ def fs_lut_to_cmap(lut):
     convert a freesurfer LUT to a matplotlib colormap.
 
     example
-    lut = ne.py.utils.load_label_table('/path/to/seg32_labels.lut')
+    lut = ne.py.utils.load_fs_lut('/path/to/seg32_labels.lut')
     fs_cmap = ne.py.utils.fs_lut_to_cmap(lut)
 
     Args:
