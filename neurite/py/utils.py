@@ -7,6 +7,7 @@ import os
 
 # third party imports
 import numpy as np
+import matplotlib
 
 # local (our) imports
 
@@ -91,3 +92,26 @@ def color_seg(seg, label_table):
         if label is not None:
             color_seg[seg == sid] = label['color']
     return color_seg
+
+
+def fs_lut_to_cmap(lut):
+    """ 
+    convert a freesurfer LUT to a matplotlib colormap.
+
+    example
+    lut = ne.py.utils.load_label_table('/path/to/seg32_labels.lut')
+    fs_cmap = ne.py.utils.fs_lut_to_cmap(lut)
+
+    Args:
+        lut (dict): with keys being integers (label ids), and each value should be a 
+            dictionary with the key 'color' which is a list with 3 elements, 
+            the RGB colors (0 to 255)
+
+    Returns:
+        matplotlib ListedColormap: [description]
+    """
+    keys = list(lut.keys())
+    rgb = np.zeros((np.array(keys).max() + 1, 3), dtype='float')
+    for key in keys:
+        rgb[key] = lut[key]['color']
+    return matplotlib.colors.ListedColormap(rgb / 255)
