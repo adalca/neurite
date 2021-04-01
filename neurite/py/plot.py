@@ -27,7 +27,8 @@ def slices(slices_in,           # the 2D slices
            width=15,            # width in in
            show=True,           # option to actually show the plot (plt.show())
            axes_off=True,
-           plot_block=True,    # option to plt.show()
+           plot_block=True,     # option to plt.show()
+           facecolor=None,
            imshow_args=None):
     '''
     plot a grid of slices (2d images)
@@ -117,6 +118,9 @@ def slices(slices_in,           # the 2D slices
 
     # show the plots
     fig.set_size_inches(width, rows / cols * width)
+
+    if facecolor is not None:
+        fig.set_facecolor(facecolor)
 
     if show:
         plt.tight_layout()
