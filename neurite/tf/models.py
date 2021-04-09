@@ -35,6 +35,7 @@ from tensorflow.python.keras.constraints import maxnorm
 # local
 from . import layers
 from . import utils
+from . import modelio
 
 ###############################################################################
 # Roughly volume preserving (e.g. high dim to high dim) models
@@ -1455,3 +1456,88 @@ def DenseLayerNet(inshape, layer_sizes, nb_labels=2, activation='relu',
 
     model = tf.kerasmodels.Model(inputs=inputs, outputs=last_layer)
     return(model)
+
+
+###############################################################################
+# Synthstrip networks
+###############################################################################
+
+
+class SynthStrip(modelio.LoadableModel):
+    """
+    SynthStrip model for learning a mask with arbitrary contrasts synthesized from label maps.
+    """
+
+    @modelio.store_config_args
+    def __init__(self,
+                 inshape,
+                 labels_in,
+                 labels_out,
+                 nb_unet_features=None,
+                 nb_unet_levels=None,
+                 unet_feat_mult=1,
+                 nb_unet_conv_per_level=1,
+                 src_feats=1,
+                 gen_args={}):
+        """
+        Parameters:
+            inshape: Input image shape, e.g. (160, 160, 192).
+            labels_in: List of all labels included in the training segmentations.
+            labels_out: List of labels to encode in the output maps.
+            nb_unet_features: U-Net features.
+            nb_unet_levels: Number of U-Net levels.
+            unet_feat_mult: U-Net feature multiplier.
+            nb_unet_conv_per_level: Number of convolutions per U-Net level.
+            gen_args: Keyword arguments passed to the internal generative model.
+        """
+
+        ndims = len(inshape)
+        assert ndims in [1, 2, 3], 'ndims should be one of 1, 2, or 3. found: %d' % ndims
+
+        inshape = tuple(inshape)
+
+        # take input label map and synthesize an image from it
+        gen_model = labels_to_image(
+            inshape,
+            labels_in,
+            labels_out,
+            id=0,
+            return_def=False,
+            one_hot=False,
+            **gen_args
+        )
+
+        synth_image, synth_labels = gen_model.outputs
+
+        # build a unet to apply to the synthetic image and strip it
+        unet_model = unet(
+            nb_unet_features,
+            (*inshape, 1),
+            nb_unet_levels,
+            ndims * (3,),
+            1,
+            feat_mult=unet_feat_mult,
+            nb_conv_per_level=nb_unet_conv_per_level,
+            final_pred_activation='linear'
+        )
+
+        unet_outputs = unet_model(synth_image)
+
+        # output the prob of brain and the warped label map
+        # so that the loss function can compute brain/nonbrain
+        stacked_output = KL.Concatenate(axis=-1, name='image_label')(
+            [unet_outputs, tf.cast(synth_labels, tf.float32)])
+
+        super().__init__(inputs=gen_model.inputs, outputs=stacked_output)
+
+        # cache pointers to important layers and tensors for future reference
+        self.references = modelio.LoadableModel.ReferenceContainer()
+        self.references.unet = unet_model     # this is the stripping net
+        self.references.gen_model = gen_model
+        self.references.synth_image = synth_image
+
+    def get_strip_model(self):
+        """
+        Return the stripping model (just the U-Net).
+        """
+        return self.references.unet
