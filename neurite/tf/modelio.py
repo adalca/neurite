@@ -91,8 +91,21 @@ class LoadableModel(tf.keras.Model):
         keras load function is not used directly because it expects all training parameters,
         like custom losses, to be defined, which we don't want to do.
         """
+        config = cls.load_config(path)
+        model = cls(**config)
+        model.load_weights(path, by_name=by_name)
+        return model
+
+    @classmethod
+    def load_config(cls, path):
+        """
+        Loads model config dictionary from an H5 file.
+        """
         with h5py.File(path, mode='r') as f:
-            config = json.loads(f.attrs['model_config'].decode('utf-8'))['config']
+            s = f.attrs['model_config']
+            if not isinstance(s, str):
+                s = s.decode('utf-8')
+            config = json.loads(s)['config']
 
         # provide a temporary backport for the old-school enc_nf/dec_nf constructor params
         if config.get('enc_nf') and config.get('dec_nf'):
@@ -101,9 +114,7 @@ class LoadableModel(tf.keras.Model):
                 config.pop('dec_nf')
             ]
 
-        model = cls(**config)
-        model.load_weights(path, by_name=by_name)
-        return model
+        return config
 
     class ReferenceContainer:
         """

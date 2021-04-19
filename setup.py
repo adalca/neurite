@@ -17,7 +17,7 @@ setuptools.setup(
     ],
     install_requires=[
         'six',
-        'numpy',
+        'numpy>=1.17',
         'scipy',
         'tqdm',
         'matplotlib',

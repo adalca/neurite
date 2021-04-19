@@ -2210,8 +2210,8 @@ class HyperConvFromDense(HyperConv):
         kernel_size: An int or int list specifying the convolution window size.
         hyperkernel_use_bias: Enable bias in hyper-kernel mapping. Default is True.
         hyperbias_use_bias: Enable bias in hyper-bias mapping. Default is True.
-        hyperkernel_activation: Activation for the hyper-kernel mapping. Default is tanh.
-        hyperbias_activation: Activation for the hyper-bias mapping. Default is tanh.
+        hyperkernel_activation: Activation for the hyper-kernel mapping. Default is None.
+        hyperbias_activation: Activation for the hyper-bias mapping. Default is None.
         name: Layer name.
         kwargs: Forwarded to the HyperConv constructor.
     """
@@ -2222,8 +2222,8 @@ class HyperConvFromDense(HyperConv):
                  kernel_size,
                  hyperkernel_use_bias=True,
                  hyperbias_use_bias=True,
-                 hyperkernel_activation='tanh',
-                 hyperbias_activation='tanh',
+                 hyperkernel_activation=None,
+                 hyperbias_activation=None,
                  name=None,
                  **kwargs):
 
@@ -2447,8 +2447,8 @@ class HyperDenseFromDense(HyperDense):
         units: Dimensionality of the output space.
         hyperkernel_use_bias: Enable bias in hyper-kernel mapping. Default is True.
         hyperbias_use_bias: Enable bias in hyper-bias mapping. Default is True.
-        hyperkernel_activation: Activation for the hyper-kernel mapping. Default is tanh.
-        hyperbias_activation: Activation for the hyper-bias mapping. Default is tanh.
+        hyperkernel_activation: Activation for the hyper-kernel mapping. Default is None.
+        hyperbias_activation: Activation for the hyper-bias mapping. Default is None.
         kwargs: Forwarded to the HyperDense constructor.
     """
 
@@ -2456,8 +2456,8 @@ class HyperDenseFromDense(HyperDense):
                  units,
                  hyperkernel_use_bias=True,
                  hyperbias_use_bias=True,
-                 hyperkernel_activation='tanh',
-                 hyperbias_activation='tanh',
+                 hyperkernel_activation=None,
+                 hyperbias_activation=None,
                  **kwargs):
 
         super().__init__(units, **kwargs)

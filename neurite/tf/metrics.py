@@ -67,9 +67,9 @@ class MutualInformation:
     def __init__(self,
                  bin_centers=None,
                  nb_bins=None,
+                 soft_bin_alpha=1,
                  min_clip=None,
-                 max_clip=None,
-                 soft_bin_alpha=1):
+                 max_clip=None):
         """
         Initialize the mutual information class
 
@@ -82,9 +82,9 @@ class MutualInformation:
                 Defaults to None.
             nb_bins (int, optional):  number of bins, if bin_centers is not specified. 
                 Defaults to 16.
+            soft_bin_alpha (int, optional): alpha in RBF of soft quantization. Defaults to 1.
             min_clip (float, optional): Lower value to clip data. Defaults to -np.inf.
             max_clip (float, optional): Upper value to clip data. Defaults to np.inf.
-            soft_bin_alpha (int, optional): alpha in RBF of soft quantization. Defaults to 1.
         """
 
         self.bin_centers = None
