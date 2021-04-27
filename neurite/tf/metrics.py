@@ -594,8 +594,10 @@ class CategoricalCrossentropy(tf.keras.losses.CategoricalCrossentropy):
         return self.cce(y_true, y_pred, sample_weight=sample_weight)
 
     def cce(self, y_true, y_pred, sample_weight=None):
-        D = y_pred.ndim
-        wts = tf.reshape(self.label_weights, [1] * (D - 1) + [-1])
+        wts = 1
+        if self.label_weights is not None:
+            D = y_pred.ndim
+            wts = tf.reshape(self.label_weights, [1] * (D - 1) + [-1])
 
         if sample_weight is None:
             sample_weight = 1
@@ -627,8 +629,10 @@ class MeanSquaredErrorProb(tf.keras.losses.MeanSquaredError):
         return self.mse(y_true, y_pred, sample_weight=sample_weight)
 
     def mse(self, y_true, y_pred, sample_weight=None):
-        D = y_pred.ndim
-        wts = tf.reshape(self.label_weights, [1] * (D - 1) + [-1])
+        wts = 1
+        if self.label_weights is not None:
+            D = y_pred.ndim
+            wts = tf.reshape(self.label_weights, [1] * (D - 1) + [-1])
 
         if sample_weight is None:
             sample_weight = 1
