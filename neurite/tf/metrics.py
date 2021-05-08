@@ -345,6 +345,7 @@ class Dice:
                  input_type='prob',
                  nb_labels=None,
                  weights=None,
+                 check_input_limits=True,
                  normalize=False):  # regularization for bottom of Dice coeff
         """
         Dice of two Tensors. 
@@ -373,6 +374,8 @@ class Dice:
                 Defaults to None.
             normalize (bool, optional): whether to renormalize probabilistic Tensors.
                 Defaults to False.
+            check_input_limits (bool, optional): whether to check that input Tensors are in [0, 1].
+                using tf debugging asserts. Defaults to True.
         """
         # input_type is 'prob', or 'max_label'
         # dice_type is hard or soft
@@ -382,6 +385,7 @@ class Dice:
         self.nb_labels = nb_labels
         self.weights = weights
         self.normalize = normalize
+        self.check_input_limits = check_input_limits
 
         # checks
         assert self.input_type in ['prob', 'max_label']
@@ -417,11 +421,12 @@ class Dice:
                 y_pred = tf.math.divide_no_nan(y_pred, K.sum(y_pred, axis=-1, keepdims=True))
 
             # some value checking
-            msg = 'value outside range'
-            tf.debugging.assert_greater_equal(y_true, 0., msg)
-            tf.debugging.assert_greater_equal(y_pred, 0., msg)
-            tf.debugging.assert_less_equal(y_true, 1., msg)
-            tf.debugging.assert_less_equal(y_pred, 1., msg)
+            if self.check_input_limits:
+                msg = 'value outside range'
+                tf.debugging.assert_greater_equal(y_true, 0., msg)
+                tf.debugging.assert_greater_equal(y_pred, 0., msg)
+                tf.debugging.assert_less_equal(y_true, 1., msg)
+                tf.debugging.assert_less_equal(y_pred, 1., msg)
 
         # Prepare the volumes to operate on
         # If we're doing 'hard' Dice, then we will prepare one_hot-based matrices of size
