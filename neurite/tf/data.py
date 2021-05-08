@@ -15,9 +15,11 @@ from tqdm import tqdm
 import neurite as ne
 
 # TODO:
+# MNIST/Fashion-MNIST datasets
+# OASIS dataset
 # warped-blobs dataset (choose a better name?)
 # MNIST overlap dataset
-# OASIS dataset
+# Kuzushiji-MNIST overall dataset (https://github.com/rois-codh/kmnist)
 
 
 class KerasDataset:
@@ -150,7 +152,7 @@ class KerasDataset:
                 out_dt = out_dt + '_' + output_suffix
                 self.x[out_dt] = np.zeros(self.x[dt].shape)
 
-            for i in tqdm(range(self.x[dt].shape[0]), desc='overlap corrupting'):
+            for i in tqdm(range(self.x[dt].shape[0]), desc='overlap corrupting %s' % output_suffix):
                 idx = np.random.randint(0, self.x[dt].shape[0], nb_corrupt)
 
                 mean = np.mean(self.x[dt][idx, ...], 0, keepdims=True)
