@@ -84,7 +84,7 @@ class LoadableModel(tf.keras.Model):
         return cls(**config)
 
     @classmethod
-    def load(cls, path, by_name=False):
+    def load(cls, path, by_name=False, **kwargs):
         """
         Loads model config and weights from an H5 file. This first constructs a model using
         the config parameters stored in the H5 and then separately loads the weights. The
@@ -92,6 +92,7 @@ class LoadableModel(tf.keras.Model):
         like custom losses, to be defined, which we don't want to do.
         """
         config = cls.load_config(path)
+        config.update(kwargs)
         model = cls(**config)
         model.load_weights(path, by_name=by_name)
         return model

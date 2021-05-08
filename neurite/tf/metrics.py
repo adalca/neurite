@@ -67,7 +67,7 @@ class MutualInformation:
     def __init__(self,
                  bin_centers=None,
                  nb_bins=None,
-                 soft_bin_alpha=1,
+                 soft_bin_alpha=None,
                  min_clip=None,
                  max_clip=None):
         """
@@ -78,11 +78,11 @@ class MutualInformation:
         using these parameters
 
         Args:
-            bin_centers (np.float32, optional): array or list of bin centers. 
-                Defaults to None.
-            nb_bins (int, optional):  number of bins, if bin_centers is not specified. 
-                Defaults to 16.
-            soft_bin_alpha (int, optional): alpha in RBF of soft quantization. Defaults to 1.
+            bin_centers (np.float32, optional): Array or list of bin centers. Defaults to None.
+            nb_bins (int, optional):  Number of bins. Defaults to 16 if bin_centers
+                is not specified.
+            soft_bin_alpha (int, optional): Alpha in RBF of soft quantization. Defaults
+                to `1 / 2 * square(sigma)`.
             min_clip (float, optional): Lower value to clip data. Defaults to -np.inf.
             max_clip (float, optional): Upper value to clip data. Defaults to np.inf.
         """
@@ -106,6 +106,14 @@ class MutualInformation:
             self.max_clip = np.inf
 
         self.soft_bin_alpha = soft_bin_alpha
+        if self.soft_bin_alpha is None:
+            sigma_ratio = 0.5
+            if self.bin_centers is None:
+                sigma = sigma_ratio / (self.nb_bins - 1)
+            else:
+                sigma = sigma_ratio * tf.reduce_mean(tf.experimental.numpy.diff(bin_centers))
+            self.soft_bin_alpha = 1 / (2 * tf.square(sigma))
+            print(self.soft_bin_alpha)
 
     def volumes(self, x, y):
         """
@@ -599,8 +607,10 @@ class CategoricalCrossentropy(tf.keras.losses.CategoricalCrossentropy):
         return self.cce(y_true, y_pred, sample_weight=sample_weight)
 
     def cce(self, y_true, y_pred, sample_weight=None):
-        D = y_pred.ndim
-        wts = tf.reshape(self.label_weights, [1] * (D - 1) + [-1])
+        wts = 1
+        if self.label_weights is not None:
+            D = y_pred.ndim
+            wts = tf.reshape(self.label_weights, [1] * (D - 1) + [-1])
 
         if sample_weight is None:
             sample_weight = 1
@@ -632,8 +642,10 @@ class MeanSquaredErrorProb(tf.keras.losses.MeanSquaredError):
         return self.mse(y_true, y_pred, sample_weight=sample_weight)
 
     def mse(self, y_true, y_pred, sample_weight=None):
-        D = y_pred.ndim
-        wts = tf.reshape(self.label_weights, [1] * (D - 1) + [-1])
+        wts = 1
+        if self.label_weights is not None:
+            D = y_pred.ndim
+            wts = tf.reshape(self.label_weights, [1] * (D - 1) + [-1])
 
         if sample_weight is None:
             sample_weight = 1
