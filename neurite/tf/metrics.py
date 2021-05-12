@@ -202,7 +202,7 @@ class MutualInformation:
         tf.debugging.assert_equal(tensor_shape_x, tensor_shape_y, 'volume shapes do not match')
 
         # reshape to [bs, V, C]
-        if len(tensor_shape_x) != 3:
+        if tensor_shape_x.shape[0] != 3:
             new_shape = K.stack([tensor_shape_x[0], -1, tensor_shape_x[-1]])
             x = tf.reshape(x, new_shape)                             # [bs, V, C]
             y = tf.reshape(y, new_shape)                             # [bs, V, C]
@@ -252,7 +252,7 @@ class MutualInformation:
         eps = K.epsilon()
 
         # reshape to [bs, V, B]
-        if len(tensor_shape_x) != 3:
+        if tensor_shape_x.shape[0] != 3:
             new_shape = K.stack([tensor_shape_x[0], -1, tensor_shape_x[-1]])
             x = tf.reshape(x, new_shape)                             # [bs, V, B1]
             y = tf.reshape(y, new_shape)                             # [bs, V, B2]
