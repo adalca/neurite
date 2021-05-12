@@ -2228,8 +2228,8 @@ class HyperConvFromDense(HyperConv):
                  **kwargs):
 
         super().__init__(rank, filters, kernel_size, name=name, **kwargs)
-        self.hyperkernel_use_bias = True
-        self.hyperbias_use_bias = True
+        self.hyperkernel_use_bias = hyperkernel_use_bias
+        self.hyperbias_use_bias = hyperbias_use_bias
         self.hyperkernel_activation = tf.keras.activations.get(hyperkernel_activation)
         self.hyperbias_activation = tf.keras.activations.get(hyperbias_activation)
 
@@ -2461,8 +2461,8 @@ class HyperDenseFromDense(HyperDense):
                  **kwargs):
 
         super().__init__(units, **kwargs)
-        self.hyperkernel_use_bias = True
-        self.hyperbias_use_bias = True
+        self.hyperkernel_use_bias = hyperkernel_use_bias
+        self.hyperbias_use_bias = hyperbias_use_bias
         self.hyperkernel_activation = tf.keras.activations.get(hyperkernel_activation)
         self.hyperbias_activation = tf.keras.activations.get(hyperbias_activation)
 
