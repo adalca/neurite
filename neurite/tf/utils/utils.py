@@ -507,15 +507,13 @@ def take(x, indices, axis):
 ###############################################################################
 
 
-def gaussian_kernel(
-    sigma,
-    windowsize=None,
-    indexing='ij',
-    separate=False,
-    random=False,
-    min_sigma=0,
-    seed=None,
-):
+def gaussian_kernel(sigma,
+                    windowsize=None,
+                    indexing='ij',
+                    separate=False,
+                    random=False,
+                    min_sigma=0,
+                    seed=None):
     '''
     Construct an N-dimensional Gaussian kernel.
 
@@ -790,7 +788,11 @@ def whiten(x, mean=0., std=1.):
 # other
 ###############################################################################
 
-def perlin_vol(vol_shape, min_scale=0, max_scale=None, interp_method='linear', wt_type='monotonic'):
+def perlin_vol(vol_shape,
+               min_scale=0,
+               max_scale=None,
+               interp_method='linear',
+               wt_type='monotonic'):
     """
     generate perlin noise ND volume 
 
@@ -840,7 +842,7 @@ def perlin_vol(vol_shape, min_scale=0, max_scale=None, interp_method='linear', w
         if wt_type == 'monotonic':
             wts.append(i + 1)  # larger images (so more high frequencies) get lower weight
         else:
-            wts.append(K.random_uniform([1])[0])
+            wts.append(K.random_uniform([1])[0])  # note this gets executed once I think
 
     wts = K.stack(wts) / K.sum(wts)
     wts = tf.cast(wts, tf.float32)
