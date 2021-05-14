@@ -848,7 +848,7 @@ def perlin_vol(vol_shape,
     wts = tf.cast(wts, tf.float32)
 
     # get perlin volume
-    vol = K.zeros(vol_shape)
+    vol = 0
     for sci, sc in enumerate(scale_shapes):
 
         # get a small random volume
