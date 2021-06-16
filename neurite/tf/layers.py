@@ -188,7 +188,7 @@ class SoftQuantize(Layer):
     Keras Layer: soft quantization of intentity input
 
     If you find this class useful, please cite the original paper this was written for:
-        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
+        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca.
         Learning MRI Contrast-Agnostic Registration.
         ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
         https://doi.org/10.1109/ISBI48211.2021.9434113
@@ -251,7 +251,7 @@ class GaussianBlur(Layer):
     Applies gaussian blur to an input image.
 
     If you find this class useful, please cite the original paper this was written for:
-        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
+        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca.
         Learning MRI Contrast-Agnostic Registration.
         ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
         https://doi.org/10.1109/ISBI48211.2021.9434113

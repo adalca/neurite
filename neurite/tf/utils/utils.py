@@ -538,7 +538,7 @@ def gaussian_kernel(sigma,
         https://github.com/adalca/mivt/blob/master/src/gaussFilt.m
 
     If you find this function useful, please cite the original paper this was written for:
-        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
+        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca.
         Learning MRI Contrast-Agnostic Registration.
         ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
         https://doi.org/10.1109/ISBI48211.2021.9434113
@@ -598,7 +598,7 @@ def separable_conv(x, kernels, axis=None, padding='SAME'):
         conv'ed version of x
 
     If you find this function useful, please cite the original paper this was written for:
-        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
+        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca.
         Learning MRI Contrast-Agnostic Registration.
         ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
         https://doi.org/10.1109/ISBI48211.2021.9434113
@@ -821,7 +821,7 @@ def perlin_vol(vol_shape,
     loosely inspired from http://nullprogram.com/blog/2007/11/20
 
     If you find this function useful, please cite the original paper this was written for:
-        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
+        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca.
         Learning MRI Contrast-Agnostic Registration.
         ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
         https://doi.org/10.1109/ISBI48211.2021.9434113
@@ -934,7 +934,7 @@ def soft_quantize(x,
         tf.float32: volume with one more dimension [bs, ..., B]
 
     If you find this function useful, please cite the original paper this was written for:
-        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
+        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca.
         Learning MRI Contrast-Agnostic Registration.
         ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
         https://doi.org/10.1109/ISBI48211.2021.9434113

@@ -47,7 +47,7 @@ class MutualInformation:
     - Courtney K Guo. 
       Multi-modal image registration with unsupervised deep learning. 
       PhD thesis, Massachusetts Institute of Technology, 2019.
-    - M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
+    - M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca.
       Learning MRI Contrast-Agnostic Registration.
       ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
       https://doi.org/10.1109/ISBI48211.2021.9434113
