@@ -189,8 +189,9 @@ class SoftQuantize(Layer):
 
     If you find this class useful, please cite the original paper this was written for:
         M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
-        Learning image registration without images.
-        arXiv preprint arXiv:2004.10282, 2020. https://arxiv.org/abs/2004.10282
+        Learning MRI Contrast-Agnostic Registration.
+        ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
+        https://doi.org/10.1109/ISBI48211.2021.9434113
     """
 
     def __init__(self,
@@ -251,8 +252,9 @@ class GaussianBlur(Layer):
 
     If you find this class useful, please cite the original paper this was written for:
         M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
-        Learning image registration without images.
-        arXiv preprint arXiv:2004.10282, 2020. https://arxiv.org/abs/2004.10282
+        Learning MRI Contrast-Agnostic Registration.
+        ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
+        https://doi.org/10.1109/ISBI48211.2021.9434113
     """
 
     def __init__(self, sigma=None, level=None, **kwargs):

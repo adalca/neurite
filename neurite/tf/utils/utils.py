@@ -539,8 +539,9 @@ def gaussian_kernel(sigma,
 
     If you find this function useful, please cite the original paper this was written for:
         M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
-        Learning image registration without images.
-        arXiv preprint arXiv:2004.10282, 2020. https://arxiv.org/abs/2004.10282
+        Learning MRI Contrast-Agnostic Registration.
+        ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
+        https://doi.org/10.1109/ISBI48211.2021.9434113
     '''
     if not isinstance(sigma, (list, tuple)):
         sigma = [sigma]
@@ -598,8 +599,9 @@ def separable_conv(x, kernels, axis=None, padding='SAME'):
 
     If you find this function useful, please cite the original paper this was written for:
         M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
-        Learning image registration without images.
-        arXiv preprint arXiv:2004.10282, 2020. https://arxiv.org/abs/2004.10282
+        Learning MRI Contrast-Agnostic Registration.
+        ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
+        https://doi.org/10.1109/ISBI48211.2021.9434113
     '''
 
     if not isinstance(kernels, (tuple, list)):
@@ -820,8 +822,9 @@ def perlin_vol(vol_shape,
 
     If you find this function useful, please cite the original paper this was written for:
         M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
-        Learning image registration without images.
-        arXiv preprint arXiv:2004.10282, 2020. https://arxiv.org/abs/2004.10282
+        Learning MRI Contrast-Agnostic Registration.
+        ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
+        https://doi.org/10.1109/ISBI48211.2021.9434113
     """
 
     # input handling
@@ -932,8 +935,9 @@ def soft_quantize(x,
 
     If you find this function useful, please cite the original paper this was written for:
         M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca. 
-        Learning image registration without images.
-        arXiv preprint arXiv:2004.10282, 2020. https://arxiv.org/abs/2004.10282
+        Learning MRI Contrast-Agnostic Registration.
+        ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
+        https://doi.org/10.1109/ISBI48211.2021.9434113
     """
 
     if bin_centers is not None:
