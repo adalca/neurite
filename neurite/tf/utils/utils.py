@@ -120,8 +120,8 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
         vol = K.expand_dims(vol, -1)
 
     # flatten and float location Tensors
-    if loc.dtype != tf.float32:
-        loc = tf.cast(loc, 'float32')
+    if loc.dtype != vol.dtype:
+        loc = tf.cast(loc, vol.dtype)
 
     if isinstance(vol.shape, (tf.compat.v1.Dimension, tf.TensorShape)):
         volshape = vol.shape.as_list()
@@ -132,8 +132,7 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
 
     # interpolate
     if interp_method == 'linear':
-        # get floor.
-        # This has to remain a tf.float32 since we will be using loc1 in a float32 op
+        # floor has to remain floating-point since we will use it in such operation
         loc0 = tf.floor(loc)
 
         # clip values
@@ -513,6 +512,7 @@ def gaussian_kernel(sigma,
                     separate=False,
                     random=False,
                     min_sigma=0,
+                    dtype=tf.float32,
                     seed=None):
     '''
     Construct an N-dimensional Gaussian kernel.
@@ -527,6 +527,7 @@ def gaussian_kernel(sigma,
             interval [min_sigma, sigma).
         min_sigma: Lower bound of the standard deviation, only considered for
             random sampling.
+        dtype: Data type of the output. Should be floating-point.
         seed: Integer for reproducible randomization. It is possible that this parameter only
             has an effect if the function is wrapped in a Lambda layer.
 
@@ -543,14 +544,19 @@ def gaussian_kernel(sigma,
         ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
         https://doi.org/10.1109/ISBI48211.2021.9434113
     '''
+    # Data type.
+    dtype = tf.dtypes.as_dtype(dtype)
+    assert dtype.is_floating, f'{dtype.name} is not a real floating-point type'
+
+    # Kernel width.
     if not isinstance(sigma, (list, tuple)):
         sigma = [sigma]
     if not isinstance(min_sigma, (list, tuple)):
         min_sigma = [min_sigma] * len(sigma)
-    sigma = [max(f, np.finfo('float32').eps) for f in sigma]
-    min_sigma = [max(f, np.finfo('float32').eps) for f in min_sigma]
+    sigma = [max(f, np.finfo(dtype.as_numpy_dtype).eps) for f in sigma]
+    min_sigma = [max(f, np.finfo(dtype.as_numpy_dtype).eps) for f in min_sigma]
 
-    # Kernel width.
+    # Kernel size.
     if windowsize is None:
         windowsize = [np.round(f * 3) * 2 + 1 for f in sigma]
     if not isinstance(windowsize, (list, tuple)):
@@ -564,7 +570,7 @@ def gaussian_kernel(sigma,
     mesh = [-0.5 * x**2 for x in mesh]
     if not separate:
         mesh = np.meshgrid(*mesh, indexing=indexing)
-    mesh = [tf.constant(m, dtype='float32') for m in mesh]
+    mesh = [tf.constant(m, dtype=dtype) for m in mesh]
 
     # Exponents.
     if random:
@@ -572,7 +578,7 @@ def gaussian_kernel(sigma,
         max_sigma = sigma
         sigma = []
         for a, b, s in zip(min_sigma, max_sigma, seeds):
-            sigma.append(tf.random.uniform(shape=(1,), minval=a, maxval=b, seed=s))
+            sigma.append(tf.random.uniform(shape=(1,), minval=a, maxval=b, seed=s, dtype=dtype))
     exponent = [m / s**2 for m, s in zip(mesh, sigma)]
 
     # Kernel.
