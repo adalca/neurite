@@ -4,6 +4,7 @@ data resources for neurite.
 
 # internal imports
 import random
+from pathlib import Path
 
 # third party
 import numpy as np
@@ -105,3 +106,22 @@ def split_dataset(data, ratios, axis=0, randomize=True, rand_seed=None):
         split = [np.take(data, rng[sl_idx[f]:sl_idx[f + 1]], axis=axis) for f in range(nb_groups)]
 
     return split
+
+
+def load_dataset(dataset):
+    """
+    Downloads a dataset and caches it in the user's home directory.
+    """
+    import urllib.request
+    datadir = Path.home().joinpath('.neurite')
+    datadir.mkdir(exist_ok=True)
+
+    if dataset == '2D-OASIS-TUTORIAL':
+        filename = datadir.joinpath('2D-OASIS-TUTORIAL.npz')
+        if not filename.exists():
+            url = 'https://surfer.nmr.mgh.harvard.edu/pub/data/voxelmorph/2D-OASIS-TUTORIAL.npz'
+            urllib.request.urlretrieve(url, filename)
+            print(f'Cached dataset in {datadir}.')
+        return np.load(filename)['images']
+    else:
+        raise ValueError(f'Unknown dataset {dataset}.')

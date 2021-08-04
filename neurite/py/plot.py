@@ -38,23 +38,24 @@ def slices(slices_in,           # the 2D slices
     if type(slices_in) == np.ndarray:
         slices_in = [slices_in]
     nb_plots = len(slices_in)
+    slices_in = [s.squeeze() for s in slices_in]
     for si, slice_in in enumerate(slices_in):
         if len(slice_in.shape) != 2:
             assert len(slice_in.shape) == 3 and slice_in.shape[-1] == 3, \
                 'each slice has to be 2d or RGB (3 channels)'
 
-    def input_check(inputs, nb_plots, name):
+    def input_check(inputs, nb_plots, name, default=None):
         ''' change input from None/single-link '''
         assert (inputs is None) or (len(inputs) == nb_plots) or (len(inputs) == 1), \
             'number of %s is incorrect' % name
         if inputs is None:
-            inputs = [None]
+            inputs = [default]
         if len(inputs) == 1:
             inputs = [inputs[0] for i in range(nb_plots)]
         return inputs
 
     titles = input_check(titles, nb_plots, 'titles')
-    cmaps = input_check(cmaps, nb_plots, 'cmaps')
+    cmaps = input_check(cmaps, nb_plots, 'cmaps', default='gray')
     norms = input_check(norms, nb_plots, 'norms')
     imshow_args = input_check(imshow_args, nb_plots, 'imshow_args')
     for idx, ia in enumerate(imshow_args):
