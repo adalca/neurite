@@ -643,14 +643,21 @@ class MeanSquaredErrorProb(tf.keras.losses.MeanSquaredError):
         return self.mse(y_true, y_pred, sample_weight=sample_weight)
 
     def mse(self, y_true, y_pred, sample_weight=None):
-        wts = 1
         if self.label_weights is not None:
-            D = y_pred.ndim
-            wts = tf.reshape(self.label_weights, [1] * (D - 1) + [-1])
+            yf = y_pred.shape[-1]
+            lf = len(self.label_weights)
+            if yf != lf:
+                raise ValueError(f'Label weights must be of len {yf}, but got {lf}.')
 
-        if sample_weight is None:
-            sample_weight = 1
-        sample_weight = sample_weight * wts
+            # add dimension since Keras MSE reduces axis -1 before
+            # scaling by the sample weight
+            y_true = y_true[..., None]
+            y_pred = y_pred[..., None]
+
+            if sample_weight is not None:
+                sample_weight = sample_weight * self.label_weights
+            else:
+                sample_weight = self.label_weights
 
         return super().__call__(y_true, y_pred, sample_weight=sample_weight)
 
