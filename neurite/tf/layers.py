@@ -166,7 +166,7 @@ class Resize(Layer):
         vol = K.reshape(vol, [-1, *self.inshape[1:]])
 
         # map transform across batch
-        return tf.map_fn(self._single_resize, vol, dtype=tf.float32)
+        return tf.map_fn(self._single_resize, vol)
 
     def compute_output_shape(self, input_shape):
 
@@ -1513,7 +1513,7 @@ class LocalParamWithInput(Layer):
     def call(self, x):
         # want the x variable for it's keras properties and the batch.
         xslice = K.batch_flatten(x)[:, 0:1]
-        b = xslice * tf.zeros((1,)) + tf.ones((1,))
+        b = xslice * tf.zeros((1,), dtype=x.dtype) + tf.ones((1,), dtype=x.dtype)
         # b = K.batch_flatten(0 * x)[:, 0:1] + 1
         params = K.flatten(self.kernel * self.biasmult)[tf.newaxis, ...]
         return K.reshape(K.dot(b, params), [-1, *self.shape])
@@ -1973,16 +1973,15 @@ class ChannelsToComplex(Layer):
         C. Bahadir‡, A.Q. Wang‡, A.V. Dalca, M.R. Sabuncu. 
         IEEE TCP: Transactions on Computational Imaging. 6. pp. 1139-1152. 2020.
     """
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
     def build(self, input_shape):
         assert input_shape[-1] % 2 == 0, f'{input_shape[-1]} is an odd number of features'
         super().build(input_shape)
 
     def call(self, x):
         assert x.dtype not in (tf.complex64, tf.complex128), f'complex input to {self.name}'
+        if x.dtype not in (tf.float32, tf.float64):
+            x = tf.cast(x, tf.float32)
+
         nchan = x.shape[-1] // 2
         return tf.complex(x[..., :nchan], x[..., nchan:])
 
