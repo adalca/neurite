@@ -807,13 +807,11 @@ def labels_to_image(
 
     # Blur.
     if blur_std > 0:
-        prop = dict(separate=True, random=blur_modulate, seed=seeds.get('blur'))
-        blur_draw = lambda _: utils.gaussian_kernel([blur_std] * num_dim, **prop)
-        kernels = KL.Lambda(lambda x: tf.map_fn(
-            blur_draw, x, fn_output_signature=['float32'] * num_dim))(image)
-        blur_apply = lambda x: utils.separable_conv(x[0], x[1])
-        image = KL.Lambda(lambda x: tf.map_fn(
-            blur_apply, x, fn_output_signature='float32'))([image, kernels])
+        kernels = utils.gaussian_kernel(
+            [blur_std] * num_dim, separate=True, random=blur_modulate,
+            dtype=image.dtype, seed=seeds.get('blur'),
+        )
+        image = utils.separable_conv(image, kernels, batched=True)
 
     # Bias field.
     if bias_std > 0:
