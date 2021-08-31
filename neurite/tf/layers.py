@@ -248,7 +248,7 @@ class MSE(Layer):
 
 class GaussianBlur(Layer):
     """ 
-    Applies gaussian blur to an input image.
+    Apply isotropic Gaussian blur to an input tensor.
 
     If you find this class useful, please cite the original paper this was written for:
         M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca.
@@ -275,28 +275,12 @@ class GaussianBlur(Layer):
 
         super().__init__(**kwargs)
 
-    def build(self, input_shape):
-        ndims = len(input_shape) - 2
-
-        # prepare kernel
-        kernel = utils.gaussian_kernel([self.sigma] * ndims)
-        kernel = tf.reshape(kernel, kernel.shape.as_list() + [1, 1])
-
-        # prepare convoperation
-        convnd = getattr(tf.nn, 'conv%dd' % ndims)
-        self.conv = lambda x: convnd(tf.expand_dims(x, -1), kernel,
-                                     [1] * (ndims + 2), padding='SAME')
-        self.nfeat = input_shape[-1]
-
     def call(self, x):
-        # TODO: this hsould be cleaned up a bit, no need to loop and concat...
         if self.sigma == 0:
             return x
-        else:
-            return tf.concat([self.conv(x[..., n]) for n in range(self.nfeat)], -1)
 
-    def compute_output_shape(self, input_shape):
-        return input_shape
+        kernel = utils.gaussian_kernel(self.sigma, separate=True, dtype=x.dtype)
+        return utils.separable_conv(x, kernel, batched=True)
 
     def get_config(self):
         config = super().get_config().copy()
