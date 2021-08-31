@@ -590,18 +590,21 @@ def gaussian_kernel(sigma,
     return kernel if len(kernel) > 1 else kernel[0]
 
 
-def separable_conv(x, kernels, axis=None, padding='SAME'):
+def separable_conv(x, kernels, axis=None, batched=False, padding='SAME'):
     '''
-    Apply a list of 1D kernels along axes of an ND or (N+1)D tensor, i.e.
-    with or without a trailing feature dimension but without batch dimension. By
-    default, the K kernels will be applied along the first K axes.
+    Efficiently apply 1D kernels along axes of a tensor with a trailing feature
+    dimension. The same filters will be applied across features.
 
     Inputs:
-        x: each ND or (N+1)D Tensor (note no batch dimension)
-        kernels: list of N 1D kernel Tensors, 
+        x: Input tensor with trailing feature dimension.
+        kernels: A single kernel or a list of kernels, as tensors or NumPy arrays.
+            If a single kernel is passed, it will be applied along all specified axes.
+        axis: Spatial axes along which to apply the kernels, starting from zero.
+            A value of None means all spatial axes.
+        padding: Whether padding is to be used, either "VALID" or "SAME".
 
     Returns:
-        conv'ed version of x
+        Tensor with the same type as the input.
 
     If you find this function useful, please cite the original paper this was written for:
         M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca.
@@ -609,38 +612,49 @@ def separable_conv(x, kernels, axis=None, padding='SAME'):
         ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
         https://doi.org/10.1109/ISBI48211.2021.9434113
     '''
+    # Dimensions.
+    if not batched:
+        x = tf.expand_dims(x, axis=0)
+    shape_space = x.shape[1:-1]
+    num_dim = len(shape_space)
 
     if not isinstance(kernels, (tuple, list)):
         kernels = [kernels]
+
     if np.isscalar(axis):
         axis = [axis]
+
+    axes_space = range(num_dim)
     if axis is None:
-        axis = range(0, len(kernels))
+        axis = axes_space
+
+    if len(kernels) == 1:
+        kernels = kernels.copy() * len(axis)
+
     assert len(kernels) == len(axis), 'number of kernels and axes differ'
+    assert all(ax in axes_space for ax in axis), 'non-spatial axis passed'
 
-    # Append feature dimension if missing.
-    num_dim = len(x.shape)
-    no_features = len(kernels) == num_dim
-    if no_features:
-        num_dim += 1
-        x = x[..., None]
+    # Merge features and batches.
+    ind = np.arange(num_dim + 2)
+    forward = (0, ind[-1], *ind[1:-1])
+    backward = (0, *ind[2:], 1)
+    x = tf.transpose(x, forward)
+    shape_bc = tf.shape(x)[:2]
+    x = tf.reshape(x, shape=(-1, *shape_space, 1))
 
-    # Change feature to batch dimension, append a dummy feature dimension.
-    ind = np.arange(len(x.shape))
-    forward = (ind[-1], *ind[:-1])
-    backward = (*ind[1:], ind[0])
-    x = tf.transpose(x, perm=forward)[..., None]
-
+    # Convolve.
     for ax, k in zip(axis, kernels):
-        width = np.prod(k.shape.as_list())
-        shape = np.ones(num_dim + 1)
+        width = np.prod(k.shape)
+        shape = np.ones(num_dim + 2)
         shape[ax] = width
-        k = tf.reshape(k, shape=shape)
+        k = tf.reshape(k, shape)
         x = tf.nn.convolution(x, k, padding=padding)
 
-    # Remove dummy feature dimension and restore features from batch dimension.
-    x = tf.transpose(x[..., 0], perm=backward)
-    return x[..., 0] if no_features else x
+    # Restore dimensions.
+    x = tf.reshape(x, shape=tf.concat((shape_bc, tf.shape(x)[1:-1]), axis=0))
+    x = tf.transpose(x, backward)
+
+    return x if batched else x[0, ...]
 
 
 ###############################################################################
