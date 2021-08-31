@@ -590,7 +590,13 @@ def gaussian_kernel(sigma,
     return kernel if len(kernel) > 1 else kernel[0]
 
 
-def separable_conv(x, kernels, axis=None, batched=False, padding='SAME'):
+def separable_conv(x,
+                   kernels,
+                   axis=None,
+                   batched=False,
+                   padding='SAME',
+                   strides=None,
+                   dilations=None):
     '''
     Efficiently apply 1D kernels along axes of a tensor with a trailing feature
     dimension. The same filters will be applied across features.
@@ -602,6 +608,10 @@ def separable_conv(x, kernels, axis=None, batched=False, padding='SAME'):
         axis: Spatial axes along which to apply the kernels, starting from zero.
             A value of None means all spatial axes.
         padding: Whether padding is to be used, either "VALID" or "SAME".
+        strides: Optional output stride as a scalar, list or NumPy array. If several
+            values are passed, these will be applied to the specified axes, in order.
+        dilations: Optional filter dilation rate as a scalar, list or NumPy array. If several
+            values are passed, these will be applied to the specified axes, in order.
 
     Returns:
         Tensor with the same type as the input.
@@ -612,27 +622,37 @@ def separable_conv(x, kernels, axis=None, batched=False, padding='SAME'):
         ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
         https://doi.org/10.1109/ISBI48211.2021.9434113
     '''
-    # Dimensions.
+    # Shape.
     if not batched:
         x = tf.expand_dims(x, axis=0)
     shape_space = x.shape[1:-1]
     num_dim = len(shape_space)
 
-    if not isinstance(kernels, (tuple, list)):
-        kernels = [kernels]
-
+    # Axes.
     if np.isscalar(axis):
         axis = [axis]
-
     axes_space = range(num_dim)
     if axis is None:
         axis = axes_space
+    assert all(ax in axes_space for ax in axis), 'non-spatial axis passed'
 
+    # Conform strides and dilations.
+    ones = np.ones(num_dim, np.int32)
+    f = map(lambda x: 1 if x is None else x, (strides, dilations))
+    f = map(np.ravel, f)
+    f = map(np.ndarray.tolist, f)
+    f = map(lambda x: x * len(axis) if len(x) == 1 else x, f)
+    f = map(lambda x: [(*ones[:ax], x[i], *ones[ax + 1:]) for i, ax in enumerate(axis)], f)
+    strides, dilations = f
+    assert len(strides) == len(axis), 'number of strides and axes differ'
+    assert len(dilations) == len(axis), 'number of dilations and axes differ'
+
+    # Conform kernels.
+    if not isinstance(kernels, (tuple, list)):
+        kernels = [kernels]
     if len(kernels) == 1:
         kernels = kernels.copy() * len(axis)
-
     assert len(kernels) == len(axis), 'number of kernels and axes differ'
-    assert all(ax in axes_space for ax in axis), 'non-spatial axis passed'
 
     # Merge features and batches.
     ind = np.arange(num_dim + 2)
@@ -643,12 +663,10 @@ def separable_conv(x, kernels, axis=None, batched=False, padding='SAME'):
     x = tf.reshape(x, shape=(-1, *shape_space, 1))
 
     # Convolve.
-    for ax, k in zip(axis, kernels):
+    for ax, k, s, d in zip(axis, kernels, strides, dilations):
         width = np.prod(k.shape)
-        shape = np.ones(num_dim + 2)
-        shape[ax] = width
-        k = tf.reshape(k, shape)
-        x = tf.nn.convolution(x, k, padding=padding)
+        k = tf.reshape(k, shape=(*ones[:ax], width, *ones[ax + 1:], 1, 1))
+        x = tf.nn.convolution(x, k, padding=padding, strides=s, dilations=d)
 
     # Restore dimensions.
     x = tf.reshape(x, shape=tf.concat((shape_bc, tf.shape(x)[1:-1]), axis=0))
