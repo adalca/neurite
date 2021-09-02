@@ -155,6 +155,7 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
         # e.g. [0, 0] means this "first" corner in a 2-D "cube"
         cube_pts = list(itertools.product([0, 1], repeat=nb_dims))
         interp_vol = 0
+        vol_reshape = tf.reshape(vol, [-1, volshape[-1]])
 
         for c in cube_pts:
 
@@ -171,7 +172,7 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
             # vol_val = tf.gather_nd(vol, indices)
             # faster way to gather than gather_nd, because gather_nd needs tf.stack which is slow :(
             idx = sub2ind2d(vol.shape[:-1], subs)
-            vol_reshape = tf.reshape(vol, [-1, volshape[-1]])
+
             vol_val = tf.gather(vol_reshape, idx)
 
             # get the weight of this cube_pt based on the distance
