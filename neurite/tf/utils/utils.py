@@ -799,12 +799,21 @@ def odd_shifted_relu(x, shift=-0.5, scale=2.0):
     return scale * K.relu(x - shift) - scale * K.relu(- x - shift)
 
 
-def minmax_norm(x):
+def minmax_norm(x, axis=None):
     """
     Min-max normalize tensor using a safe division.
+
+    Arguments:
+        x: Tensor to be normalized.
+        axis: Dimensions to reduce during normalization. If None, all axes will be considered,
+            treating the input as a single image. To normalize batches or features independently,
+            exclude the respective dimensions.
+
+    Returns:
+        Normalized tensor.
     """
-    x_min = tf.reduce_min(x)
-    x_max = tf.reduce_max(x)
+    x_min = tf.reduce_min(x, axis=axis, keepdims=True)
+    x_max = tf.reduce_max(x, axis=axis, keepdims=True)
     return tf.compat.v1.div_no_nan(x - x_min, x_max - x_min)
 
 
