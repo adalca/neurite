@@ -319,6 +319,43 @@ def next_vol_pred(model, data_generator, verbose=False):
     return data
 
 
+def recode(seg, mapping, max_label=None):
+    """
+    Recodes a discrete segmentation via a label mapping.
+
+    Parameters:
+        seg: Segmentation tensor to recode.
+        mapping: Label index map. Can be list, dict, or RecodingLookupTable. If list,
+            max_label must be provided.
+        max_label: Maximum label that might exist in the input segmentation. This will be
+            extrapolated from the mapping if not provided, but it's important to note that
+            if the mapping does not include the max possible label, tensorflow will throw
+            an error during the gather operation.
+    Returns:
+        Recoded tensor.
+    """
+
+    # convert mapping to valid dictionary
+    if isinstance(mapping, (list, tuple, np.ndarray)):
+        mapping = {l: i + 1 for i, l in enumerate(mapping)}
+    elif hasattr(mapping, 'mapping'):
+        # support FS RecodingLookupTable
+        mapping = mapping.mapping
+    elif not isinstance(mapping, dict):
+        raise ValueError('Invalid mapping type %s.' % type(mapping).__name__)
+
+    # convert mapping to relabeling lookup for tensorflow gather
+    max_label = np.max(in_labels) if max_label is None else max_label
+    in_labels = np.int32(np.unique(list(mapping.keys())))
+    lookup = np.zeros(max_label + 1, dtype=np.float32)
+    for src, trg in mapping.items():
+        lookup[src] = trg
+
+    # gather indices from lookup
+    recoded_seg = tf.gather(lookup, indices=seg)
+    return recoded_seg
+
+
 ###############################################################################
 # helper functions
 ###############################################################################
