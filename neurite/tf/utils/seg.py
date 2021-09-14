@@ -345,8 +345,8 @@ def recode(seg, mapping, max_label=None):
         raise ValueError('Invalid mapping type %s.' % type(mapping).__name__)
 
     # convert mapping to relabeling lookup for tensorflow gather
-    max_label = np.max(in_labels) if max_label is None else max_label
     in_labels = np.int32(np.unique(list(mapping.keys())))
+    max_label = np.max(in_labels) if max_label is None else max_label
     lookup = np.zeros(max_label + 1, dtype=np.float32)
     for src, trg in mapping.items():
         lookup[src] = trg
