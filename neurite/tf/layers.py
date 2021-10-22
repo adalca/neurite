@@ -187,11 +187,11 @@ class SoftQuantize(Layer):
     """ 
     Keras Layer: soft quantization of intentity input
 
-    If you find this class useful, please cite the original paper this was written for:
-        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca.
-        Learning MRI Contrast-Agnostic Registration.
-        ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
-        https://doi.org/10.1109/ISBI48211.2021.9434113
+    If you find this class useful, please consider citing:
+        M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
+        SynthMorph: learning contrast-invariant registration without acquired images
+        IEEE Transactions on Medical Imaging (TMI), in press, 2021
+        https://doi.org/10.1109/TMI.2021.3116879
     """
 
     def __init__(self,
@@ -250,11 +250,11 @@ class GaussianBlur(Layer):
     """ 
     Apply isotropic Gaussian blur to an input tensor.
 
-    If you find this class useful, please cite the original paper this was written for:
-        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca.
-        Learning MRI Contrast-Agnostic Registration.
-        ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
-        https://doi.org/10.1109/ISBI48211.2021.9434113
+    If you find this class useful, please consider citing:
+        M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
+        SynthMorph: learning contrast-invariant registration without acquired images
+        IEEE Transactions on Medical Imaging (TMI), in press, 2021
+        https://doi.org/10.1109/TMI.2021.3116879
     """
 
     def __init__(self, sigma=None, level=None, **kwargs):

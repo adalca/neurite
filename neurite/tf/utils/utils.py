@@ -538,11 +538,11 @@ def gaussian_kernel(sigma,
     For more information see:
         https://github.com/adalca/mivt/blob/master/src/gaussFilt.m
 
-    If you find this function useful, please cite the original paper this was written for:
-        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca.
-        Learning MRI Contrast-Agnostic Registration.
-        ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
-        https://doi.org/10.1109/ISBI48211.2021.9434113
+    If you find this function useful, please consider citing:
+        M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
+        SynthMorph: learning contrast-invariant registration without acquired images
+        IEEE Transactions on Medical Imaging (TMI), in press, 2021
+        https://doi.org/10.1109/TMI.2021.3116879
     '''
     # Data type.
     dtype = tf.dtypes.as_dtype(dtype)
@@ -616,11 +616,11 @@ def separable_conv(x,
     Returns:
         Tensor with the same type as the input.
 
-    If you find this function useful, please cite the original paper this was written for:
-        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca.
-        Learning MRI Contrast-Agnostic Registration.
-        ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
-        https://doi.org/10.1109/ISBI48211.2021.9434113
+    If you find this function useful, please consider citing:
+        M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
+        SynthMorph: learning contrast-invariant registration without acquired images
+        IEEE Transactions on Medical Imaging (TMI), in press, 2021
+        https://doi.org/10.1109/TMI.2021.3116879
     '''
     # Shape.
     if not batched:
@@ -867,11 +867,11 @@ def perlin_vol(vol_shape,
     https://github.com/adalca/matlib/blob/master/matlib/visual/perlin.m
     loosely inspired from http://nullprogram.com/blog/2007/11/20
 
-    If you find this function useful, please cite the original paper this was written for:
-        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca.
-        Learning MRI Contrast-Agnostic Registration.
-        ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
-        https://doi.org/10.1109/ISBI48211.2021.9434113
+    If you find this function useful, please consider citing:
+        M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
+        SynthMorph: learning contrast-invariant registration without acquired images
+        IEEE Transactions on Medical Imaging (TMI), in press, 2021
+        https://doi.org/10.1109/TMI.2021.3116879
     """
 
     # input handling
@@ -980,11 +980,11 @@ def soft_quantize(x,
     Returns:
         tf.float32: volume with one more dimension [bs, ..., B]
 
-    If you find this function useful, please cite the original paper this was written for:
-        M Hoffmann, B Billot, JE Iglesias, B Fischl, AV Dalca.
-        Learning MRI Contrast-Agnostic Registration.
-        ISBI: IEEE International Symposium on Biomedical Imaging, pp 899-903, 2021.
-        https://doi.org/10.1109/ISBI48211.2021.9434113
+    If you find this function useful, please consider citing:
+        M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
+        SynthMorph: learning contrast-invariant registration without acquired images
+        IEEE Transactions on Medical Imaging (TMI), in press, 2021
+        https://doi.org/10.1109/TMI.2021.3116879
     """
 
     if bin_centers is not None:
