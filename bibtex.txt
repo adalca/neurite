@@ -6,10 +6,25 @@
   year={2018}
 }
 
-
 @article{dalca2019imputation,
   title={Unsupervised Data Imputation via Variational Inference of Deep Subspaces},
   author={Dalca, Adrian V and Guttag, John and Sabuncu, Mert R},
   journal={arXiv preprint arXiv:1903.03503},
   year={2019}
+}
+
+@article{hoffmann2021learning,
+  title={Learning MRI Contrast-Agnostic Registration},
+  author={Hoffmann, Malte and Billot, Benjamin and Eugenio Iglesias, Juan and Fischl, Bruce and Dalca, Adrian V},
+  journal={ISBI: IEEE International Symposium on Biomedical Imaging},
+  pages={899--903},
+  year={2021},
+}
+
+@article{hoffmann2021synthmorph,
+  title={SynthMorph: learning contrast-invariant registration without acquired images},
+  author={Hoffmann, Malte and Billot, Benjamin and Greve, Douglas N and Iglesias, Juan Eugenio and Fischl, Bruce and Dalca, Adrian V},
+  journal={IEEE Transactions on Medical Imaging},
+  year={2021},
+  publisher={IEEE}
 }
