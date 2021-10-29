@@ -142,8 +142,8 @@ def volume3D(vols, slice_nos=None, **kwargs):
     if not isinstance(vols, (tuple, list)):
         vols = [vols]
     nb_vols = len(vols)
-
-    assert all([len(vol.shape) == 3 for vol in vols]), 'only 3d volumes allowed in volume3D'
+    vols = list(map(np.squeeze, vols))
+    assert all(v.ndim == 3 for v in vols), 'only 3d volumes allowed in volume3D'
 
     slics = []
     for vi, vol in enumerate(vols):
