@@ -130,7 +130,7 @@ def slices(slices_in,           # the 2D slices
     return (fig, axs)
 
 
-def volume3D(vols, slice_nos=None, **kwargs):
+def volume3D(vols, slice_nos=None, data_squeeze=True, **kwargs):
     """
     plot slices of a 3D volume by taking a middle slice of each axis
 
@@ -138,12 +138,13 @@ def volume3D(vols, slice_nos=None, **kwargs):
         vols: a 3d volume or list of 3d volumes
         slice_nos (optional): a list of 3 elements of the slice numbers for each axis, 
             or list of lists of 3 elements. if None, the middle slices will be used.
+        data_squeeze: remove singleton dimensions before plotting
     """
     if not isinstance(vols, (tuple, list)):
         vols = [vols]
     nb_vols = len(vols)
-
-    assert all([len(vol.shape) == 3 for vol in vols]), 'only 3d volumes allowed in volume3D'
+    vols = list(map(np.squeeze if data_squeeze else np.asarray, vols))
+    assert all(v.ndim == 3 for v in vols), 'only 3d volumes allowed in volume3D'
 
     slics = []
     for vi, vol in enumerate(vols):
