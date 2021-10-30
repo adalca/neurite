@@ -1131,6 +1131,11 @@ def ifftn(x, axes=None):
     return fftn(x, axes, inverse=True)
 
 
+# Provide interface to TensorFlow's fftshift functions.
+fftshift = tf.signal.fftshift
+ifftshift = tf.signal.ifftshift
+
+
 ###############################################################################
 # functions from external source
 ###############################################################################
