@@ -1075,6 +1075,62 @@ def flatten_axes(x, axes):
     return K.reshape(x, reshape)
 
 
+def fftn(x, axes=None, inverse=False):
+    """
+    Conveniently apply the fast Fourier transform (FFT) along any axes of a
+    tensor. Supports forward and backward (inverse) transforms. Non-complex
+    inputs will first be converted to tf.complex64.
+
+    Arguments:
+        x: Input tensor or NumPy array of any type.
+        axes: Tensor axes along which to compute the FFT. None means all axes.
+        inverse: Whether to compute the inverse FFT.
+
+    Returns:
+        Transformed tensor with complex floating-point type of the input.
+
+    Author:
+        mu40
+
+    If you find this function useful, please consider citing:
+        M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
+        SynthMorph: learning contrast-invariant registration without acquired images
+        IEEE Transactions on Medical Imaging (TMI), in press, 2021
+        https://doi.org/10.1109/TMI.2021.3116879
+    """
+    # Validate axes, make them unique and sort in descending order.
+    ax_all = range(len(x.shape))
+    if axes is None:
+        axes = ax_all
+    if np.isscalar(axes):
+        axes = [axes]
+    axes = np.unique(axes)[::-1]
+    assert all(i in ax_all for i in axes), 'invalid FFT axis passed'
+
+    # Support NumPy arrays and real inputs.
+    if not tf.is_tensor(x):
+        x = tf.constant(x)
+    if not x.dtype.is_complex:
+        x = tf.cast(x, tf.complex64)
+
+    # Compute the FFT.
+    fft = getattr(tf.signal, 'ifft' if inverse else 'fft')
+    for i in axes:
+        x = tf.transpose(x, perm=(*ax_all[:i], *ax_all[i + 1:], i))
+        x = fft(x)
+
+    # Restore original axis order.
+    ax_now = (*(i for i in ax_all if i not in axes), *axes)
+    return tf.transpose(x, perm=np.argsort(ax_now))
+
+
+def ifftn(x, axes=None):
+    """
+    Apply the inverse fast Fourier transform (FFT) along any tensor axes.
+    """
+    return fftn(x, axes, inverse=True)
+
+
 ###############################################################################
 # functions from external source
 ###############################################################################
