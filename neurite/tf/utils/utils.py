@@ -1075,6 +1075,127 @@ def flatten_axes(x, axes):
     return K.reshape(x, reshape)
 
 
+def fftn(x, axes=None, inverse=False):
+    """
+    Conveniently apply the fast Fourier transform (FFT) along any axes of a
+    tensor. Supports forward and backward (inverse) transforms. Non-complex
+    inputs will first be converted to tf.complex64.
+
+    Arguments:
+        x: Input tensor or NumPy array of any type.
+        axes: Tensor axes along which to compute the FFT. None means all axes.
+        inverse: Whether to compute the inverse FFT.
+
+    Returns:
+        Transformed tensor with complex floating-point type of the input.
+
+    Author:
+        mu40
+
+    If you find this function useful, please consider citing:
+        M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
+        SynthMorph: learning contrast-invariant registration without acquired images
+        IEEE Transactions on Medical Imaging (TMI), in press, 2021
+        https://doi.org/10.1109/TMI.2021.3116879
+    """
+    # Validate axes, make them unique and sort in descending order.
+    ax_all = range(len(x.shape))
+    if axes is None:
+        axes = ax_all
+    if np.isscalar(axes):
+        axes = [axes]
+    axes = np.unique(axes)[::-1]
+    assert all(i in ax_all for i in axes), 'invalid FFT axis passed'
+
+    # Support NumPy arrays and real inputs.
+    if not tf.is_tensor(x):
+        x = tf.constant(x)
+    if not x.dtype.is_complex:
+        x = tf.cast(x, tf.complex64)
+
+    # Compute the FFT.
+    fft = getattr(tf.signal, 'ifft' if inverse else 'fft')
+    for i in axes:
+        x = tf.transpose(x, perm=(*ax_all[:i], *ax_all[i + 1:], i))
+        x = fft(x)
+
+    # Restore original axis order.
+    ax_now = (*(i for i in ax_all if i not in axes), *axes)
+    return tf.transpose(x, perm=np.argsort(ax_now))
+
+
+def ifftn(x, axes=None):
+    """
+    Apply the inverse fast Fourier transform (FFT) along any tensor axes.
+    """
+    return fftn(x, axes, inverse=True)
+
+
+# Provide interface to TensorFlow's fftshift functions.
+fftshift = tf.signal.fftshift
+ifftshift = tf.signal.ifftshift
+
+
+def complex_to_channels(x):
+    """
+    Split a complex N-feature tensor into a real tensor with 2N features
+    that are the real followed by the imaginary components of the input
+    features. Considers the rightmost dimension as the feature dimension.
+
+    Arguments:
+        x: Complex tensor or NumPy array of any type.
+
+    Returns:
+        Real tensor with 2N channels.
+
+    Author:
+        mu40
+
+    If you find this function useful, please consider citing:
+        M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
+        SynthMorph: learning contrast-invariant registration without acquired images
+        IEEE Transactions on Medical Imaging (TMI), in press, 2021
+        https://doi.org/10.1109/TMI.2021.3116879
+    """
+    assert x.dtype.is_complex, 'non-complex input passed'
+    return tf.concat((tf.math.real(x), tf.math.imag(x)), axis=-1)
+
+
+def channels_to_complex(x):
+    """
+    Split a real tensor with an even number N of features into a complex
+    N/2-feature tensor. The first N/2 features will be taken as the real, the
+    last N/2 features as the imaginary components. Considers the rightmost
+    dimension as the feature dimension.
+
+    Arguments:
+        x: Real input tensor or NumPy array of any type.
+
+    Returns:
+        Complex tensor with N/2 channels.
+
+    Author:
+        mu40
+
+    If you find this function useful, please consider citing:
+        M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
+        SynthMorph: learning contrast-invariant registration without acquired images
+        IEEE Transactions on Medical Imaging (TMI), in press, 2021
+        https://doi.org/10.1109/TMI.2021.3116879
+    """
+    axis = -1
+    num_chan = x.shape[axis]
+    assert num_chan % 2 == 0, f'{num_chan} is an odd number of features'
+    assert x.dtype not in (tf.complex64, tf.complex128), 'complex input passed'
+
+    # Type tf.float16 not supported by tf.complex.
+    if x.dtype not in (tf.float32, tf.float64):
+        x = tf.cast(x, tf.float32)
+
+    real, imag = tf.split(x, num_or_size_splits=2, axis=axis)
+    return tf.complex(real, imag)
+
+
 ###############################################################################
 # functions from external source
 ###############################################################################

@@ -1376,7 +1376,7 @@ class LocalParamLayer(Layer):
     out[v] = b
 
     If you find this class useful, please cite the original paper this was written for:
-        A.V. Dalca, M. Rakic, J. Guttag, M.R. Sabuncu. 
+        A.V. Dalca, M. Rakic, J. Guttag, M.R. Sabuncu.
         Learning Conditional Deformable Templates with Convolutional Networks 
         NeurIPS: Advances in Neural Information Processing Systems. pp 804-816, 2019. 
 
@@ -1468,7 +1468,7 @@ class LocalParamWithInput(Layer):
     this doesn't have the _keras_shape issue since we built on the input and use call()
 
     If you find this class useful, please cite the original paper this was written for:
-        A.V. Dalca, M. Rakic, J. Guttag, M.R. Sabuncu. 
+        A.V. Dalca, M. Rakic, J. Guttag, M.R. Sabuncu.
         Learning Conditional Deformable Templates with Convolutional Networks 
         NeurIPS: Advances in Neural Information Processing Systems. pp 804-816, 2019. 
     """
@@ -1582,7 +1582,7 @@ class MeanStream(Layer):
     any incoming datapoint will have at least 1/cap weight.
 
     If you find this class useful, please cite the original paper this was written for:
-        A.V. Dalca, M. Rakic, J. Guttag, M.R. Sabuncu. 
+        A.V. Dalca, M. Rakic, J. Guttag, M.R. Sabuncu.
         Learning Conditional Deformable Templates with Convolutional Networks 
         NeurIPS: Advances in Neural Information Processing Systems. pp 804-816, 2019. 
     """
@@ -1645,7 +1645,7 @@ class CovStream(Layer):
     any incoming datapoint will have at least 1/cap weight.
 
     If you find this class useful, please cite the original paper this was written for:
-        A.V. Dalca, M. Rakic, J. Guttag, M.R. Sabuncu. 
+        A.V. Dalca, M. Rakic, J. Guttag, M.R. Sabuncu.
         Learning Conditional Deformable Templates with Convolutional Networks 
         NeurIPS: Advances in Neural Information Processing Systems. pp 804-816, 2019. 
     """
@@ -1778,8 +1778,8 @@ class FFT(Layer):
     def __init__(self, axes=None, inverse=False, **kwargs):
         """
         Parameters:
-            axes: Spatial axes along which to take the FFT. Defaults to None, which means all.
-            inverse: Whether to perform a backward (inverse) transform. Defaults to False.
+            axes: Spatial axes along which to take the FFT. None means all axes.
+            inverse: Whether to perform a backward (inverse) transform.
         """
         self.axes = axes
         self.inverse = inverse
@@ -1809,29 +1809,7 @@ class FFT(Layer):
         super().build(input_shape)
 
     def call(self, x):
-        if x.dtype not in (tf.complex64, tf.complex128):
-            x = tf.cast(x, tf.complex64)
-
-        # Select the adequate functions.
-        transform = 'fft'
-        if self.naxes > 1:
-            transform += str(self.naxes) + 'd'
-        if self.inverse:
-            transform = 'i' + transform
-        transform = getattr(tf.signal, transform)
-
-        # Permute: the ND FFT operates on the N rightmost dimensions.
-        ignored_dim = tuple(set(range(len(x.shape))) - set(self.axes))
-        forward = (*ignored_dim, *self.axes)
-        backward = np.argsort(forward)
-
-        x = tf.transpose(x, perm=forward)
-        x = transform(x)
-        x = tf.transpose(x, perm=backward)
-        return x
-
-    def compute_output_shape(self, input_shape):
-        return input_shape
+        return utils.fftn(x, axes=self.axes, inverse=self.inverse)
 
 
 class IFFT(FFT):
@@ -1848,10 +1826,6 @@ class IFFT(FFT):
     """
 
     def __init__(self, *args, **kwargs):
-        """
-        Parameters:
-            axes: Spatial axes along which to take the iFFT. Defaults to None, which means all.
-        """
         super().__init__(*args, inverse=True, **kwargs)
 
 
@@ -1863,8 +1837,8 @@ class FFTShift(Layer):
     def __init__(self, axes=None, inverse=False, **kwargs):
         """
         Parameters:
-            axes: Spatial axes along which to shift the spectrum. Defaults to None, meaning all.
-            inverse: Whether to undo the shift operation. Defaults to False.
+            axes: Spatial axes along which to shift the spectrum. None means all axes.
+            inverse: Whether to undo the shift operation.
         """
         self.axes = axes
         self.inverse = inverse
@@ -1896,9 +1870,6 @@ class FFTShift(Layer):
         f = tf.signal.ifftshift if self.inverse else tf.signal.fftshift
         return f(x, axes=self.axes)
 
-    def compute_output_shape(self, input_shape):
-        return input_shape
-
 
 class IFFTShift(FFTShift):
     """
@@ -1913,10 +1884,6 @@ class IFFTShift(FFTShift):
     """
 
     def __init__(self, *args, **kwargs):
-        """
-        Parameters:
-            axes: Spatial axes along which to shift the spectrum. Defaults to None, meaning all.
-        """
         super().__init__(*args, inverse=True, **kwargs)
 
 
@@ -1927,19 +1894,12 @@ class ComplexToChannels(Layer):
 
     If you find this class useful, please cite the original paper this was written for:
         Deep-learning-based Optimization of the Under-sampling Pattern in MRI 
-        C. Bahadir‡, A.Q. Wang‡, A.V. Dalca, M.R. Sabuncu. 
+        C. Bahadir, A.Q. Wang, A.V. Dalca, M.R. Sabuncu.
         IEEE TCP: Transactions on Computational Imaging. 6. pp. 1139-1152. 2020.
     """
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-    def build(self, input_shape):
-        super().build(input_shape)
-
     def call(self, x):
-        assert x.dtype in (tf.complex64, tf.complex128), f'non-complex input to {self.name}'
-        return tf.concat((tf.math.real(x), tf.math.imag(x)), axis=-1)
+        return utils.complex_to_channels(x)
 
     def compute_output_shape(self, input_shape):
         shape = list(input_shape)
@@ -1954,20 +1914,12 @@ class ChannelsToComplex(Layer):
 
     If you find this class useful, please cite the original paper this was written for:
         Deep-learning-based Optimization of the Under-sampling Pattern in MRI 
-        C. Bahadir‡, A.Q. Wang‡, A.V. Dalca, M.R. Sabuncu. 
+        C. Bahadir, A.Q. Wang, A.V. Dalca, M.R. Sabuncu.
         IEEE TCP: Transactions on Computational Imaging. 6. pp. 1139-1152. 2020.
     """
-    def build(self, input_shape):
-        assert input_shape[-1] % 2 == 0, f'{input_shape[-1]} is an odd number of features'
-        super().build(input_shape)
 
     def call(self, x):
-        assert x.dtype not in (tf.complex64, tf.complex128), f'complex input to {self.name}'
-        if x.dtype not in (tf.float32, tf.float64):
-            x = tf.cast(x, tf.float32)
-
-        nchan = x.shape[-1] // 2
-        return tf.complex(x[..., :nchan], x[..., nchan:])
+        return utils.channels_to_complex(x)
 
     def compute_output_shape(self, input_shape):
         shape = list(input_shape)
