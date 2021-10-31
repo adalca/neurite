@@ -1899,8 +1899,7 @@ class ComplexToChannels(Layer):
     """
 
     def call(self, x):
-        assert x.dtype.is_complex, f'non-complex input to {self.name}'
-        return tf.concat((tf.math.real(x), tf.math.imag(x)), axis=-1)
+        return utils.complex_to_channels(x)
 
     def compute_output_shape(self, input_shape):
         shape = list(input_shape)
@@ -1918,18 +1917,9 @@ class ChannelsToComplex(Layer):
         C. Bahadir, A.Q. Wang, A.V. Dalca, M.R. Sabuncu.
         IEEE TCP: Transactions on Computational Imaging. 6. pp. 1139-1152. 2020.
     """
-    def build(self, input_shape):
-        assert input_shape[-1] % 2 == 0, f'{input_shape[-1]} is an odd number of features'
-        super().build(input_shape)
 
     def call(self, x):
-        assert not x.dtype.is_complex, f'complex input to {self.name}'
-        # Type tf.float16 not supported by tf.complex.
-        if x.dtype not in (tf.float32, tf.float64):
-            x = tf.cast(x, tf.float32)
-
-        nchan = x.shape[-1] // 2
-        return tf.complex(x[..., :nchan], x[..., nchan:])
+        return utils.channels_to_complex(x)
 
     def compute_output_shape(self, input_shape):
         shape = list(input_shape)
