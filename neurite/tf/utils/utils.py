@@ -120,7 +120,10 @@ def interpn(vol, loc, interp_method='linear', fill_value=None):
         vol = K.expand_dims(vol, -1)
 
     # flatten and float location Tensors
-    if loc.dtype != vol.dtype:
+    if not loc.dtype.is_floating:
+        target_loc_dtype = vol.dtype if vol.dtype.is_floating else 'float32'
+        loc = tf.cast(loc, target_loc_dtype)
+    elif vol.dtype.is_floating and vol.dtype != loc.dtype:
         loc = tf.cast(loc, vol.dtype)
 
     if isinstance(vol.shape, (tf.compat.v1.Dimension, tf.TensorShape)):
