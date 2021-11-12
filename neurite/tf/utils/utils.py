@@ -575,13 +575,16 @@ def gaussian_kernel(sigma,
         mesh = np.meshgrid(*mesh, indexing=indexing)
     mesh = [tf.constant(m, dtype=dtype) for m in mesh]
 
+    rand = tf.random.Generator.from_non_deterministic_state()
+    if seed is not None:
+        rand.reset_from_seed(seed)
+
     # Exponents.
     if random:
-        seeds = np.random.default_rng(seed).integers(np.iinfo(int).max, size=len(sigma))
         max_sigma = sigma
         sigma = []
-        for a, b, s in zip(min_sigma, max_sigma, seeds):
-            sigma.append(tf.random.uniform(shape=(1,), minval=a, maxval=b, seed=s, dtype=dtype))
+        for a, b in zip(min_sigma, max_sigma):
+            sigma.append(rand.uniform(shape=(1,), minval=a, maxval=b, dtype=dtype))
     exponent = [m / s**2 for m, s in zip(mesh, sigma)]
 
     # Kernel.
