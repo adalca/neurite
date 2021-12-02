@@ -161,11 +161,11 @@ def unet(nb_features,
     # and the number of filters at each level (in each sublist)
     if isinstance(nb_features, list):
         if nb_levels is not None:
-            warnings.warn('nb_levels is not None while ' + 
+            warnings.warn('nb_levels is not None while ' +
                           'nb_features list of lists specified - overriding')
 
         if feat_mult is not None:
-            warnings.warn('feat_mult is not None while ' + 
+            warnings.warn('feat_mult is not None while ' +
                           'nb_features list of lists specified - overriding')
 
         warnings.warn('warning: list of lists for unet features is experimental')
@@ -1419,7 +1419,7 @@ def EncoderNet(nb_features,
     if (rescale is not None):
         dense = layers.RescaleValues(rescale)(dense)
     out = KL.Dense(nb_labels, name='output_dense', activation=final_activation)(dense)
-    model = tf.kerasmodels.Model(inputs=enc_model.inputs, outputs=out)
+    model = tf.keras.models.Model(inputs=enc_model.inputs, outputs=out)
 
     return model
 
