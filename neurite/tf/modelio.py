@@ -37,7 +37,11 @@ def store_config_args(func):
             for attr, val in kwargs.items():
                 params[attr] = val
 
+        # cache for model input arguments to be saved with model
         self.config = ModelConfig(params)
+
+        # cache for pointers to layers and tensors for future reference
+        self.references = ReferenceContainer()
 
         return retval
     return wrapper
@@ -51,6 +55,27 @@ class ModelConfig:
 
     def __init__(self, params):
         self.params = params
+        self.params['metadata'] = {}
+
+
+class ReferenceContainer:
+    """
+    When subclassing keras Models, you can't just set some member reference a specific
+    layer by doing something like:
+
+    self.layer = layer
+
+    because that will automatically re-add the layer weights into the model, even if they
+    already exist. It's a pretty annoying feature, but I'm sure there's a valid reason for
+    it... (riiight). A workaround is to configure a ReferenceContainer that wraps all layer
+    pointers:
+
+    self.references = LoadableModel.ReferenceContainer()
+    self.references.layer = layer
+    """
+
+    def __init__(self):
+        pass
 
 
 class LoadableModel(tf.keras.Model):
@@ -81,7 +106,10 @@ class LoadableModel(tf.keras.Model):
         """
         Constructs the model from the config arguments provided.
         """
-        return cls(**config)
+        metadata = config.pop('metadata', {})
+        model = cls(**config)
+        model.metadata.update(metadata)
+        return model
 
     @classmethod
     def load(cls, path, by_name=False, **kwargs):
@@ -93,7 +121,7 @@ class LoadableModel(tf.keras.Model):
         """
         config = cls.load_config(path)
         config.update(kwargs)
-        model = cls(**config)
+        model = cls.from_config(config)
         model.load_weights(path, by_name=by_name)
         return model
 
@@ -117,6 +145,10 @@ class LoadableModel(tf.keras.Model):
 
         return config
 
+    @property
+    def metadata(self):
+        return self.config.params['metadata']
+
     class ReferenceContainer:
         """
         When subclassing keras Models, you can't just set some member reference a specific
@@ -125,8 +157,9 @@ class LoadableModel(tf.keras.Model):
         self.layer = layer
 
         because that will automatically re-add the layer weights into the model, even if they
-        already exist. It's a pretty annoying feature, but I'm sure there's a valid reason for it.
-        A workaround is to configure a ReferenceContainer that wraps all layer pointers:
+        already exist. It's a pretty annoying feature, but I'm sure there's a valid reason for
+        it... (riiight). A workaround is to configure a ReferenceContainer that wraps all layer
+        pointers:
 
         self.references = LoadableModel.ReferenceContainer()
         self.references.layer = layer
