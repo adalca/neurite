@@ -61,7 +61,7 @@ def draw_perlin(out_shape,
         sample_shape = np.int32((*sample_shape, out_shape[-1]))
 
         std = tf.random.uniform(
-            shape=(1,), minval=min_std, maxval=max_std, dtype=dtype, seed=seed(),
+            shape=[], minval=min_std, maxval=max_std, dtype=dtype, seed=seed(),
         )
         gauss = tf.random.normal(sample_shape, stddev=std, dtype=dtype, seed=seed())
 
