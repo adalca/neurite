@@ -748,7 +748,8 @@ def labels_to_image(
         vel_shape = (*out_shape // 2, num_dim)
         vel_scale = np.asarray(warp_res) / 2
         vel_draw = lambda x: utils.augment.draw_perlin(
-            vel_shape, scales=vel_scale, max_std=warp_std, modulate=warp_modulate,
+            vel_shape, scales=vel_scale,
+            min_std=0 if warp_modulate else warp_std, max_std=warp_std,
             seed=seeds.get('warp')
         )
         # One per batch.
@@ -817,8 +818,8 @@ def labels_to_image(
     if bias_std > 0:
         bias_shape = (*out_shape, 1)
         bias_draw = lambda x: utils.augment.draw_perlin(
-            bias_shape, scales=bias_res, max_std=bias_std,
-            modulate=bias_modulate, seed=seeds.get('bias'),
+            bias_shape, scales=bias_res, seed=seeds.get('bias'),
+            min_std=0 if bias_modulate else bias_std, max_std=bias_std,
         )
         bias_field = KL.Lambda(lambda x: tf.map_fn(
             bias_draw, x, fn_output_signature='float32'))(labels)
