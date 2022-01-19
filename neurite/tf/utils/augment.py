@@ -1,9 +1,16 @@
+import warnings
 import numpy as np
 import tensorflow as tf
 import neurite as ne
 
 
-def draw_perlin(out_shape, scales, min_std=0, max_std=1, dtype=tf.float32, seed=None):
+def draw_perlin(out_shape,
+                scales,
+                min_std=0,
+                max_std=1,
+                modulate=None,
+                dtype=tf.float32,
+                seed=None):
     '''
     Generate Perlin noise by drawing from Gaussian distributions at different
     resolutions, upsampling and summing. There are a couple of key differences
@@ -27,9 +34,11 @@ def draw_perlin(out_shape, scales, min_std=0, max_std=1, dtype=tf.float32, seed=
         out_shape: List defining the output shape. In N-dimensional space, it
             should have N+1 elements, the last one being the feature dimension.
         scales: List of relative resolutions at which noise is sampled normally.
-            A scale 2 means half resolution relative to the output shape.
+            A scale of 2 means half resolution relative to the output shape.
         min_std: Minimum standard deviation (SD) for drawing noise volumes.
         max_std: Maximum SD for drawing noise volumes.
+        modulate: Boolean. Whether the SD for each scale is drawn from [0, max_std].
+            The argument is deprecated: use min_std instead.
         dtype: Output data type.
         seed: Integer for reproducible randomization. This may only have an
             effect if the function is wrapped in a Lambda layer.
@@ -37,6 +46,12 @@ def draw_perlin(out_shape, scales, min_std=0, max_std=1, dtype=tf.float32, seed=
     out_shape = np.asarray(out_shape, dtype=np.int32)
     if np.isscalar(scales):
         scales = [scales]
+
+    if not modulate:
+        min_std = max_std
+    if modulate is not None:
+        warnings.warn('Argument modulate to ne.utils.augment.draw_perlin is deprecated '
+                      'and will be removed in the future. Use min_std instead.')
 
     rand = np.random.default_rng(seed)
     seed = lambda: rand.integers(np.iinfo(int).max)
