@@ -40,9 +40,6 @@ def store_config_args(func):
         # cache for model input arguments to be saved with model
         self.config = ModelConfig(params)
 
-        # cache for pointers to layers and tensors for future reference
-        self.references = ReferenceContainer()
-
         return retval
     return wrapper
 
