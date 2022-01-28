@@ -245,6 +245,11 @@ def resize(vol, zoom_factor, interp_method='linear'):
         vol_shape = vol.shape[:-1]
         ndims = len(vol_shape)
         zoom_factor = [zoom_factor] * ndims
+
+    # Avoid unnecessary work.
+    if all(z == 1 for z in zoom_factor):
+        return vol
+
     if not isinstance(vol_shape[0], int):
         vol_shape = vol_shape.as_list()
 
