@@ -168,7 +168,6 @@ def unet(nb_features,
             warnings.warn('feat_mult is not None while ' +
                           'nb_features list of lists specified - overriding')
 
-        warnings.warn('warning: list of lists for unet features is experimental')
         nb_levels = len(nb_features)
         assert isinstance(nb_features[0], list), \
             'nb_features must be a scalar or a list of lists (not a list of scalars)'
