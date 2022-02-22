@@ -633,8 +633,8 @@ def separable_conv(x,
     # Shape.
     if not batched:
         x = tf.expand_dims(x, axis=0)
-    shape_space = x.shape[1:-1]
-    num_dim = len(shape_space)
+    shape_space = tf.shape(x)[1:-1]
+    num_dim = len(x.shape[1:-1])
 
     # Axes.
     if np.isscalar(axis):
@@ -668,7 +668,11 @@ def separable_conv(x,
     backward = (0, *ind[2:], 1)
     x = tf.transpose(x, forward)
     shape_bc = tf.shape(x)[:2]
-    x = tf.reshape(x, shape=(-1, *shape_space, 1))
+    x = tf.reshape(x, shape=tf.concat((
+        tf.reduce_prod(shape_bc, keepdims=True),
+        shape_space,
+        [1],
+    ), axis=0))
 
     # Convolve.
     for ax, k, s, d in zip(axis, kernels, strides, dilations):
