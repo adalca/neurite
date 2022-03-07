@@ -190,7 +190,7 @@ class SoftQuantize(Layer):
     If you find this class useful, please consider citing:
         M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
         SynthMorph: learning contrast-invariant registration without acquired images
-        IEEE Transactions on Medical Imaging (TMI), in press, 2021
+        IEEE Transactions on Medical Imaging (TMI), 41 (3), 543-558, 2022
         https://doi.org/10.1109/TMI.2021.3116879
     """
 
@@ -253,7 +253,7 @@ class GaussianBlur(Layer):
     If you find this class useful, please consider citing:
         M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
         SynthMorph: learning contrast-invariant registration without acquired images
-        IEEE Transactions on Medical Imaging (TMI), in press, 2021
+        IEEE Transactions on Medical Imaging (TMI), 41 (3), 543-558, 2022
         https://doi.org/10.1109/TMI.2021.3116879
     """
 
