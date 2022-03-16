@@ -168,7 +168,6 @@ def unet(nb_features,
             warnings.warn('feat_mult is not None while ' +
                           'nb_features list of lists specified - overriding')
 
-        warnings.warn('warning: list of lists for unet features is experimental')
         nb_levels = len(nb_features)
         assert isinstance(nb_features[0], list), \
             'nb_features must be a scalar or a list of lists (not a list of scalars)'
@@ -774,18 +773,14 @@ def labels_to_image(
         std_min = [0] + [5] * (num_in_labels - 1)
     if std_max is None:
         std_max = [25] * num_in_labels
-    int_range = [mean_min, mean_max, std_min, std_max]
-    for i, x in enumerate(int_range):
-        x = np.asarray(x)
-        int_range[i] = x[..., None] if np.ndim(x) == 1 else x
-    m0, m1, s0, s1 = int_range
+    m0, m1, s0, s1 = map(np.asarray, (mean_min, mean_max, std_min, std_max))
     mean = tf.random.uniform(
-        shape=(batch_size, num_in_labels, num_chan),
+        shape=(batch_size, num_chan, num_in_labels),
         minval=m0, maxval=m1,
         seed=seeds.get('mean'),
     )
     std = tf.random.uniform(
-        shape=(batch_size, num_in_labels, num_chan),
+        shape=(batch_size, num_chan, num_in_labels),
         minval=s0, maxval=s1,
         seed=seeds.get('std'),
     )

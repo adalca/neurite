@@ -549,7 +549,7 @@ def gaussian_kernel(sigma,
     If you find this function useful, please consider citing:
         M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
         SynthMorph: learning contrast-invariant registration without acquired images
-        IEEE Transactions on Medical Imaging (TMI), in press, 2021
+        IEEE Transactions on Medical Imaging (TMI), 41 (3), 543-558, 2022
         https://doi.org/10.1109/TMI.2021.3116879
     '''
     # Data type.
@@ -627,14 +627,14 @@ def separable_conv(x,
     If you find this function useful, please consider citing:
         M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
         SynthMorph: learning contrast-invariant registration without acquired images
-        IEEE Transactions on Medical Imaging (TMI), in press, 2021
+        IEEE Transactions on Medical Imaging (TMI), 41 (3), 543-558, 2022
         https://doi.org/10.1109/TMI.2021.3116879
     '''
     # Shape.
     if not batched:
         x = tf.expand_dims(x, axis=0)
-    shape_space = x.shape[1:-1]
-    num_dim = len(shape_space)
+    shape_space = tf.shape(x)[1:-1]
+    num_dim = len(x.shape[1:-1])
 
     # Axes.
     if np.isscalar(axis):
@@ -668,7 +668,11 @@ def separable_conv(x,
     backward = (0, *ind[2:], 1)
     x = tf.transpose(x, forward)
     shape_bc = tf.shape(x)[:2]
-    x = tf.reshape(x, shape=(-1, *shape_space, 1))
+    x = tf.reshape(x, shape=tf.concat((
+        tf.reduce_prod(shape_bc, keepdims=True),
+        shape_space,
+        [1],
+    ), axis=0))
 
     # Convolve.
     for ax, k, s, d in zip(axis, kernels, strides, dilations):
@@ -878,7 +882,7 @@ def perlin_vol(vol_shape,
     If you find this function useful, please consider citing:
         M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
         SynthMorph: learning contrast-invariant registration without acquired images
-        IEEE Transactions on Medical Imaging (TMI), in press, 2021
+        IEEE Transactions on Medical Imaging (TMI), 41 (3), 543-558, 2022
         https://doi.org/10.1109/TMI.2021.3116879
     """
 
@@ -991,7 +995,7 @@ def soft_quantize(x,
     If you find this function useful, please consider citing:
         M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
         SynthMorph: learning contrast-invariant registration without acquired images
-        IEEE Transactions on Medical Imaging (TMI), in press, 2021
+        IEEE Transactions on Medical Imaging (TMI), 41 (3), 543-558, 2022
         https://doi.org/10.1109/TMI.2021.3116879
     """
 
@@ -1103,7 +1107,7 @@ def fftn(x, axes=None, inverse=False):
     If you find this function useful, please consider citing:
         M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
         SynthMorph: learning contrast-invariant registration without acquired images
-        IEEE Transactions on Medical Imaging (TMI), in press, 2021
+        IEEE Transactions on Medical Imaging (TMI), 41 (3), 543-558, 2022
         https://doi.org/10.1109/TMI.2021.3116879
     """
     # Validate axes, make them unique and sort in descending order.
@@ -1162,7 +1166,7 @@ def complex_to_channels(x):
     If you find this function useful, please consider citing:
         M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
         SynthMorph: learning contrast-invariant registration without acquired images
-        IEEE Transactions on Medical Imaging (TMI), in press, 2021
+        IEEE Transactions on Medical Imaging (TMI), 41 (3), 543-558, 2022
         https://doi.org/10.1109/TMI.2021.3116879
     """
     assert x.dtype.is_complex, 'non-complex input passed'
@@ -1188,7 +1192,7 @@ def channels_to_complex(x):
     If you find this function useful, please consider citing:
         M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
         SynthMorph: learning contrast-invariant registration without acquired images
-        IEEE Transactions on Medical Imaging (TMI), in press, 2021
+        IEEE Transactions on Medical Imaging (TMI), 41 (3), 543-558, 2022
         https://doi.org/10.1109/TMI.2021.3116879
     """
     axis = -1
