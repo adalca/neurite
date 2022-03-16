@@ -355,6 +355,7 @@ class Dice:
                  nb_labels=None,
                  weights=None,
                  check_input_limits=True,
+                 laplacian_smoothing=1.,
                  normalize=False):  # regularization for bottom of Dice coeff
         """
         Dice of two Tensors. 
@@ -383,6 +384,10 @@ class Dice:
                 Defaults to None.
             normalize (bool, optional): whether to renormalize probabilistic Tensors.
                 Defaults to False.
+            laplacian_smoothing (float, optional): amount of laplacian smoothing 
+                (adding 1 to numerator and denominator), 
+                use 0 for no smoothing (in which case we employ div_no_nan)
+                Default to 1.
             check_input_limits (bool, optional): whether to check that input Tensors are in [0, 1].
                 using tf debugging asserts. Defaults to True.
         """
@@ -395,6 +400,7 @@ class Dice:
         self.weights = weights
         self.normalize = normalize
         self.check_input_limits = check_input_limits
+        self.laplacian_smoothing = laplacian_smoothing
 
         # checks
         assert self.input_type in ['prob', 'max_label']
@@ -469,7 +475,11 @@ class Dice:
         # dice will now be [batch_size, nb_labels]
         top = 2 * K.sum(y_true * y_pred, 1)
         bottom = K.sum(K.square(y_true), 1) + K.sum(K.square(y_pred), 1)
-        return tf.math.divide_no_nan(top, bottom)
+        if self.laplacian_smoothing > 0:
+            eps = self.laplacian_smoothing
+            return (top + eps) / (bottom + eps)
+        else:
+            return tf.math.divide_no_nan(top, bottom)
 
     def mean_dice(self, y_true, y_pred):
         """ 
