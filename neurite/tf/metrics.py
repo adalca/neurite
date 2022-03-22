@@ -618,17 +618,16 @@ class CategoricalCrossentropy(tf.keras.losses.CategoricalCrossentropy):
         return self.cce(y_true, y_pred, sample_weight=sample_weight)
 
     def cce(self, y_true, y_pred, sample_weight=None):
-        wts = 1
         if self.label_weights is not None:
-            D = y_pred.ndim
-            wts = tf.reshape(self.label_weights, [1] * (D - 1) + [-1])
-
-        if sample_weight is None:
-            sample_weight = 1
-        sample_weight = sample_weight * wts
+            yf = y_pred.shape[-1]
+            lf = self.label_weights.shape[-1]
+            if yf != lf:
+                raise ValueError(f'Label weights must be of len {yf}, but got {lf}.')
+        
+            # keras's CCE reduces axis=-1 before returning, so multiply the label weights now
+            y_true = tf.cast(self.label_weights, y_true.dtype) * y_true
 
         return super().__call__(y_true, y_pred, sample_weight=sample_weight)
-
 
 class MeanSquaredErrorProb(tf.keras.losses.MeanSquaredError):
 
