@@ -355,7 +355,7 @@ class Dice:
                  nb_labels=None,
                  weights=None,
                  check_input_limits=True,
-                 laplace_smoothing=1.,
+                 laplace_smoothing=0.,
                  normalize=False):  # regularization for bottom of Dice coeff
         """
         Dice of two Tensors. 
