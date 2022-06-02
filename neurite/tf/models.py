@@ -103,6 +103,7 @@ def unet(nb_features,
          nb_conv_per_level=1,
          add_prior_layer=False,
          add_prior_layer_reg=0,
+         nb_inputs=1,
          layer_nb_feats=None,
          conv_dropout=0,
          batch_norm=None):
@@ -133,6 +134,8 @@ def unet(nb_features,
             e.g. feat_mult of 2 and nb_features of 16 would yield 32 features in the 
             second layer, 64 features in the third layer, etc
         pool_size (default: 2): max pooling size (integer or list if specifying per dimension)
+        nb_inputs: number of input layers to the unet. if greater than 1, inputs will be
+            concatenated along the channel axis.
         use_logp:
         padding:
         dilation_rate_mult:
@@ -188,7 +191,8 @@ def unet(nb_features,
                          nb_conv_per_level=nb_conv_per_level,
                          layer_nb_feats=layer_nb_feats,
                          conv_dropout=conv_dropout,
-                         batch_norm=batch_norm)
+                         batch_norm=batch_norm,
+                         nb_inputs=nb_inputs)
 
     # get decoder
     # use_skip_connections=1 makes it a u-net
@@ -895,6 +899,7 @@ def conv_enc(nb_features,
              conv_dropout=0,
              batch_norm=None,
              convL=None,  # conv layer function
+             nb_inputs=1,
              src=None,
              src_input=None):
     """
@@ -920,9 +925,15 @@ def conv_enc(nb_features,
 
     # first layer: input
     if src is None:
-        name = '%s_input' % prefix
-        last_tensor = KL.Input(shape=input_shape, name=name)
-        input_tensor = last_tensor
+        if nb_inputs == 1:
+            name = '%s_input' % prefix
+            last_tensor = KL.Input(shape=input_shape, name=name)
+            input_tensor = last_tensor
+        else:
+            input_tensor = []
+            for i in range(nb_inputs):
+                input_tensor.append(KL.Input(shape=input_shape, name=f'{prefix}_input_{i}'))
+            last_tensor = KL.concatenate(input_tensor, axis=-1, name=f'{prefix}_input_concat')
     else:
         assert src_input is not None, 'need to provide src_input if given src'
         input_tensor = src_input
