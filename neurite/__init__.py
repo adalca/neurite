@@ -11,6 +11,18 @@ separately, we'll have a python utilities folder (py), which contains utility mo
 in core python/numpy
 """
 
+# set version
+__version__ = '0.2'
+
+# check whether pystrum version is valid
+from packaging import version
+import pystrum
+minv = '0.2'
+curv = getattr(pystrum, '__version__', None)
+if curv is None or version.parse(curv) < version.parse(minv):
+    raise ImportError(f'voxelmorph requires pystrum version {minv} or greater, '
+                      f'but found version {curv}')
+
 from . import py
 from .py import utils
 from .py import plot
