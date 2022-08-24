@@ -44,7 +44,7 @@ Arxiv preprint 2019
 ## Development:
 We welcome contributions; please make sure your code respects `pep8`, except for `E731,W291,W503,W504`, by running:  
 ```pycodestyle --ignore E731,W291,W503,W504 --max-line-length 100 /path/to/neurite```  
-Please open an [issue](https://github.com/adalca/neurite/tf/issues) [preferred] or contact Adrian Dalca at adalca@csail.mit.edu for question related to `neurite`.
+Please open an [issue](https://github.com/adalca/neurite/issues) [preferred] or contact Adrian Dalca at adalca@csail.mit.edu for question related to `neurite`.
 
 
 ## Use/demos:
