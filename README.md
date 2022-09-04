@@ -20,9 +20,9 @@ pip install neurite
 - [models](neurite/tf/models.py): flexible models (many parameters to play with) particularly useful in medical image analysis, such as UNet/hourglass model, convolutional encoders and decoders   
 - [generators](neurite/tf/generators.py): generators for medical image volumes and various combinations of volumes, segmentation, categorical and other output  
 - [callbacks](neurite/tf/callbacks.py): a set of callbacks for `keras` training to help with understanding your fit, such as Dice measurements and volume-segmentation overlaps  
-- [dataproc](neurite/tf/dataproc.py): a set of tools for processing medical imaging data for preparation for training/testing  
+- [dataproc](neurite/py/dataproc.py): a set of tools for processing medical imaging data for preparation for training/testing  
 - [metrics](neurite/tf/metrics.py): metrics (most of which can be used as loss functions), such as Dice or weighted categorical crossentropy  
-- [plot](neurite/tf/plot.py): plotting tools, mostly for debugging models  
+- [plot](neurite/py/plot.py): plotting tools, mostly for debugging models  
 
 
 ## Papers:
