@@ -509,6 +509,70 @@ def take(x, indices, axis):
     return tf.gather(x, indices, axis=axis)
 
 
+def barycenter(x, axes=None, normalize=False, shift_center=False, dtype=tf.float32):
+    """
+    Compute barycenter along specified axes.
+
+    Arguments:
+        x:
+            Input tensor of any type. Will be cast to FP32 if needed.
+        axes:
+            Axes along which to compute the barycenter. None means all axes.
+        normalize:
+            Normalize grid dimensions to unit length.
+        shift_center:
+            Shift grid to image center.
+        dtype:
+            Output data type. The computation always uses single precision.
+
+    Returns:
+        Center of mass of the specified data type.
+
+    Author:
+        mu40
+
+    If you find this function useful, please consider citing:
+        M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
+        SynthMorph: learning contrast-invariant registration without acquired images
+        IEEE Transactions on Medical Imaging (TMI), 41 (3), 543-558, 2022
+        https://doi.org/10.1109/TMI.2021.3116879
+    """
+    dtype = tf.dtypes.as_dtype(dtype)
+    compute_type = tf.float32
+    if not tf.is_tensor(x) or x.dtype != compute_type:
+        x = tf.cast(x, compute_type)
+
+    # Move reduction axes to end.
+    axes_all = range(len(x.shape))
+    if axes is None:
+        axes = axes_all
+    axes_sub = tuple(ax for ax in axes_all if ax not in axes)
+    if axes_sub:
+        x = tf.transpose(x, perm=(*axes_sub, *axes))
+
+    num_dim = len(axes)
+    vol_shape = x.shape[-num_dim:]
+
+    # Coordinate grid.
+    grid = (np.arange(f, dtype=x.dtype.as_numpy_dtype) for f in vol_shape)
+    if shift_center:
+        grid = (g - (v - 1) / 2 for g, v in zip(grid, vol_shape))
+    if normalize:
+        grid = (g / v for g, v in zip(grid, vol_shape))
+    grid = np.meshgrid(*grid, indexing='ij')
+    grid = np.stack(grid, axis=-1)
+
+    # Reduction.
+    axes_red = axes_all[-num_dim:]
+    x = tf.expand_dims(x, axis=-1)
+    x = tf.math.divide_no_nan(
+        tf.reduce_sum(grid * x, axis=axes_red),
+        tf.reduce_sum(x, axis=axes_red),
+    )
+
+    return tf.cast(x, dtype) if dtype != compute_type else x
+
+
 ###############################################################################
 # filtering
 ###############################################################################
