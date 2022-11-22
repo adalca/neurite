@@ -382,14 +382,14 @@ class Dice:
                 [batch_size, nb_labels]. most often, would want to weight the labels, so would be 
                 an array of size [1, nb_labels]. 
                 Defaults to None.
-            normalize (bool, optional): whether to renormalize probabilistic Tensors.
-                Defaults to False.
+            check_input_limits (bool, optional): whether to check that input Tensors are in [0, 1].
+                using tf debugging asserts. Defaults to True.
             laplace_smoothing (float, optional): amount of laplace smoothing 
                 (adding to the numerator and denominator), 
                 use 0 for no smoothing (in which case we employ div_no_nan)
-                Default to 1.
-            check_input_limits (bool, optional): whether to check that input Tensors are in [0, 1].
-                using tf debugging asserts. Defaults to True.
+                Default to 0.
+            normalize (bool, optional): whether to renormalize probabilistic Tensors.
+                Defaults to False.
         """
         # input_type is 'prob', or 'max_label'
         # dice_type is hard or soft
@@ -532,6 +532,7 @@ class SoftDice(Dice):
 
     def __init__(self,
                  weights=None,
+                 laplace_smoothing=0.,
                  normalize=False):
         """
         soft Dice score, inherits from Dice() class
@@ -541,12 +542,17 @@ class SoftDice(Dice):
                 [batch_size, nb_labels]. most often, would want to weight the labels, so would be 
                 an array of size [1, nb_labels]. 
                 Defaults to None.
+            laplace_smoothing (float, optional): amount of laplace smoothing
+                (adding to the numerator and denominator),
+                use 0 for no smoothing (in which case we employ div_no_nan)
+                Default to 0.
             normalize (bool, optional): whether to renormalize probabilistic Tensors.
                 Defaults to False.
         """
         super().__init__(dice_type='soft',
                          input_type='prob',
                          weights=weights,
+                         laplace_smoothing=laplace_smoothing,
                          normalize=normalize)
 
 
@@ -566,6 +572,7 @@ class HardDice(Dice):
                  nb_labels,
                  input_type='max_label',
                  weights=None,
+                 laplace_smoothing=0.,
                  normalize=False):
         """
         hard Dice score, inherits from Dice() class
@@ -586,6 +593,10 @@ class HardDice(Dice):
                 [batch_size, nb_labels]. most often, would want to weight the labels, so would be 
                 an array of size [1, nb_labels]. 
                 Defaults to None.
+            laplace_smoothing (float, optional): amount of laplace smoothing
+                (adding to the numerator and denominator),
+                use 0 for no smoothing (in which case we employ div_no_nan)
+                Default to 0.
             normalize (bool, optional): whether to renormalize probabilistic Tensors.
                 Defaults to False.
         """
@@ -593,6 +604,7 @@ class HardDice(Dice):
                          input_type=input_type,
                          nb_labels=nb_labels,
                          weights=weights,
+                         laplace_smoothing=laplace_smoothing,
                          normalize=normalize)
 
 
