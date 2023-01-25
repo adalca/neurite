@@ -532,6 +532,7 @@ class SoftDice(Dice):
 
     def __init__(self,
                  weights=None,
+                 check_input_limits=True,
                  laplace_smoothing=0.,
                  normalize=False):
         """
@@ -542,6 +543,8 @@ class SoftDice(Dice):
                 [batch_size, nb_labels]. most often, would want to weight the labels, so would be 
                 an array of size [1, nb_labels]. 
                 Defaults to None.
+            check_input_limits (bool, optional): whether to check that input Tensors are in [0, 1].
+                using tf debugging asserts. Defaults to True.
             laplace_smoothing (float, optional): amount of laplace smoothing
                 (adding to the numerator and denominator),
                 use 0 for no smoothing (in which case we employ div_no_nan)
@@ -552,6 +555,7 @@ class SoftDice(Dice):
         super().__init__(dice_type='soft',
                          input_type='prob',
                          weights=weights,
+                         check_input_limits=check_input_limits,
                          laplace_smoothing=laplace_smoothing,
                          normalize=normalize)
 
@@ -572,6 +576,7 @@ class HardDice(Dice):
                  nb_labels,
                  input_type='max_label',
                  weights=None,
+                 check_input_limits=True,
                  laplace_smoothing=0.,
                  normalize=False):
         """
@@ -593,6 +598,8 @@ class HardDice(Dice):
                 [batch_size, nb_labels]. most often, would want to weight the labels, so would be 
                 an array of size [1, nb_labels]. 
                 Defaults to None.
+            check_input_limits (bool, optional): whether to check that input Tensors are in [0, 1].
+                using tf debugging asserts. Defaults to True.
             laplace_smoothing (float, optional): amount of laplace smoothing
                 (adding to the numerator and denominator),
                 use 0 for no smoothing (in which case we employ div_no_nan)
@@ -604,6 +611,7 @@ class HardDice(Dice):
                          input_type=input_type,
                          nb_labels=nb_labels,
                          weights=weights,
+                         check_input_limits=check_input_limits,
                          laplace_smoothing=laplace_smoothing,
                          normalize=normalize)
 
