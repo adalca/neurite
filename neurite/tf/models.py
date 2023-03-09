@@ -652,6 +652,7 @@ def labels_to_image(
     out_label_list=None,
     out_shape=None,
     num_chan=1,
+    input_model=None,
     mean_min=None,
     mean_max=None,
     std_min=None,
@@ -690,6 +691,8 @@ def labels_to_image(
             Defaults to the input shape.
         num_chan (optional): Number of image channels to be synthesized.
             Defaults to 1.
+        input_model (optional): Optional input model that feeds directly into
+            this model.
         mean_min (optional): List of lower bounds on the means drawn to generate
             the intensities for each label. Defaults to 0 for the background and
             25 for all other labels.
@@ -746,8 +749,14 @@ def labels_to_image(
     num_dim = len(in_shape)
 
     # Inputs.
-    labels_input = KL.Input(shape=(*in_shape, 1), name=f'labels_input_{id}')
-    labels = labels_input
+    if input_model is None:
+        labels_input = KL.Input(shape=(*in_shape, 1), name=f'labels_input_{id}')
+        labels = labels_input
+    else:
+        assert(len(input_model.outputs) == 1)
+        labels = input_model.outputs[0]
+        labels_input = input_model.inputs
+    
     if not labels.dtype.is_integer:
         labels = tf.cast(labels, tf.int32)
     batch_size = tf.shape(labels)[0]
