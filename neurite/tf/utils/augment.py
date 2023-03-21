@@ -8,7 +8,6 @@ def draw_perlin(out_shape,
                 scales,
                 min_std=0,
                 max_std=1,
-                modulate=None,
                 dtype=tf.float32,
                 seed=None):
     '''
@@ -37,8 +36,6 @@ def draw_perlin(out_shape,
             A scale of 2 means half resolution relative to the output shape.
         min_std: Minimum standard deviation (SD) for drawing noise volumes.
         max_std: Maximum SD for drawing noise volumes.
-        modulate: Boolean. Whether the SD for each scale is drawn from [0, max_std].
-            The argument is deprecated: use min_std instead.
         dtype: Output data type.
         seed: Integer for reproducible randomization. This may only have an
             effect if the function is wrapped in a Lambda layer.
@@ -46,12 +43,6 @@ def draw_perlin(out_shape,
     out_shape = np.asarray(out_shape, dtype=np.int32)
     if np.isscalar(scales):
         scales = [scales]
-
-    if not modulate:
-        min_std = max_std
-    if modulate is not None:
-        warnings.warn('Argument modulate to ne.utils.augment.draw_perlin is deprecated '
-                      'and will be removed in the future. Use min_std instead.')
 
     rand = np.random.default_rng(seed)
     seed = lambda: rand.integers(np.iinfo(int).max)
