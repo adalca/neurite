@@ -90,14 +90,14 @@ def split_dataset(data, ratios, axis=0, randomize=True, rand_seed=None):
 
     # get slice indices
     cratios = np.cumsum(ratios) / np.sum(ratios)
-    sl_idx = [0] + [np.round(c * nb_items).astype(int) for c in cratios]
+    sl_idx = np.concatenate(([0], np.round(cratios * nb_items).astype(int)))
 
     # prepare a list of all indices, and shuffle if necessary
-    rng = list(range(nb_items))
+    rng = np.arange(nb_items)
     if randomize:
         if rand_seed:
-            random.seed(rand_seed)
-        random.shuffle(rng)
+            np.random.seed(rand_seed)
+        np.random.shuffle(rng)
 
     # extract data
     if is_list:
