@@ -1260,8 +1260,6 @@ def channels_to_complex(x):
         https://doi.org/10.1109/TMI.2021.3116879
     """
     axis = -1
-    num_chan = x.shape[axis]
-    assert num_chan % 2 == 0, f'{num_chan} is an odd number of features'
     assert x.dtype not in (tf.complex64, tf.complex128), 'complex input passed'
 
     # Type tf.float16 not supported by tf.complex.
