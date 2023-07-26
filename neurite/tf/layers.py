@@ -247,47 +247,119 @@ class MSE(Layer):
 
 
 class GaussianBlur(Layer):
-    """ 
-    Apply isotropic Gaussian blur to an input tensor.
+    """
+    Blur a tensor by convolving it with a Gaussian kernel. The layer supports isotropic and
+    anisotropic blurring, randomized or not.
 
-    If you find this class useful, please consider citing:
+    If you find this layer useful, please cite:
         M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
         SynthMorph: learning contrast-invariant registration without acquired images
         IEEE Transactions on Medical Imaging (TMI), 41 (3), 543-558, 2022
         https://doi.org/10.1109/TMI.2021.3116879
     """
 
-    def __init__(self, sigma=None, level=None, **kwargs):
+    def __init__(self,
+                 sigma=None,
+                 level=None,
+                 random=False,
+                 min_sigma=0,
+                 isotropic=False,
+                 seed=None,
+                 **kwargs):
+        """
+        Parameters:
+            sigma: SD of the blurring kernel, as a scalar or length-N iterable. While specifying
+                a single SD will result in isotropic blurring, you can pass a separate SD for each
+                axis of space. For `random=True`, this argument defines the upper bounds on the
+                blurring SDs, and the layer will sample the SD for axis i between the i-th
+                elements of `min_sigma` and `sigma`, respectively. Careful: random blur is
+                anisotropic unless you pass `isotropic=True`!
+            level: Deprecated in favor of `sigma`.
+            random: Sample the blurring SDs uniformly from the interval [`min_sigma`, `sigma`).
+            min_sigma: Lower bound on the blurring SDs, only used for random sampling. See `sigma`.
+            isotropic: For non-random blur, isotropy is implicitly controlled by the length of
+                `sigma`. For random isotropic blur, set `isotropic=True` and pass a single SD.
+            seed: Integer for reproducible randomization. Only considered for random sampling.
+        """
         assert sigma is not None or level is not None, 'sigma or level must be provided'
         assert not (sigma is not None and level is not None), 'only sigma or level must be provided'
 
         if level is not None:
+            warnings.warn('The `level` argument to ne.layers.GaussianBlur is deprecated and will '
+                          'be removed in a future version. Please use `sigma` instead.')
             if level < 1:
                 raise ValueError('Gaussian blur level must not be less than 1')
+            if random:
+                raise ValueError('level argument incompatible with random blurring')
 
             self.sigma = (level - 1) ** 2
 
-        else:
-            if sigma < 0:
-                raise ValueError('Gaussian blur sigma must not be less than 0')
+        if isotropic and not random:
+            raise ValueError('For non-random blurring, isotropy is implicitly controlled by the '
+                             'number of sigmas provided. Set `isotropic` only for random blur.')
 
-            self.sigma = sigma
-
+        self.sigma = sigma
+        self.random = random
+        self.min_sigma = min_sigma
+        self.isotropic = isotropic
+        self.seed = seed
         super().__init__(**kwargs)
-
-    def call(self, x):
-        if self.sigma == 0:
-            return x
-
-        kernel = utils.gaussian_kernel(self.sigma, separate=True, dtype=x.dtype)
-        return utils.separable_conv(x, kernel, batched=True)
 
     def get_config(self):
         config = super().get_config().copy()
         config.update({
             'sigma': self.sigma,
+            'random': self.random,
+            'min_sigma': self.min_sigma,
+            'isotropic': self.isotropic,
+            'seed': self.seed,
         })
         return config
+
+    def _normalize_sigma(self, sigma, ndims):
+        sigma = np.ravel(sigma)
+        sigma = sigma.tolist()
+        if len(sigma) not in (1, ndims):
+            raise ValueError(f'1 or {ndims} sigmas expected in {ndims}D space, got {len(sigma)}')
+
+        if any(s < 0 for s in sigma):
+            raise ValueError('Gaussian blur sigma must not be less than 0')
+
+        if len(sigma) > 1 and self.isotropic:
+            raise ValueError(f'random isotropic blur requires a single sigma, got {len(sigma)}')
+
+        if len(sigma) == 1:
+            sigma = sigma * ndims
+        return sigma
+
+    def build(self, input_shape):
+        # Convert to N-element lists.
+        ndims = len(input_shape) - 2
+        self.sigma = self._normalize_sigma(self.sigma, ndims)
+        self.min_sigma = self._normalize_sigma(self.min_sigma, ndims)
+
+        # Have `separable_conv` apply the same random kernel along all axes.
+        if self.isotropic and self.random:
+            self.sigma = self.sigma[:1]
+            self.min_sigma = self.min_sigma[:1]
+
+        super().build(input_shape)
+
+    def call(self, x):
+        """
+        Parameters:
+            x: Tensor that will be blurred.
+        """
+        if not any(s > 0 for s in self.sigma):
+            return x
+
+        kernel = utils.gaussian_kernel(sigma=self.sigma,
+                                       random=self.random,
+                                       min_sigma=self.min_sigma,
+                                       separate=True,
+                                       dtype=x.dtype)
+
+        return utils.separable_conv(x, kernel, batched=True)
 
 
 #########################################################
