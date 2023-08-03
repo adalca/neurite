@@ -669,7 +669,7 @@ def separable_conv(x,
                    padding='SAME',
                    strides=None,
                    dilations=None):
-    '''
+    """
     Efficiently apply 1D kernels along axes of a tensor with a trailing feature
     dimension. The same filters will be applied across features.
 
@@ -693,7 +693,7 @@ def separable_conv(x,
         SynthMorph: learning contrast-invariant registration without acquired images
         IEEE Transactions on Medical Imaging (TMI), 41 (3), 543-558, 2022
         https://doi.org/10.1109/TMI.2021.3116879
-    '''
+    """
     # Shape.
     if not batched:
         x = tf.expand_dims(x, axis=0)
@@ -749,6 +749,81 @@ def separable_conv(x,
     x = tf.transpose(x, backward)
 
     return x if batched else x[0, ...]
+
+
+def subsample_axis(x,
+                   stride_min=1,
+                   stride_max=8,
+                   axes=None,
+                   prob=1,
+                   upsample=True,
+                   seed=None):
+    """
+    Symmetrically subsample a tensor by a factor f (stride) along a single axis
+    using nearest-neighbor interpolation and optionally upsample again, to reduce
+    its resolution. Both f and the subsampling axis can be randomly drawn.
+
+    Parameters:
+        x: Input tensor or NumPy array of any type.
+        stride_min: Minimum subsampling factor.
+        stride_max: Maximum subsampling factor.
+        axes: Tensor axes to draw the subsampling axis from. None means all axes.
+        prob: Subsampling probability. A value of 1 means always, 0 never.
+        upsample: Upsample the tensor to restore its original shape.
+        seed: Integer for reproducible randomization.
+
+    Returns:
+        Tensor with randomly thick slices along a random axis.
+
+    See also:
+        ne.layers.Subsample
+
+    If you find this function useful, please cite:
+        Anatomy-specific acquisition-agnostic affine registration learned from fictitious images
+        M Hoffmann, A Hoopes, B Fischl*, AV Dalca* (*equal contribution)
+        SPIE Medical Imaging: Image Processing, 12464, p 1246402, 2023
+        https://doi.org/10.1117/12.2653251
+    """
+    # Validate inputs.
+    if not tf.is_tensor(x):
+        x = tf.constant(x)
+    rand = np.random.default_rng(seed)
+    seed = lambda: rand.integers(np.iinfo(int).max)
+
+    # Validate axes.
+    num_dim = len(x.shape)
+    if axes is None:
+        axes = range(num_dim)
+    if np.isscalar(axes):
+        axes = [axes]
+    assert all(i in range(num_dim) for i in axes), 'invalid axis passed'
+
+    # Draw axis and thickness.
+    assert 0 < stride_min and stride_min <= stride_max, 'invalid strides'
+    ind = tf.random.uniform(shape=[], minval=0, maxval=len(axes), dtype=tf.int32, seed=seed())
+    ax = tf.gather(axes, ind)
+    width = tf.gather(tf.shape(x), indices=ax)
+    thick = tf.random.uniform(shape=[], minval=stride_min, maxval=stride_max, seed=seed())
+
+    # Decide whether to downsample.
+    assert 0 <= prob <= 1, f'{prob} not a probability'
+    if prob < 1:
+        rand_bit = tf.less(tf.random.uniform(shape=[], seed=seed()), prob)
+        rand_not = tf.logical_not(rand_bit)
+        thick = thick * tf.cast(rand_bit, thick.dtype) + tf.cast(rand_not, thick.dtype)
+
+    # Resample.
+    num_slice = tf.cast(width, thick.dtype) / thick + 0.5
+    num_slice = tf.cast(num_slice, width.dtype)
+    ind = tf.linspace(start=0, stop=width - 1, num=num_slice)
+    ind = tf.cast(ind + 0.5, width.dtype)
+    x = tf.gather(x, ind, axis=ax)
+    if upsample:
+        ind = tf.linspace(start=0, stop=tf.shape(x)[ax] - 1, num=width)
+        ind = tf.cast(ind + 0.5, width.dtype)
+        x = tf.gather(x, ind, axis=ax)
+
+    return x
 
 
 ###############################################################################

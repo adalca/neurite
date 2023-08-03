@@ -23,6 +23,7 @@ the License.
 # internal python imports
 import sys
 import itertools
+import warnings
 
 # third party
 import numpy as np
@@ -42,6 +43,7 @@ from tensorflow.python.ops import gen_sparse_ops
 
 # local imports
 from . import utils
+from .. import py
 
 
 class Negate(Layer):
@@ -360,6 +362,272 @@ class GaussianBlur(Layer):
                                        dtype=x.dtype)
 
         return utils.separable_conv(x, kernel, batched=True)
+
+
+class Subsample(Layer):
+    """
+    Symmetrically subsample a tensor by a factor f (stride) along a single spatial axis using
+    nearest-neighbor interpolation and optionally upsample again, to reduce its resolution. Both
+    f and the subsampling axis can be randomly drawn.
+
+    If you find this layer useful, please cite:
+        Anatomy-specific acquisition-agnostic affine registration learned from fictitious images
+        M Hoffmann, A Hoopes, B Fischl*, AV Dalca* (*equal contribution)
+        SPIE Medical Imaging: Image Processing, 12464, p 1246402, 2023
+        https://doi.org/10.1117/12.2653251
+    """
+
+    def __init__(self,
+                 stride_min=1,
+                 stride_max=8,
+                 axes=None,
+                 prob=1,
+                 upsample=True,
+                 seed=None,
+                 **kwargs):
+        """
+        Parameters:
+            stride_min: Lower bound on the subsampling factor.
+            stride_max: Upper bound on the subsampling factor.
+            axes: Spatial axes to draw the subsampling axis from. None means all.
+            prob: Subsampling probability. A value of 1 means always, 0 never.
+            upsample: Upsample the tensor to restore its original shape.
+            seed: Integer for reproducible randomization.
+        """
+        self.stride_min = stride_min
+        self.stride_max = stride_max
+        self.axes = axes
+        self.prob = prob
+        self.upsample = upsample
+        self.seed = seed
+        super().__init__(**kwargs)
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'stride_min': self.stride_min,
+            'stride_max': self.stride_max,
+            'axes': self.axes,
+            'prob': self.prob,
+            'upsample': self.upsample,
+            'seed': self.seed,
+        })
+        return config
+
+    def build(self, input_shape):
+        ndims = len(input_shape) - 2
+        assert ndims in (1, 2, 3), 'only 1D, 2D, or 3D supported'
+
+        allowed = range(1, ndims + 1)
+        self.axes = py.utils.normalize_axes(self.axes, input_shape, allowed, none_means_all=True)
+        super().build(input_shape)
+
+    def call(self, x):
+        """
+        Parameters:
+            x: Input tensor to subsample.
+        """
+        if self.prob == 0 or self.stride_max == 1:
+            return x
+
+        shape = tf.shape(x)
+        x = utils.subsample_axis(x,
+                                 stride_min=self.stride_min,
+                                 stride_max=self.stride_max,
+                                 axes=self.axes,
+                                 prob=self.prob,
+                                 upsample=self.upsample,
+                                 seed=self.seed)
+
+        # Avoid unnecessary dynamic shapes (showing up as `None`).
+        return tf.reshape(x, shape) if self.upsample else x
+
+
+class RandomCrop(Layer):
+    """
+    Randomly crop the content of a tensor by multiplying with a binary mask.
+
+    If you find this layer useful, please cite:
+        Anatomy-specific acquisition-agnostic affine registration learned from fictitious images
+        M Hoffmann, A Hoopes, B Fischl*, AV Dalca* (*equal contribution)
+        SPIE Medical Imaging: Image Processing, 12464, p 1246402, 2023
+        https://doi.org/10.1117/12.2653251
+    """
+
+    def __init__(self,
+                 crop_min=0,
+                 crop_max=0.5,
+                 axis=None,
+                 prob=1,
+                 bilateral=False,
+                 seed=None,
+                 **kwargs):
+        """
+        Parameters:
+            crop_min: Minimum proportion of voxels to remove, in [0, `crop_max`].
+            crop_max: Maximum proportion of voxels to remove, in [`crop_min`, 1].
+            axis: Spatial axis along which to crop, where None means any spatial axis. With more
+                than one axis specified, a single axis will be drawn at each execution.
+            prob: Cropping probability, where 1 means always and 0 never.
+            bilateral: Randomly distribute the cropping proportion between top/bottom end.
+            seed: Integer for reproducible randomization.
+        """
+        self.crop_min = crop_min
+        self.crop_max = crop_max
+        self.axis = axis
+        self.prob = prob
+        self.bilateral = bilateral
+        self.seed = seed
+        super().__init__(**kwargs)
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'crop_min': self.crop_min,
+            'crop_max': self.crop_max,
+            'axis': self.axis,
+            'prob': self.prob,
+            'bilateral': self.bilateral,
+            'seed': self.seed,
+        })
+        return config
+
+    def build(self, input_shape):
+        ndims = len(input_shape) - 2
+        allowed = range(1, ndims + 1)
+        self.axis = py.utils.normalize_axes(self.axis, input_shape, allowed, none_means_all=True)
+        super().build(input_shape)
+
+    def call(self, x):
+        """
+        Parameters:
+            x: Input tensor whose content to crop.
+        """
+        if self.prob == 0:
+            return x
+
+        shape = tf.shape(x)
+        x *= utils.augment.draw_crop_mask(x,
+                                          crop_min=self.crop_min,
+                                          crop_max=self.crop_max,
+                                          axis=self.axis,
+                                          prob=self.prob,
+                                          bilateral=self.bilateral,
+                                          seed=self.seed)
+
+        # Avoid unnecessary dynamic shapes (showing up as `None`).
+        return tf.reshape(x, shape)
+
+
+class RandomClip(Layer):
+    """
+    Clip the contents of a tensor in a randomized fashion.
+
+    If you find this layer useful, please cite:
+        Anatomy-specific acquisition-agnostic affine registration learned from fictitious images
+        M Hoffmann, A Hoopes, B Fischl*, AV Dalca* (*equal contribution)
+        SPIE Medical Imaging: Image Processing, 12464, p 1246402, 2023
+        https://doi.org/10.1117/12.2653251
+    """
+
+    def __init__(self,
+                 clip_min=None,
+                 clip_max=None,
+                 prob_min=1,
+                 prob_max=1,
+                 axes=0,
+                 seed=None,
+                 **kwargs):
+        """
+        Parameters:
+            clip_min: Minimum value to clip to, as a scalar. Any value below this value will be
+                set to `clip_min` when clipping is performed. Pass a two-element iterable to
+                uniformly sample this threshold from the interval [`clip_min[0], `clip_min[1]`).
+                None means no clipping at the lower end.
+            clip_max: Maximum value to clip to. See `clip_min`.
+            prob_min: Clipping probability at the lower end, where 1 means always and 0 never.
+            prob_max: Clipping probability at the upper end. See `prob_min`.
+            axes: Axes along which clipping will vary independently. None means the the input
+                tensor will be clipped as a whole. Pass `axes=(0, -1)` to randomize clipping
+                independently for each channel of each batch.
+            seed: Integer for reproducible randomization.
+        """
+        self.clip_min = clip_min
+        self.clip_max = clip_max
+        self.prob_min = prob_min
+        self.prob_max = prob_max
+        self.axes = axes
+        self.seed = seed
+        super().__init__(**kwargs)
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'clip_min': self.clip_min,
+            'clip_max': self.clip_max,
+            'prob_min': self.prob_min,
+            'prob_max': self.prob_max,
+            'axes': self.axes,
+            'seed': self.seed,
+        })
+        return config
+
+    def build(self, input_shape):
+        self.ndims = len(input_shape)
+        allowed = range(self.ndims)
+        self.axes = py.utils.normalize_axes(self.axes, input_shape, allowed, none_means_all=False)
+
+        self.rand = np.random.default_rng(self.seed)
+        super().build(input_shape)
+
+    def draw_thresh(self, bounds, no_clip_tensor, prob, shape):
+        assert 0 <= prob <= 1, f'{prob} is not a probability'
+        assert tf.is_tensor(no_clip_tensor), 'not a tensor'
+
+        def seed():
+            return self.rand.integers(np.iinfo(int).max)
+
+        # Threshold.
+        if bounds is None or prob == 0:
+            return no_clip_tensor
+
+        if np.isscalar(bounds):
+            clip_at = tf.constant(bounds, no_clip_tensor.dtype)
+
+        else:
+            clip_at = tf.random.uniform(shape, minval=bounds[0], maxval=bounds[1], seed=seed())
+            if clip_at.dtype != no_clip_tensor.dtype:
+                clip_at = tf.cast(clip_at, no_clip_tensor.dtype)
+
+        # Randomization.
+        if prob < 1:
+            rand_bit = tf.less(tf.random.uniform(shape, seed=seed()), prob)
+            rand_bit = tf.cast(rand_bit, no_clip_tensor.dtype)
+            clip_at = rand_bit * clip_at + (1 - rand_bit) * no_clip_tensor
+
+        return clip_at
+
+    def call(self, x):
+        """
+        Parameters:
+            x: Input tensor containing values to clip.
+        """
+        if self.prob_min == self.prob_max == 0:
+            return x
+
+        # No-clip values.
+        x_min = tf.reduce_min(x)
+        x_max = tf.reduce_max(x)
+
+        # Shape. Defines along which axes clipping varies independently.
+        shape = [(tf.shape(x)[i] if i in self.axes else 1,) for i in range(self.ndims)]
+        shape = tf.concat(shape, axis=0)
+
+        # Randomized thresholds.
+        low = self.draw_thresh(self.clip_min, x_min, self.prob_min, shape)
+        upp = self.draw_thresh(self.clip_max, x_max, self.prob_max, shape)
+
+        return tf.clip_by_value(x, clip_value_min=low, clip_value_max=upp)
 
 
 #########################################################
@@ -2045,6 +2313,211 @@ class SampleNormalLogVar(Layer):
         # make it a sample from N(mu, sigma^2)
         z = mu + tf.exp(log_var / 2.0) * noise
         return z
+
+
+class GaussianNoise(Layer):
+    """
+    Sample and add or return Gaussian noise.
+
+    The layer first draws a standard deviation (SD) from a uniform distribution, then samples
+    noise from a normal distribution using the drawn SD. It adds the noise to the input tensor
+    or returns only the noise tensor, which will have the same shape as the input tensor.
+
+    If you find this layer useful, please cite:
+        M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
+        SynthMorph: learning contrast-invariant registration without acquired images
+        IEEE Transactions on Medical Imaging (TMI), 41 (3), 543-558, 2022
+        https://doi.org/10.1109/TMI.2021.3116879
+    """
+
+    def __init__(self,
+                 noise_min=0.01,
+                 noise_max=0.10,
+                 noise_only=False,
+                 absolute=False,
+                 axes=(0, -1),
+                 seed=None,
+                 **kwargs):
+        """
+        Parameters:
+            noise_min: Minimum noise SD. Shape must be broadcastable with the output shape.
+            noise_max: Maximum noise SD. Shape must be broadcastable with the output shape.
+            noise_only: Return the noise tensor rather than adding it to the input.
+            absolute: Instead of interpreting the SD bounds relative to the absolute maximum
+                value of the input tensor, treat them as absolute values.
+            axes: Input axes along which noise will be sampled with a separate SD.
+            seed: Optional seed for initializing the random number generation.
+        """
+        self.noise_min = noise_min
+        self.noise_max = noise_max
+        self.noise_only = noise_only
+        self.absolute = absolute
+        self.axes = axes
+        self.seed = seed
+        super().__init__(**kwargs)
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'noise_min': self.noise_min,
+            'noise_max': self.noise_max,
+            'noise_only': self.noise_only,
+            'absolute': self.absolute,
+            'axes': self.axes,
+            'seed': self.seed,
+        })
+        return config
+
+    def build(self, in_shape):
+        num_dim = len(in_shape)
+        self.axes = np.ravel(self.axes)
+        self.axes = [ax + num_dim if ax < 0 else ax for ax in self.axes]
+        assert all(0 <= ax < num_dim for ax in self.axes), 'invalid axes'
+
+        self.rand = tf.random.Generator.from_non_deterministic_state()
+        if self.seed is not None:
+            self.rand.reset_from_seed(self.seed)
+
+    def call(self, x):
+        """
+        Parameters:
+            x: Input tensor to add noise to.
+        """
+        if self.noise_max == 0 and not self.noise_only:
+            return x
+
+        # Types.
+        assert x.dtype.is_floating or x.dtype.is_complex, 'non-FP output type'
+        real_type = x.dtype.real_dtype
+
+        # Shapes.
+        shape_out = tf.shape(x)
+        shape_sd = []
+        for i, _ in enumerate(x.shape):
+            shape_sd.append(shape_out[i] if i in self.axes else 1)
+
+        # Standard deviation.
+        sd = self.rand.uniform(
+            shape_sd, minval=self.noise_min, maxval=self.noise_max, dtype=real_type,
+        )
+        if not self.absolute:
+            sd *= tf.reduce_max(tf.abs(x))
+
+        # Direct sampling of complex numbers not supported.
+        if x.dtype.is_complex:
+            noise = tf.complex(
+                self.rand.normal(shape_out, stddev=sd, dtype=real_type),
+                self.rand.normal(shape_out, stddev=sd, dtype=real_type),
+            )
+
+        else:
+            noise = self.rand.normal(shape_out, stddev=sd, dtype=real_type)
+
+        return noise if self.noise_only else x + noise
+
+
+class PerlinNoise(tf.keras.layers.Layer):
+    """
+    Sample Perlin Noise.
+
+    The function combines noise tensors at different scales by drawing them at full resolution and
+    smoothing randomly. Users control the number of levels via the length of the smoothing bounds.
+
+    At each scale, we uniformly draw a standard deviation (SD). Second, we sample noise from a
+    normal distribution with that SD. Before averaging over scales, we blur each tensor over its
+    spatial dimensions, keeping constant a global statistic of choice, such as the SD.
+
+    If you find this layer useful, please cite:
+        Anatomy-specific acquisition-agnostic affine registration learned from fictitious images
+        M Hoffmann, A Hoopes, B Fischl*, AV Dalca* (*equal contribution)
+        SPIE Medical Imaging: Image Processing, 12464, p 1246402, 2023
+        https://doi.org/10.1117/12.2653251
+    """
+
+    def __init__(self,
+                 shape=None,
+                 noise_min=0.01,
+                 noise_max=1,
+                 fwhm_min=4,
+                 fwhm_max=32,
+                 isotropic=False,
+                 reduce=tf.math.reduce_std,
+                 dtype=tf.float32,
+                 axes=None,
+                 seed=None,
+                 **kwargs):
+        """
+        Parameters:
+            shape: Output shape including feature but excluding batch dimension. None means the
+                shape of the input tensor (from which the layer will infer the batch size).
+            noise_min: Lower bound on the sampled noise SDs, as a scalar.
+            noise_max: Upper bound on the sampled noise SDs, as a scalar.
+            fwhm_min: Lower bounds on the smoothing FWHMs. Scalar or iterable. One element/level.
+            fwhm_max: Upper bounds on the smoothing FWHMs. Same length as `fwhm_min`.
+            isotropic: Whether smoothing should be isotropic.
+            reduce: TensorFlow function returning a global statistic to keep constant.
+            dtype: Floating-point data type of the output tensor.
+            axes: Axes along which the noise has a separate SD. As the layer always varies the SD
+                along the batch dimension, passing `0` is not allowed. With `axes=-1`, each channel
+                will use a separate sampling SD. With `None`, the same SD will be used for all axes.
+            seed: Integer for reproducible randomization.
+        """
+        self.shape = shape
+        self.noise_min = noise_min
+        self.noise_max = noise_max
+        self.fwhm_min = fwhm_min
+        self.fwhm_max = fwhm_max
+        self.isotropic = isotropic
+        self.reduce = reduce
+        self.out_type = tf.dtypes.as_dtype(dtype)
+        self.axes = axes
+        self.seed = seed
+        super().__init__(**kwargs)
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'shape': self.shape,
+            'noise_min': self.noise_min,
+            'noise_max': self.noise_max,
+            'fwhm_min': self.fwhm_min,
+            'fwhm_max': self.fwhm_max,
+            'isotropic': self.isotropic,
+            'reduce': self.reduce,
+            'out_type': self.out_type,
+            'axes': self.axes,
+            'seed': self.seed,
+        })
+        return config
+
+    def build(self, input_shape):
+        self.rand = np.random.default_rng(self.seed)
+
+        allowed = range(1, len(input_shape))
+        self.axes = py.utils.normalize_axes(self.axes, input_shape, allowed, none_means_all=False)
+        super().build(input_shape)
+
+    def call(self, x):
+        """
+        Parameters:
+            x: Input tensor defining the batch size (and potentially shape).
+        """
+        shape = tf.shape(x)[1:] if self.shape is None else self.shape
+        return tf.map_fn(lambda x: self._single_batch(x, shape), x)
+
+    def _single_batch(self, _, shape):
+        return utils.augment.draw_perlin_full(shape,
+                                              noise_min=self.noise_min,
+                                              noise_max=self.noise_max,
+                                              isotropic=self.isotropic,
+                                              fwhm_min=self.fwhm_min,
+                                              fwhm_max=self.fwhm_max,
+                                              batched=False,
+                                              featured=True,
+                                              dtype=self.out_type,
+                                              seed=self.rand.integers(np.iinfo(int).max),
+                                              axes=[ax - 1 for ax in self.axes],
+                                              reduce=self.reduce)
 
 
 ##########################################
