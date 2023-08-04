@@ -1251,12 +1251,7 @@ def fftn(x, axes=None, inverse=False):
     """
     # Validate axes, make them unique and sort in descending order.
     ax_all = range(len(x.shape))
-    if axes is None:
-        axes = ax_all
-    if np.isscalar(axes):
-        axes = [axes]
-    axes = np.unique(axes)[::-1]
-    assert all(i in ax_all for i in axes), 'invalid FFT axis passed'
+    axes = ne.py.utils.normalize_axes(axes, x.shape, none_means_all=True)[::-1]
 
     # Support NumPy arrays and real inputs.
     if not tf.is_tensor(x):

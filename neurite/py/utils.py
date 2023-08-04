@@ -121,7 +121,7 @@ def fs_lut_to_cmap(lut):
     return matplotlib.colors.ListedColormap(rgb / 255)
 
 
-def normalize_axes(axes, shape, allowed, none_means_all=False):
+def normalize_axes(axes, shape, allowed=None, none_means_all=False):
     """
     Normalize and validate axes indexing into an N-dimensional (ND) tensor shape. Specifically, the
     function sorts and deduplicates indices. It normalizes (valid) negative indices into the
@@ -131,8 +131,10 @@ def normalize_axes(axes, shape, allowed, none_means_all=False):
         axes: Axis index inputs, as a Python integer, iterable, or None. None means all allowed
             axes or no axis, depending on `none_means_all`.
         shape: Shape of the array or tensor to index into.
-        allowed: Subset of allowed axes in [0, N). Python integer or iterable.
-        none_means_all: Whether `None` means all axes, or none.
+        allowed: Subset of allowed axes in [0, N). Python integer, iterable, or None. None means
+            all axes compatible with `shape` are allowed axes.
+        none_means_all: Replace an input of `axes=None` with all axes in [0, N). If False,
+            `axes=None` will return an empty tuple.
 
     Returns:
         The set of specified axes normalized into [0, N) as a tuple.
@@ -140,6 +142,8 @@ def normalize_axes(axes, shape, allowed, none_means_all=False):
     """
     # Allowed values.
     ndims = len(shape)
+    if allowed is None:
+        allowed = range(ndims)
     if np.isscalar(allowed):
         allowed = [allowed]
     assert all(ax in range(ndims) for ax in allowed), f'allowed axes {allowed} out of bounds'
@@ -157,7 +161,7 @@ def normalize_axes(axes, shape, allowed, none_means_all=False):
     # Validate.
     for ax, inp in zip(axes, orig):
         if ax not in allowed:
-            raise IndexError(f'axis {inp} outside allowed range')
+            raise IndexError(f'axis {inp} outside {allowed}')
 
     # Sort, remove duplicates.
     return tuple(set(axes))
