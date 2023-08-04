@@ -146,7 +146,8 @@ def draw_perlin_full(shape,
         featured: Indicate that `shape` includes a trailing feature dimension.
         reduce: TensorFlow function returning a global statistic to keep constant while smoothing.
         dtype: Floating-point data type of the output tensor.
-        axes: Axes along which noise will be sampled with a separate SD.
+        axes: Axes indexing into shape and along which noise will be sampled with a separate SD.
+            A value of None means noise will be sampled using a single global SD at each execution.
         seed: Integer for reproducible randomization.
 
     Returns:
@@ -169,20 +170,16 @@ def draw_perlin_full(shape,
     def seed():
         return rand.integers(np.iinfo(int).max)
 
-    # Dimensions.
+    # Dimensions. Increment axes if we prepend a batch dimension.
+    axes = ne.py.utils.normalize_axes(axes, shape, none_means_all=False)
     if not batched:
         shape = tf.concat(([1], shape), axis=0)
+        axes = [ax + 1 for ax in axes]
     if not featured:
         shape = tf.concat((shape, [1]), axis=0)
 
-    # SD shape. Increment axes if we prepended a batch dimension.
-    num_dim = len(shape)
-    axes = [] if axes is None else np.ravel(axes)
-    axes = [ax + num_dim if ax < 0 else ax for ax in axes]
-    if not batched:
-        axes = [ax + 1 for ax in axes]
-    assert all(0 <= ax < num_dim for ax in axes), f'invalid axes {axes}'
-    shape_sd = [shape[i] if i in axes else 1 for i in range(num_dim)]
+    # SD shape. Index into rather than iterate over tensor.
+    shape_sd = [shape[i] if i in axes else 1 for i in range(len(shape))]
 
     if not hasattr(fwhm_min, '__iter__'):
         fwhm_min = [fwhm_min]
@@ -251,16 +248,9 @@ def draw_crop_mask(x, crop_min=0, crop_max=0.5, axis=None, prob=1, bilateral=Fal
     def seed():
         return rand.integers(np.iinfo(int).max)
 
-    # Convert to tensor.
+    # Normalize inputs.
     x = tf.concat(x, axis=0)
-    num_dim = len(x.shape)
-
-    # Validate inputs.
-    if axis is None:
-        axis = range(num_dim)
-    if np.isscalar(axis):
-        axis = [axis]
-    assert all(-1 < x < num_dim for x in axis), f'out-of-range axis in {axis}'
+    axis = ne.py.utils.normalize_axes(axis, x.shape, none_means_all=True)
     assert 0 <= crop_min <= crop_max <= 1, f'invalid proportions {crop_min}, {crop_max}'
 
     # Decide how much to crop, making sure maxval is >0 to avoid errors.
@@ -293,5 +283,5 @@ def draw_crop_mask(x, crop_min=0, crop_max=0.5, axis=None, prob=1, bilateral=Fal
         tf.less(prop, prop_low + prop_cen),
     )
     mask = tf.cast(mask, x.dtype)
-    shape = tf.roll((width, *np.ones(num_dim - 1)), shift=axis, axis=0)
+    shape = tf.roll((width, *np.ones(len(x.shape) - 1)), shift=axis, axis=0)
     return tf.reshape(mask, shape)

@@ -574,9 +574,7 @@ class RandomClip(Layer):
 
     def build(self, input_shape):
         self.ndims = len(input_shape)
-        allowed = range(self.ndims)
-        self.axes = py.utils.normalize_axes(self.axes, input_shape, allowed, none_means_all=False)
-
+        self.axes = py.utils.normalize_axes(self.axes, input_shape, none_means_all=False)
         self.rand = np.random.default_rng(self.seed)
         super().build(input_shape)
 
@@ -2134,18 +2132,12 @@ class FFT(Layer):
         return config
 
     def build(self, input_shape):
-        self.ndims = len(input_shape) - 2
-        assert self.ndims in (1, 2, 3), 'only 1D, 2D or 3D supported'
-
-        spatial_dim = tuple(range(1, self.ndims + 1))
-        if self.axes is None:
-            self.axes = spatial_dim
-        if np.isscalar(self.axes):
-            self.axes = (self.axes,)
-        self.axes = tuple(set(self.axes))
-        assert all(i in spatial_dim for i in self.axes), f'{self.axes} are not all spatial axes'
-
-        self.naxes = len(self.axes)
+        ndims = len(input_shape) - 2
+        assert ndims in (1, 2, 3), 'only 1D, 2D, or 3D supported'
+        self.axes = py.utils.normalize_axes(self.axes,
+                                            input_shape,
+                                            allowed=range(1, ndims + 1),
+                                            none_means_all=True)
         super().build(input_shape)
 
     def call(self, x):
@@ -2178,7 +2170,7 @@ class FFTShift(Layer):
         """
         Parameters:
             axes: Spatial axes along which to shift the spectrum. None means all axes.
-            inverse: Whether to undo the shift operation.
+            inverse: Undo the shift operation.
         """
         self.axes = axes
         self.inverse = inverse
@@ -2193,17 +2185,12 @@ class FFTShift(Layer):
         return config
 
     def build(self, input_shape):
-        self.ndims = len(input_shape) - 2
-        assert self.ndims in (1, 2, 3), 'only 1D, 2D or 3D supported'
-
-        spatial_dim = tuple(range(1, self.ndims + 1))
-        if self.axes is None:
-            self.axes = spatial_dim
-        if np.isscalar(self.axes):
-            self.axes = (self.axes,)
-        self.axes = tuple(set(self.axes))
-        assert all(i in spatial_dim for i in self.axes), f'{self.axes} are not all spatial axes'
-
+        ndims = len(input_shape) - 2
+        assert ndims in (1, 2, 3), 'only 1D, 2D, or 3D supported'
+        self.axes = py.utils.normalize_axes(self.axes,
+                                            input_shape,
+                                            allowed=range(1, ndims + 1),
+                                            none_means_all=True)
         super().build(input_shape)
 
     def call(self, x):
