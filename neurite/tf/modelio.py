@@ -13,7 +13,7 @@ def store_config_args(func):
     """
 
     attrs, varargs, varkw, defaults, kwonlyargs, kwonlydefaults = \
-        inspect.getargspec(func)
+        inspect.getfullargspec(func)
 
 
     @functools.wraps(func)
