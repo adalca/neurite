@@ -12,7 +12,9 @@ def store_config_args(func):
     model loading - see LoadableModel.
     """
 
-    attrs, varargs, varkw, defaults = inspect.getargspec(func)
+    attrs, varargs, varkw, defaults, kwonlyargs, kwonlydefaults = \
+        inspect.getargspec(func)
+
 
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
@@ -27,6 +29,9 @@ def store_config_args(func):
         if defaults:
             for attr, val in zip(reversed(attrs), reversed(defaults)):
                 params[attr] = val
+
+        # add defaults from keyword arguments too
+        params.update(kwonlydefaults)
 
         # next handle positional args
         for attr, val in zip(attrs[1:], args):
