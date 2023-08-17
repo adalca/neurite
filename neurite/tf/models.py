@@ -740,7 +740,23 @@ def labels_to_image(
             field to the model outputs. Defaults to False.
         id (int, optional): Model identifier used to create unique layer names
             for including this model multiple times. Defaults to 0.
+
+    Returns:
+        Label-augmentation and image-synthesis model.
+
+    If you find this model useful, please cite:
+        M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
+        SynthMorph: learning contrast-invariant registration without acquired images
+        IEEE Transactions on Medical Imaging (TMI), 41 (3), 543-558, 2022
+        https://doi.org/10.1109/TMI.2021.3116879
+
+        Anatomy-specific acquisition-agnostic affine registration learned from fictitious images
+        M Hoffmann, A Hoopes, B Fischl*, AV Dalca* (*equal contribution)
+        SPIE Medical Imaging: Image Processing, 12464, p 1246402, 2023
+        https://doi.org/10.1117/12.2653251
     """
+    warnings.warn('model `labels_to_image` is deprecated in favor `labels_to_image_new`')
+
     import voxelmorph as vxm
 
     if out_shape is None:
@@ -753,10 +769,10 @@ def labels_to_image(
         labels_input = KL.Input(shape=(*in_shape, 1), name=f'labels_input_{id}')
         labels = labels_input
     else:
-        assert(len(input_model.outputs) == 1)
+        assert len(input_model.outputs) == 1
         labels = input_model.outputs[0]
         labels_input = input_model.inputs
-    
+
     if not labels.dtype.is_integer:
         labels = tf.cast(labels, tf.int32)
     batch_size = tf.shape(labels)[0]
@@ -899,6 +915,388 @@ def labels_to_image(
         outputs.append(def_field)
 
     return tf.keras.Model(labels_input, outputs, name=f'synth_{id}')
+
+
+def labels_to_image_new(
+    labels_in,
+    labels_out=None,
+    in_shape=None,
+    out_shape=None,
+    input_model=None,
+    num_chan=1,
+    aff_shift=0,
+    aff_rotate=0,
+    aff_scale=0,
+    aff_shear=0,
+    aff_normal_shift=False,
+    aff_normal_rotate=False,
+    aff_normal_scale=False,
+    aff_normal_shear=False,
+    axes_flip=False,
+    axes_swap=False,
+    warp_min=0.01,
+    warp_max=2,
+    warp_blur_min=(8, 8),
+    warp_blur_max=(32, 32),
+    warp_zero_mean=False,
+    crop_min=0,
+    crop_max=0.2,
+    crop_prob=0,
+    crop_axes=None,
+    mean_min=None,
+    mean_max=None,
+    noise_min=0.1,
+    noise_max=0.2,
+    zero_background=0,
+    blur_min=0,
+    blur_max=1,
+    bias_min=0.01,
+    bias_max=0.1,
+    bias_blur_min=32,
+    bias_blur_max=64,
+    bias_func=tf.exp,
+    slice_stride_min=1,
+    slice_stride_max=8,
+    slice_prob=0,
+    slice_axes=None,
+    normalize=True,
+    gamma=0.5,
+    one_hot=True,
+    half_res=False,
+    seeds={},
+    return_im=True,
+    return_map=True,
+    return_vel=False,
+    return_def=False,
+    return_aff=False,
+    return_mean=False,
+    return_bias=False,
+    id=0,
+):
+    """Build model that augments label maps and synthesizes images from them.
+
+    Parameters:
+        labels_in: All possible input label values as an iterable. Passing a dictionary will remap
+            input labels to the generation labels defined by the dictionary values, for example to
+            draw the same intensity for left and right cortex. Generation labels must be hashable
+            but not necessarily numeric. Remapping has no effect on the output labels.
+        labels_out: Subset of the input labels to include in the output label maps, as an iterable.
+            Passing a dictionary will remap the included input labels, for example to GM, WM, and
+            CSF. Any input label missing in `labels_out` will be set to 0 (background) or excluded
+            if one-hot encoding. None means the output labels will be the same as the input labels.
+            Output labels must be numeric.
+        in_shape: Spatial dimensions of the input label maps as an iterable.
+        out_shape: Spatial dimensions of the outputs as an iterable. Inputs will be symmetrically
+            cropped or zero-padded to fit. None means `in_shape`.
+        input_model: Model whose outputs will be used as data inputs, and whose inputs will be used
+            as inputs to the returned model.
+        num_chan: Number of image channels to synthesize.
+        aff_shift: Upper bound on the magnitude of translations, drawn uniformly in voxels.
+        aff_rotate: Upper bound on the magnitude of rotations, drawn uniformly in degrees.
+        aff_scale: Upper bound on the difference of the scaling magnitude from 1, drawn uniformly.
+        aff_shear: Upper bound on the shearing magnitude, drawn uniformly.
+        aff_normal_shift: Sample translations normally, with `aff_shift` as SD.
+        aff_normal_rotate: Sample rotation angles normally, with `aff_rotate` as SD.
+        aff_normal_scale: Sample scaling normally, with `aff_scale` as SD, truncating beyond 2 SDs.
+        aff_normal_shear: Sample shearing normally, with `aff_shear` as SD.
+        axes_flip: Randomly flip axes of the label map before generating the image. Should not be
+            used with lateralized labels.
+        axes_swap: Randomly permute axes of the label map before generating the image. Should not
+            be used with lateralized labels. Requires an isotropic output shape.
+        warp_min: Lower bound on the SDs used when drawing the SVF.
+        warp_max: Upper bound on the SDs used when drawing the SVF.
+        warp_zero_mean: Ensure that the SVF components have zero mean.
+        crop_min: Lower bound on the proportion of the FOV to crop.
+        crop_max: Upper bound on the proportion of the FOV to crop.
+        crop_prob: Probability that we crop the FOV along an axis.
+        crop_axes: Axes from which to draw for FOV cropping. None means all spatial axes.
+        mean_min: List of lower bounds on the intensities drawn for each label. None means 0.
+        mean_max: List of upper bounds on the intensities drawn for each label. None means 1.
+        noise_min: Lower bound on the noise SD relative to the max image intensity, 0.1 means 10%.
+        noise_max: Upper bound on the noise SD relative to the max image intensity, 0.1 means 10%.
+        zero_background: Probability that we set the background to zero.
+        blur_min: Lower bound on the smoothing SDs. Can be a scalar or list.
+        blur_max: Upper bound on the smoothing SDs. Can be a scalar or list.
+        bias_min: Lower bound on the bias sampling SDs.
+        bias_max: Upper bound on the bias sampling SDs.
+        bias_blur_min: Lower bound on the bias smoothing FWHM.
+        bias_blur_max: Upper bound on the bias smoothing FWHM.
+        bias_func: Function applied voxel-wise to condition the bias field.
+        slice_stride_min: Lower bound on slice thickness in original voxel units.
+        slice_stride_max: Upper bound on slice thickness in original voxel units.
+        slice_prob: Probability that we subsample to create thick slices.
+        slice_axes: Axes from which to draw slice normal direction. None means all spatial axes.
+        normalize: Min-max normalize the image.
+        gamma: Maximum deviation of the gamma augmentation exponent from 1. Careful: without
+            normalization, you may attempt to compute random exponents of negative numbers.
+        one_hot: One-hot encode the output label map.
+        seeds: Seeds for reproducible randomization or synchronization of components of this model
+            across multiple instances. Pass a dictionary linking specific component names to integer
+            seeds. If you pass an iterable of component names, seeds will be auto-generated. You
+            will have to check the source code to identify component names.
+        return_vel: Return the half-resolution SVF.
+        return_def: Return the combined displacement field.
+        return_aff: Return the (N+1)-by-(N+1) affine transformation matrix.
+        return_mean: Return an uncorrupted copy of the image.
+        return_bias: Return the applied bias field.
+        id: Model identifier used to create unique layer names.
+
+    Returns:
+        Label-augmentation and image-synthesis model.
+
+    If you find this model useful, please cite:
+        M Hoffmann, B Billot, DN Greve, JE Iglesias, B Fischl, AV Dalca
+        SynthMorph: learning contrast-invariant registration without acquired images
+        IEEE Transactions on Medical Imaging (TMI), 41 (3), 543-558, 2022
+        https://doi.org/10.1109/TMI.2021.3116879
+
+        Anatomy-specific acquisition-agnostic affine registration learned from fictitious images
+        M Hoffmann, A Hoopes, B Fischl*, AV Dalca* (*equal contribution)
+        SPIE Medical Imaging: Image Processing, 12464, p 1246402, 2023
+        https://doi.org/10.1117/12.2653251
+    """
+    import voxelmorph as vxm
+
+    # Compute type.
+    compute_type = tf.keras.mixed_precision.global_policy().compute_dtype
+    compute_type = tf.dtypes.as_dtype(compute_type)
+    integer_type = tf.int32
+
+    # Seeds.
+    if isinstance(seeds, str):
+        seeds = [seeds]
+    if not isinstance(seeds, dict):
+        seeds = {f: hash(f) for f in seeds}
+
+    # Input model.
+    if input_model is None:
+        labels = KL.Input(shape=(*in_shape, 1), name=f'input_{id}', dtype=compute_type)
+        input_model = tf.keras.Model(*[labels] * 2)
+    labels = input_model.output
+    if labels.dtype != compute_type:
+        labels = tf.cast(labels, compute_type)
+
+    # Dimensions.
+    in_shape = np.asarray(labels.shape[1:-1])
+    if out_shape is None:
+        out_shape = in_shape
+    out_shape = np.array(out_shape) // (2 if half_res else 1)
+    num_dim = len(in_shape)
+    batch_size = tf.shape(labels)[0]
+
+    # Affine transform.
+    parameters = vxm.layers.DrawAffineParams(
+        shift=aff_shift,
+        rot=aff_rotate,
+        scale=aff_scale,
+        shear=aff_shear,
+        normal_shift=aff_normal_shift,
+        normal_rot=aff_normal_rotate,
+        normal_scale=aff_normal_scale,
+        normal_shear=aff_normal_shear,
+        ndims=num_dim,
+        dtype=compute_type,
+        seeds={t: seeds.pop(t, None) for t in ('shift', 'rot', 'scale', 'shear')},
+    )(labels)
+    affine = vxm.layers.ParamsToAffineMatrix(
+        ndims=num_dim, deg=True, shift_scale=True, last_row=True,
+    )(parameters)
+
+    # Shift origin to rotate about image center.
+    origin = np.eye(num_dim + 1)
+    origin[:num_dim, -1] = -0.5 * (in_shape - 1)
+
+    # Symmetric padding: center output volume within input volume.
+    center = np.eye(num_dim + 1)
+    center[:num_dim, -1] = np.round(0.5 * (in_shape - (2 if half_res else 1) * out_shape))
+
+    # Apply transform in input space to avoid rescaling translations at half resolution.
+    scale = np.diag((*[2 if half_res else 1] * num_dim, 1))
+    trans = np.linalg.inv(origin) @ affine @ origin @ center @ scale
+
+    # Axis randomization.
+    if axes_flip:
+        trans = KL.Lambda(lambda x: x @ vxm.utils.draw_flip_matrix(
+            out_shape, shift_center=False, dtype=compute_type, seed=seeds.pop('flip', None),
+        ))(trans)
+    if axes_swap:
+        assert all(x == out_shape[0] for x in out_shape), 'non-isotropic output shape'
+        trans = KL.Lambda(lambda x: x @ vxm.utils.draw_swap_matrix(
+            num_dim, dtype=compute_type, seed=seeds.pop('swap', None),
+        ))(trans)
+
+    # Convert to dense transform.
+    trans = vxm.layers.AffineToDenseShift(out_shape, shift_center=False)(trans[:, :num_dim, :])
+
+    # Diffeomorphic deformation.
+    if warp_max > 0:
+        vel_field = layers.PerlinNoise(
+            shape=(*out_shape // (1 if half_res else 2), num_dim),
+            noise_min=warp_min,
+            noise_max=warp_max,
+            isotropic=False,
+            fwhm_min=np.asarray(warp_blur_min) / 2,
+            fwhm_max=np.asarray(warp_blur_max) / 2,
+            reduce=tf.math.reduce_max,
+            axes=-1,
+            dtype=compute_type,
+            seed=seeds.pop('warp', None),
+        )(labels)
+        if warp_zero_mean:
+            vel_field -= tf.reduce_mean(vel_field, axis=range(1, num_dim + 1))
+        def_field = vxm.layers.VecInt(int_steps=5, name=f'vec_int_{id}')(vel_field)
+        if not half_res:
+            def_field = vxm.layers.RescaleTransform(zoom_factor=2, name=f'def_{id}')(def_field)
+
+        # Compose with affine.
+        trans = vxm.layers.ComposeTransform()([trans, def_field])
+
+    # Apply transform.
+    labels = vxm.layers.SpatialTransformer(
+        interp_method='nearest', fill_value=0, name=f'trans_{id}',
+    )([labels, trans])
+    labels = tf.cast(labels, integer_type)
+
+    # Cropping.
+    labels = layers.RandomCrop(
+        crop_min=crop_min,
+        crop_max=crop_max,
+        prob=crop_prob,
+        axis=crop_axes,
+        seed=seeds.pop('crop', None),
+    )(labels)
+
+    # Generation labels. Default to all input labels.
+    if not isinstance(labels_in, dict):
+        labels_in = {i: i for i in labels_in}
+    labels_gen = set(labels_in.values())
+
+    # Rebase into [0, N): LUT from input to generation label to index.
+    ind = {gen: i for i, gen in enumerate(labels_gen)}
+    lut = [ind.get(labels_in.get(i), 0) for i in range(max(labels_in) + 1)]
+    lut = tf.cast(lut, integer_type)
+    indices = tf.gather(lut, indices=labels)
+
+    # Intensity means and standard deviations.
+    num_label = len(labels_gen)
+    if mean_min is None:
+        mean_min = [0] * num_label
+    if mean_max is None:
+        mean_max = [1] * num_label
+    mean = tf.random.uniform(
+        shape=(batch_size, num_chan, num_label),
+        minval=mean_min,
+        maxval=mean_max,
+        dtype=compute_type,
+        seed=seeds.pop('mean', None),
+    )
+
+    # Label intensities.
+    off_chan = tf.range(num_chan) * num_label
+    off_batch = tf.range(batch_size) * num_chan * num_label
+    indices += tf.reshape(off_batch, shape=(-1, *[1] * num_dim, 1)) + off_chan
+    mean = tf.gather(tf.reshape(mean, shape=(-1,)), indices=indices)
+    image = mean
+
+    # Bias field.
+    if bias_max > 0:
+        bias_field = layers.PerlinNoise(
+            noise_min=bias_min,
+            noise_max=bias_max,
+            isotropic=False,
+            fwhm_min=bias_blur_min / (2 if half_res else 1),
+            fwhm_max=bias_blur_max / (2 if half_res else 1),
+            reduce=tf.math.reduce_max,
+            dtype=compute_type,
+            seed=seeds.pop('bias', None),
+        )(image)
+        bias_field = KL.Lambda(bias_func, name=f'bias_func_{id}')(bias_field)
+        image *= bias_field
+
+    # Noise.
+    image = layers.GaussianNoise(noise_min, noise_max, seed=seeds.pop('noise', None))(image)
+
+    # Background clearing.
+    if zero_background > 0:
+        bg_rand = tf.random.uniform(
+            shape=(batch_size, *[1] * num_dim, 1),
+            dtype=compute_type,
+            seed=seeds.pop('background', None),
+        )
+        bg_zero = tf.math.less(bg_rand, zero_background)
+        bg_zero = tf.math.logical_and(tf.equal(labels, 0), bg_zero)
+        bg_zero = tf.math.logical_xor(True, bg_zero)
+        image *= tf.cast(bg_zero, compute_type)
+
+    # Blur.
+    image = layers.GaussianBlur(
+        sigma=blur_max,
+        min_sigma=blur_min,
+        random=True,
+        seed=seeds.pop('blur', None),
+    )(image)
+
+    # Create thick slices.
+    image = layers.Subsample(
+        prob=slice_prob,
+        stride_min=max(1, slice_stride_min / (2 if half_res else 1)),
+        stride_max=max(1, slice_stride_max / (2 if half_res else 1)),
+        axes=slice_axes,
+        seed=seeds.pop('slice', None),
+    )(image)
+
+    # Intensity manipulations.
+    if normalize:
+        image = KL.Lambda(lambda x: tf.map_fn(utils.minmax_norm, x))(image)
+    if gamma > 0:
+        assert 0 < gamma < 1, f'gamma value {gamma} outside interval [0, 1)'
+        gamma = tf.random.uniform(
+            shape=(batch_size, *[1] * num_dim, num_chan),
+            minval=1 - gamma,
+            maxval=1 + gamma,
+            dtype=image.dtype,
+            seed=seeds.pop('gamma', None),
+        )
+        image = tf.pow(image, gamma)
+
+    # Output labels. Recode the original input labels if desired.
+    lut = list(labels_in) if labels_out is None else labels_out
+    if not isinstance(lut, dict):
+        lut = {i: i for i in lut}
+    labels_out = set(lut.values())
+
+    # Rebase the M desired output labels into [0, M): LUT from input to index.
+    if one_hot:
+        ind = {out: i for i, out in enumerate(labels_out)}
+        lut = {inp: ind[out] for inp, out in lut.items()}
+
+    # Conversion. Set labels to -1 to exclude them from the one-hot maps.
+    if any(k != lut[k] for k in lut) or set(labels_in) - set(lut):
+        lut = [lut.get(i, -1 if one_hot else 0) for i in range(max(labels_in) + 1)]
+        lut = tf.cast(lut, integer_type)
+        labels = tf.gather(lut, indices=labels)
+
+    if one_hot:
+        labels = tf.one_hot(labels[..., 0], depth=len(labels_out), dtype=compute_type)
+
+    outputs = []
+    if return_im:
+        outputs.append(image)
+    if return_map:
+        outputs.append(labels)
+    if return_vel:
+        outputs.append(vel_field)
+    if return_def:
+        outputs.append(def_field)
+    if return_aff:
+        outputs.append(affine)
+    if return_mean:
+        outputs.append(mean)
+    if return_bias:
+        outputs.append(bias_field)
+
+    assert not seeds, f'unknown seeds {seeds}'
+    return tf.keras.Model(input_model.inputs, outputs)
 
 
 ###############################################################################
@@ -1477,7 +1875,7 @@ def DenseLayerNet(inshape, layer_sizes, nb_labels=2, activation='relu',
     last_layer = KL.Dense(nb_labels, name='last_dense', activation=final_activation)(prev_layer)
 
     model = tf.kerasmodels.Model(inputs=inputs, outputs=last_layer)
-    return(model)
+    return model
 
 
 ###############################################################################
