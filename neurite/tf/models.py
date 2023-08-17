@@ -769,7 +769,7 @@ def labels_to_image(
         labels_input = KL.Input(shape=(*in_shape, 1), name=f'labels_input_{id}')
         labels = labels_input
     else:
-        assert(len(input_model.outputs) == 1)
+        assert len(input_model.outputs) == 1
         labels = input_model.outputs[0]
         labels_input = input_model.inputs
 
@@ -1875,7 +1875,7 @@ def DenseLayerNet(inshape, layer_sizes, nb_labels=2, activation='relu',
     last_layer = KL.Dense(nb_labels, name='last_dense', activation=final_activation)(prev_layer)
 
     model = tf.kerasmodels.Model(inputs=inputs, outputs=last_layer)
-    return(model)
+    return model
 
 
 ###############################################################################
