@@ -2759,7 +2759,6 @@ class HyperConvFromDense(HyperConv):
         kernel = self.add_weight(
             name='%s_kernel' % name,
             shape=[last_dim, units],
-            dtype=tf.float32,
             trainable=True)
 
         # create dense bias weights
@@ -2767,7 +2766,6 @@ class HyperConvFromDense(HyperConv):
             bias = self.add_weight(
                 name='%s_bias' % name,
                 shape=[units],
-                dtype=tf.float32,
                 trainable=True)
         else:
             bias = None
@@ -2990,7 +2988,6 @@ class HyperDenseFromDense(HyperDense):
         kernel = self.add_weight(
             name='%s_kernel' % name,
             shape=[last_dim, units],
-            dtype=tf.float32,
             trainable=True)
 
         # create dense bias weights
@@ -2998,7 +2995,6 @@ class HyperDenseFromDense(HyperDense):
             bias = self.add_weight(
                 name='%s_bias' % name,
                 shape=[units],
-                dtype=tf.float32,
                 trainable=True)
         else:
             bias = None
