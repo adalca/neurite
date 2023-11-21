@@ -2429,7 +2429,7 @@ class PerlinNoise(tf.keras.layers.Layer):
                  fwhm_max=32,
                  isotropic=False,
                  reduce=tf.math.reduce_std,
-                 dtype=tf.float32,
+                 out_type=tf.float32,
                  axes=None,
                  seed=None,
                  **kwargs):
@@ -2443,7 +2443,7 @@ class PerlinNoise(tf.keras.layers.Layer):
             fwhm_max: Upper bounds on the smoothing FWHMs. Same length as `fwhm_min`.
             isotropic: Whether smoothing should be isotropic.
             reduce: TensorFlow function returning a global statistic to keep constant.
-            dtype: Floating-point data type of the output tensor.
+            out_type: Floating-point data type of the output tensor.
             axes: Axes along which the noise has a separate SD. As the layer always varies the SD
                 along the batch dimension, passing `0` is not allowed. With `axes=-1`, each channel
                 will use a separate sampling SD. With `None`, the same SD will be used for all axes.
@@ -2456,7 +2456,7 @@ class PerlinNoise(tf.keras.layers.Layer):
         self.fwhm_max = fwhm_max
         self.isotropic = isotropic
         self.reduce = reduce
-        self.out_type = tf.dtypes.as_dtype(dtype)
+        self.out_type = tf.dtypes.as_dtype(out_type)
         self.axes = axes
         self.seed = seed
         super().__init__(**kwargs)
@@ -2490,7 +2490,8 @@ class PerlinNoise(tf.keras.layers.Layer):
             x: Input tensor defining the batch size (and potentially shape).
         """
         shape = tf.shape(x)[1:] if self.shape is None else self.shape
-        return tf.map_fn(lambda x: self._single_batch(x, shape), x)
+        dtype = self.out_type
+        return tf.map_fn(lambda x: self._single_batch(x, shape), x, fn_output_signature=dtype)
 
     def _single_batch(self, _, shape):
         return utils.augment.draw_perlin_full(shape,

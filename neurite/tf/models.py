@@ -1095,7 +1095,7 @@ def labels_to_image_new(
         normal_scale=aff_normal_scale,
         normal_shear=aff_normal_shear,
         ndims=num_dim,
-        dtype=compute_type,
+        out_type=compute_type,
         seeds={t: seeds.pop(t, None) for t in ('shift', 'rot', 'scale', 'shear')},
     )(labels)
     affine = vxm.layers.ParamsToAffineMatrix(
@@ -1139,7 +1139,7 @@ def labels_to_image_new(
             fwhm_max=np.asarray(warp_blur_max) / 2,
             reduce=tf.math.reduce_max,
             axes=-1,
-            dtype=compute_type,
+            out_type=compute_type,
             seed=seeds.pop('warp', None),
         )(labels)
         if warp_zero_mean:
@@ -1207,7 +1207,7 @@ def labels_to_image_new(
             fwhm_min=bias_blur_min / (2 if half_res else 1),
             fwhm_max=bias_blur_max / (2 if half_res else 1),
             reduce=tf.math.reduce_max,
-            dtype=compute_type,
+            out_type=compute_type,
             seed=seeds.pop('bias', None),
         )(image)
         bias_field = KL.Lambda(bias_func, name=f'bias_func_{id}')(bias_field)
