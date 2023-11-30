@@ -19,13 +19,15 @@ under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.
 """
-
+import matplotlib.colors
 # third party
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from matplotlib.colors import Normalize
 from mpl_toolkits.axes_grid1 import make_axes_locatable  # plotting
+from neurite.py.flow_color import flow_uv_to_color
+from typing import Any, List, Union
 
 
 def slices(slices_in,           # the 2D slices
@@ -34,15 +36,16 @@ def slices(slices_in,           # the 2D slices
            norms=None,          # list of normalizations
            do_colorbars=False,  # option to show colorbars on each slice
            grid=False,          # option to plot the images in a grid or a single row
-           width=15,            # width in in
+           width=15,            # width in inches
            show=True,           # option to actually show the plot (plt.show())
            axes_off=True,
+           yaxis_invert=True,   # flip the y-axis directly
            plot_block=True,     # option to plt.show()
            facecolor=None,
            imshow_args=None):
-    '''
+    """
     plot a grid of slices (2d images)
-    '''
+    """
 
     # input processing
     if type(slices_in) == np.ndarray:
@@ -55,7 +58,7 @@ def slices(slices_in,           # the 2D slices
                 'each slice has to be 2d or RGB (3 channels)'
 
     def input_check(inputs, nb_plots, name, default=None):
-        ''' change input from None/single-link '''
+        """ change input from None/single-link """
         assert (inputs is None) or (len(inputs) == nb_plots) or (len(inputs) == 1), \
             'number of %s is incorrect' % name
         if inputs is None:
@@ -108,6 +111,9 @@ def slices(slices_in,           # the 2D slices
         im_ax = ax.imshow(slices_in[i], cmap=cmaps[i],
                           interpolation="nearest", norm=norms[i], **imshow_args[i])
 
+        if ax.yaxis_inverted() != yaxis_invert:
+            ax.invert_yaxis()
+
         # colorbars
         # http://stackoverflow.com/questions/18195758/set-matplotlib-colorbar-size-to-match-graph
         if do_colorbars:  # and cmaps[i] is not None
@@ -116,7 +122,7 @@ def slices(slices_in,           # the 2D slices
             fig.colorbar(im_ax, cax=cax)
 
     # clear axes that are unnecessary
-    for i in range(nb_plots, col * row):
+    for i in range(nb_plots, cols * rows):
         col = np.remainder(i, cols)
         row = np.floor(i / cols).astype(int)
 
@@ -204,20 +210,48 @@ def flow_legend(plot_block=True):
     plt.show(block=plot_block)
 
 
-def flow(slices_in,           # the 2D slices
-         titles=None,         # list of titles
-         cmaps=None,          # list of colormaps
-         width=15,            # width in in
-         indexing='ij',       # plot vecs w/ matrix indexing 'ij' or cartesian indexing 'xy'
-         img_indexing=True,   # whether to match the image view, i.e. flip y axis
-         grid=False,          # option to plot the images in a grid or a single row
-         show=True,           # option to actually show the plot (plt.show())
+def flow(slices_in,            # the 2D slices
+         titles=None,          # list of titles
+         cmaps=None,           # list of colormaps. set to 'Baker' to use Baker et al. optical flow coloring method
+         width=15,             # width in inches
+         indexing='ij',        # plot vecs w/ matrix indexing 'ij' or cartesian indexing 'xy'
+         img_indexing=True,    # whether to match the image view, i.e. flip y-axis of data.
+         yaxis_invert=False,   # instead of affecting the data, flip the y-axis directly
+         mode=None,            # set to 'transformer' or 't' to use defaults customized for visualizing transformer flow
+         grid=False,           # option to plot the images in a grid or a single row
+         show=True,            # option to actually show the plot (plt.show())
          quiver_width=None,
-         plot_block=True,  # option to plt.show()
-         scale=1):            # note quiver essentially draws quiver length = 1/scale
-    '''
+         reduce=1,			   # downsample the flow field by an integer factor.
+         plot_block=True,      # option to plt.show()
+         axis='off',           # don't display axes
+         scale=1,              # note quiver essentially draws quiver length = 1/scale
+         clip_flow=None,       # clip flow magnitude at this value
+         pivot='tail',         # arrow style parameter passed on to `quiver`
+         zero_gray_value=1.0,  # color of zero-flow (e.g. 1.0: totally white. 0.7: slightly gray)
+         xlim=None,  # if not None, only plot the flow field that lies in these x-limits
+         ylim=None,  # if not None, only plot the flow field that lies in these y-limits
+         ):
+    """
     plot a grid of flows (2d+2 images)
-    '''
+    """
+
+    if mode == 'transformer' or mode == 't':        
+        # Baker et al. coloring assumes xy indexing
+        # (first dimension: horizontal flow. Second dim: vertical flow)
+        indexing = 'xy' 
+        
+        # Use yaxis_invert=True to display the flow image with origin (0,0) in the
+        # upper left corner, as is typically done with images.
+        # Then, flipping the flow field (with img_indexing) is not necessary.
+        yaxis_invert = True
+        img_indexing = False
+
+        # pivot='tip': better visualize what spatialTransformer does, vs previous
+        # default of 'tail'. The flow field value at a particular indicates from which
+        # direction the source image is sampled *from*, not where the pixel at a
+        # particular location goes *to*. The difference is rather subtle but more
+        # noticeable when displacement values are large.
+        pivot = 'tip'  
 
     # input processing
     nb_plots = len(slices_in)
@@ -225,8 +259,8 @@ def flow(slices_in,           # the 2D slices
         assert len(slice_in.shape) == 3, 'each slice has to be 3d: 2d+2 channels'
         assert slice_in.shape[-1] == 2, 'each slice has to be 3d: 2d+2 channels'
 
-    def input_check(inputs, nb_plots, name):
-        ''' change input from None/single-link '''
+    def input_check(inputs: Any, nb_plots, name) -> List:
+        """ change input from None/single-link """
         if not isinstance(inputs, (list, tuple)):
             inputs = [inputs]
         assert (inputs is None) or (len(inputs) == nb_plots) or (len(inputs) == 1), \
@@ -238,16 +272,16 @@ def flow(slices_in,           # the 2D slices
         return inputs
 
     assert indexing in ['ij', 'xy']
-    slices_in = np.copy(slices_in)  # Since img_indexing, indexing may modify slices_in in memory
+    slices_in = np.copy(slices_in)  # if img_indexing is True, indexing may modify slices_in in memory
+	# indexing and img_indexing are handled in the flow_ax function
+    # if indexing == 'ij':
+    #    for si, slc in enumerate(slices_in):
+    #        # Make y values negative so y-axis will point down in plot
+    #        slices_in[si][:, :, 1] = -slices_in[si][:, :, 1]
 
-    if indexing == 'ij':
-        for si, slc in enumerate(slices_in):
-            # Make y values negative so y-axis will point down in plot
-            slices_in[si][:, :, 1] = -slices_in[si][:, :, 1]
-
-    if img_indexing:
-        for si, slc in enumerate(slices_in):
-            slices_in[si] = np.flipud(slc)  # Flip vertical order of y values
+    # if img_indexing:
+    #    for si, slc in enumerate(slices_in):
+    #        slices_in[si] = np.flipud(slc)  # Flip vertical order of y values
 
     titles = input_check(titles, nb_plots, 'titles')
     cmaps = input_check(cmaps, nb_plots, 'cmaps')
@@ -278,35 +312,32 @@ def flow(slices_in,           # the 2D slices
         # get row and column axes
         row_axs = axs if rows == 1 else axs[row]
         ax = row_axs[col]
+        scale_i = scale[i]
 
-        # turn off axis
-        ax.axis('off')
+        flow_ax(slices_in[i],  # the 2D slices
+                title=titles[i],        # add titles
+                indexing=indexing,
+                img_indexing=img_indexing,
+                yaxis_invert=yaxis_invert,
+                cmap=cmaps[i],
+                mode=mode,
+                quiver_width=quiver_width,
+                show=False,  # only show after all plots are drawn
+                reduce=reduce,
+                ax=ax,
+                plot_block=False,  # 
+                axis=axis,
+                scale=scale_i,
+                clip_flow=clip_flow,
+                zero_gray_value=zero_gray_value,
+                pivot=pivot,
+                xlim=xlim,
+                ylim=ylim,
+                )
 
-        # add titles
-        if titles is not None and titles[i] is not None:
-            ax.title.set_text(titles[i])
-
-        u, v = slices_in[i][..., 0], slices_in[i][..., 1]
-        colors = np.arctan2(u, v)
-        colors[np.isnan(colors)] = 0
-        norm = Normalize()
-        norm.autoscale(colors)
-        if cmaps[i] is None:
-            colormap = cm.winter
-        else:
-            raise Exception("custom cmaps not currently implemented for plt.flow()")
-
-        # show figure
-        ax.quiver(u, v,
-                  color=colormap(norm(colors).flatten()),
-                  angles='xy',
-                  units='xy',
-                  width=quiver_width,
-                  scale=scale[i])
-        ax.axis('equal')
 
     # clear axes that are unnecessary
-    for i in range(nb_plots, col * row):
+    for i in range(nb_plots, cols * rows):
         col = np.remainder(i, cols)
         row = np.floor(i / cols).astype(int)
 
@@ -317,13 +348,171 @@ def flow(slices_in,           # the 2D slices
         ax.axis('off')
 
     # show the plots
-    fig.set_size_inches(width, rows / cols * width)
+    # preserve aspect ratio.
+    aspect_ratio = slices_in[0].shape[1] / slices_in[0].shape[0]
+    fig.set_size_inches(width * aspect_ratio, rows / cols * width)
     plt.tight_layout()
 
     if show:
         plt.show(block=plot_block)
 
     return (fig, axs)
+
+
+def flow_ax(flow,           # the flow field shape=(H,W,2)
+            title=None,     # title for this plot
+            cmap=None,    # set to 'Baker' to use Baker et al. optical flow coloring method
+            indexing='ij',  # plot vecs w/ matrix indexing 'ij' or cartesian indexing 'xy'
+            img_indexing=True,  # whether to match the image view, i.e. flip y-axis of data.
+            yaxis_invert=False,  # instead of affecting the data, flip the y-axis directly
+            mode=None,      # set to 'transformer' or 't' to use defaults customized for visualizing transformer flow
+            quiver_width=None,
+            show=True,      # option to actually show the plot (plt.show())
+            reduce=1,       # subsample the flow field by this factor.
+            ax=None,        # plot the flow field on this axis.
+            plot_block=True,  # option to plt.show()
+            axis='off',       # don't display axes
+            ticks='off',      # don't display x and y ticks
+            scale=1,    # note quiver essentially draws quiver length = 1/scale
+            clip_flow=None,  # clip flow magnitude at this value
+            zero_gray_value=1.0,  # color of zero-flow (e.g. 1.0: totally white. 0.7: slightly gray)
+            pivot='tail',         # arrow style parameter passed on to `quiver`
+            xlim=None,     # if not None, only plot the flow field that lies in these x-limits
+            ylim=None,     # if not None, only plot the flow field that lies in these y-limits
+            ):
+    """
+    # Plots a single flow field on a particular matplotlib axis
+    (specified by `ax`. if ax is None, uses the current axis ( plt.gca() )
+    """
+
+
+    if mode == 'transformer' or mode == 't':
+        indexing = 'xy'
+        img_indexing = False
+        yaxis_invert = True
+        pivot = 'tip'   # 'tip': better visualize what spatialTransformer does, vs default of 'tail'
+
+    # input processing
+    assert len(flow.shape) == 3, 'each slice has to be 3d: 2d+2 channels'
+    assert flow.shape[-1] == 2, 'each slice has to be 3d: 2d+2 channels'
+
+    def input_check(inputs, nb_plots, name):
+        """ change input from None/single-link """
+        if not isinstance(inputs, (list, tuple)):
+            inputs = [inputs]
+        assert (inputs is None) or (len(inputs) == nb_plots) or (len(inputs) == 1), \
+            'number of %s is incorrect' % name
+        if inputs is None:
+            inputs = [None]
+        if len(inputs) == 1:
+            inputs = [inputs[0] for i in range(nb_plots)]
+        return inputs
+
+    assert indexing in ['ij', 'xy']
+    flow = flow.copy()  # if img_indexing is True, indexing may modify slices_in in memory
+
+    if indexing == 'ij':
+        flow[:, :, 1] = -flow[:, :, 1]
+
+    if img_indexing:
+        flow = np.flipud(flow)  # Flip vertical order of y values
+
+    # prepare the subplot
+    if ax is None:
+        ax = plt.gca()
+
+    # turn off axis
+    if axis == 'off':
+        ax.axis('off')
+
+    if ticks == 'off':
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    if yaxis_invert:
+        ax.yaxis.set_inverted(True)
+
+    u, v = flow[..., 0], flow[..., 1]
+    if reduce != 1:
+        u = u[::reduce, ::reduce]/reduce
+        v = v[::reduce, ::reduce]/reduce
+
+    # show figure
+    quiver_u, quiver_v = u, v
+    if not yaxis_invert:
+        quiver_v = -quiver_v
+
+    quiver_args = quiver_u, quiver_v
+    if xlim is not None or ylim is not None:
+        ny, nx = u.shape
+        quiver_x, quiver_y = np.meshgrid(np.arange(nx), np.arange(ny))
+
+        margin = 5
+        x_slc, y_slc = slice(None), slice(None)
+        if xlim is not None:
+            x_slc = slice(max(xlim[0]-margin, 0), xlim[1]+margin)
+        if ylim is not None:
+            y_slc = slice(max(ylim[0]-margin, 0), ylim[1]+margin)
+
+        quiver_x = quiver_x[y_slc, x_slc]
+        quiver_y = quiver_y[y_slc, x_slc]
+        quiver_u = quiver_u[y_slc, x_slc]
+        quiver_v = quiver_v[y_slc, x_slc]
+
+        quiver_args = quiver_x, quiver_y, quiver_u, quiver_v
+
+    if cmap is None:  # original default colormap
+        cmap = 'winter'
+
+    if isinstance(cmap, str) and cmap in matplotlib.colormaps:
+        cmap = matplotlib.colormaps[cmap]
+
+    if cmap == 'Baker':
+        colors_rgb = flow_uv_to_color(
+            quiver_u, quiver_v, alpha=255, clip_flow=clip_flow,
+            to_float=True, zero_gray_value=zero_gray_value)
+        colors = colors_rgb.reshape([-1, 4])
+
+    elif isinstance(cmap, matplotlib.colors.Colormap):
+        colors = np.arctan2(quiver_u, quiver_v)
+        colors[np.isnan(colors)] = 0
+        norm = Normalize()
+        norm.autoscale(colors)
+        colors = cmap(norm(colors).flatten())
+    else:
+        raise ValueError(
+            "Invalid argument for `cmap`: it should either be 'Baker', the name of a "
+            "matplotlib colormap or a matplotlib colormap instance")
+
+    ax.quiver(*quiver_args,  # quiver_u, quiver_v,
+              color=colors,
+              angles='xy',
+              units='xy',
+              width=quiver_width,
+              pivot=pivot,
+              scale=scale)
+
+    ax.axis('equal')
+    if xlim is not None:
+        ax.set_xlim(xlim)
+    if ylim is not None:
+        ax.set_ylim(ylim)
+
+    if yaxis_invert:
+        ax.yaxis.set_inverted(True)
+
+    if title is not None:
+        ax.title.set_text(title)
+
+    # show the plots
+    # aspect_ratio = flow.shape[1] / flow.shape[0]
+    # fig.set_size_inches(width * aspect_ratio, rows / cols * width)
+    # plt.tight_layout()
+
+    if show:
+        plt.show(block=plot_block)
+    
+
 
 
 def pca(pca, x, y, plot_block=True):
