@@ -2584,7 +2584,7 @@ class HyperConv(Layer):
         Runs per-batch convolution on the inputs, consisting of input features, kernels weights,
         and optional bias weights (when use_bias is True).
         """
-        outputs = tf.map_fn(self._convolve_batch, inputs, inputs[0].dtype)
+        outputs = tf.map_fn(self._convolve_batch, inputs, fn_output_signature=inputs[0].dtype)
         if self.activation is not None:
             outputs = self.activation(outputs)
         return outputs
