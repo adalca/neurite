@@ -98,7 +98,8 @@ def slices(slices_in,           # the 2D slices
         ax = row_axs[col]
 
         # turn off axis
-        ax.axis('off')
+        if axes_off:
+            ax.axis('off')
 
         # add titles
         if titles is not None and titles[i] is not None:
