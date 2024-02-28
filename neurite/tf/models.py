@@ -1065,6 +1065,8 @@ def labels_to_image_new(
     # Seeds.
     if isinstance(seeds, str):
         seeds = [seeds]
+    if isinstance(seeds, dict):
+        seeds = seeds.copy()
     if not isinstance(seeds, dict):
         seeds = {f: hash(f) for f in seeds}
 
