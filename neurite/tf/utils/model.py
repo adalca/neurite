@@ -75,10 +75,7 @@ def stack_models(models, connecting_node_ids=None):
 
     stacked_inputs_ = [i for i in stacked_inputs if i is not None]
     # check for unique, but keep order:
-    stacked_inputs = []
-    for inp in stacked_inputs_:
-        if inp not in stacked_inputs:
-            stacked_inputs.append(inp)
+    stacked_inputs = [inp for inp in stacked_inputs_ if inp not in stacked_inputs]
     new_model = keras.models.Model(stacked_inputs, output_tensors)
     return new_model
 
