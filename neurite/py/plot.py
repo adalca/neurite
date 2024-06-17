@@ -184,7 +184,7 @@ def volume3D(vols, slice_nos=None, data_squeeze=True, **kwargs):
     if 'grid' not in kwargs.keys():
         kwargs['grid'] = [nb_vols, 3]
 
-    slices(slics, **kwargs)
+    return slices(slics, **kwargs)
 
 
 def flow_legend(plot_block=True):
