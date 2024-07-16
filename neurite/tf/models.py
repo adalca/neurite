@@ -652,7 +652,7 @@ def single_ae(enc_size,
     return model
 
 
-def labels_to_image(
+def labels_to_image_old(
     in_shape,
     in_label_list,
     out_label_list=None,
@@ -761,7 +761,7 @@ def labels_to_image(
         SPIE Medical Imaging: Image Processing, 12464, p 1246402, 2023
         https://doi.org/10.1117/12.2653251
     """
-    warnings.warn('model `labels_to_image` is deprecated in favor `labels_to_image_new`')
+    warnings.warn('model `labels_to_image_old` is deprecated in favor `labels_to_image`')
 
     import voxelmorph as vxm
 
@@ -923,7 +923,13 @@ def labels_to_image(
     return tf.keras.Model(labels_input, outputs, name=f'synth_{id}')
 
 
-def labels_to_image_new(
+def labels_to_image_new(*args, **kwargs):
+    warnings.warn('model `labels_to_image_new` has been renamed to `labels_to_image` and will be '
+                  'removed in the future')
+    return labels_to_image(*args, **kwargs)
+
+
+def labels_to_image(
     labels_in,
     labels_out=None,
     in_shape=None,
