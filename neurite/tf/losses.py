@@ -29,8 +29,8 @@ import tensorflow as tf
 import tensorflow.keras.backend as K
 from tensorflow.keras import losses
 # simple metrics renamed mae -> l1, mse -> l2
-from tensorflow.keras.losses import mean_absolute_error as l1
-from tensorflow.keras.losses import mean_squared_error as l2
+from tensorflow.keras.losses import MAE as l1
+from tensorflow.keras.losses import MSE as l2
 
 # local
 from . import utils
