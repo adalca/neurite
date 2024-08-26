@@ -628,6 +628,68 @@ class RandomClip(Layer):
         return tf.clip_by_value(x, clip_value_min=low, clip_value_max=upp)
 
 
+class RandomGamma(Layer):
+    """Exponentiate the voxel intensities of a tensor by a random parameter.
+
+    The layer draws gamma parameters from a uniform distribution.
+
+    If you find this layer useful, please cite:
+        Anatomy-specific acquisition-agnostic affine registration learned from fictitious images
+        M Hoffmann, A Hoopes, B Fischl*, AV Dalca* (*equal contribution)
+        SPIE Medical Imaging: Image Processing, 12464, p 1246402, 2023
+        https://doi.org/10.1117/12.2653251
+    """
+
+    def __init__(self,
+                 low=0.5,
+                 high=2,
+                 shared=False,
+                 seed=None,
+                 **kwargs):
+        """
+        Parameters:
+            low: Lower bound on the sampled exponents, as a scalar.
+            high: Upper bound on the sampled exponents, as a scalar.
+            shared: Apply the same gamma exponentiation across all channels.
+            seed: Integer for reproducible randomization.
+        """
+        self.low = low
+        self.high = high
+        self.shared = shared
+        self.seed = seed
+        super().__init__(**kwargs)
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'low': self.low,
+            'high': self.high,
+            'shared': self.shared,
+            'seed': self.seed,
+        })
+        return config
+
+    def call(self, x):
+        """
+        Parameters:
+            x: Input tensor.
+        """
+        # Dimensions.
+        num_dim = len(x.shape) - 2
+        num_batch = tf.shape(x)[0]
+        num_chan = 1 if self.shared else tf.shape(x)[-1]
+        shape = (num_batch, *[1] * num_dim, num_chan)
+
+        gamma = tf.random.uniform(
+            shape,
+            minval=self.low,
+            maxval=self.high,
+            dtype=x.dtype,
+            seed=self.seed,
+        )
+        return tf.pow(x, gamma)
+
+
 class DrawImage(Layer):
     """ Generate an image from a label map by uniformly sampling a random intensity for each label.
 
