@@ -628,6 +628,83 @@ class RandomClip(Layer):
         return tf.clip_by_value(x, clip_value_min=low, clip_value_max=upp)
 
 
+class DrawImage(Layer):
+    """ Generate an image from a label map by uniformly sampling a random intensity for each label.
+
+    This layer assumes that input label maps have a single channel and integer values in the
+    interval [0, N), where N corresponds to `max_label`. If you pass a list defining intensity
+    bounds, the (zero-based) i-th element of the list applies to label value i.
+
+    If you find this layer useful, please cite:
+        Anatomy-specific acquisition-agnostic affine registration learned from fictitious images
+        M Hoffmann, A Hoopes, B Fischl*, AV Dalca* (*equal contribution)
+        SPIE Medical Imaging: Image Processing, 12464, p 1246402, 2023
+        https://doi.org/10.1117/12.2653251
+    """
+
+    def __init__(self,
+                 max_label,
+                 low=0,
+                 high=1,
+                 channels=1,
+                 seed=None,
+                 **kwargs):
+        """
+        Parameters:
+            max_label: Highest integer value the input index label maps will ever take.
+            low: Lower bounds on the intensities drawn for each label, as a scalar or list.
+            high: Upper bounds on the intensities drawn for each label, as a scalar or list.
+            channels: Number of generated output channels.
+            seed: Integer for reproducible randomization.
+        """
+        self.max_label = max_label
+        self.channels = channels
+        self.low = low
+        self.high = high
+        self.seed = seed
+        super().__init__(**kwargs)
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'max_label': self.max_label,
+            'channels': self.channels,
+            'low': self.low,
+            'high': self.high,
+            'seed': self.seed,
+        })
+        return config
+
+    def call(self, x):
+        """
+        Parameters:
+            x: Input label map with non-negative, zero-based index label values.
+        """
+        if x.dtype not in (tf.int32, tf.int64):
+            x = tf.cast(x, tf.int32)
+
+        num_dim = len(x.shape) - 2
+        num_batch = tf.shape(x)[0]
+        num_label = self.max_label + 1
+
+        # Random means.
+        means = tf.random.uniform(
+            shape=(num_batch, self.channels, num_label),
+            minval=self.low,
+            maxval=self.high,
+            dtype=self.dtype,
+            seed=self.seed,
+        )
+        means = tf.reshape(means, shape=(-1,))
+
+        # Label intensities.
+        offset_chan = tf.range(self.channels) * num_label
+        offset_batch = tf.range(num_batch) * self.channels * num_label
+        offset_batch = tf.reshape(offset_batch, shape=(-1, *[1] * num_dim, 1))
+        x += offset_batch + offset_chan
+        return tf.gather(means, indices=x)
+
+
 #########################################################
 # Sparse layers
 #########################################################
