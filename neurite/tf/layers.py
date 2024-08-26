@@ -2699,7 +2699,7 @@ class PerlinNoise(tf.keras.layers.Layer):
         Parameters:
             x: Input tensor defining the batch size (and potentially shape).
         """
-        shape = tf.shape(x)[1:] if self.shape is None else self.shape
+        shape = x.shape[1:] if self.shape is None else self.shape
         dtype = self.out_type
         return tf.map_fn(lambda x: self._single_batch(x, shape), x, fn_output_signature=dtype)
 
