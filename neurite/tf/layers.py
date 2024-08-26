@@ -690,6 +690,77 @@ class RandomGamma(Layer):
         return tf.pow(x, gamma)
 
 
+class RandomClearLabel(Layer):
+    """Randomly clear image regions corresponding to specific labels.
+
+    If you find this layer useful, please cite:
+        Anatomy-specific acquisition-agnostic affine registration learned from fictitious images
+        M Hoffmann, A Hoopes, B Fischl*, AV Dalca* (*equal contribution)
+        SPIE Medical Imaging: Image Processing, 12464, p 1246402, 2023
+        https://doi.org/10.1117/12.2653251
+    """
+
+    def __init__(self,
+                 prob,
+                 clear=0,
+                 shared=False,
+                 seed=None,
+                 **kwargs):
+        """
+        Parameters:
+            prob: Probability that we clear image regions corresponding to the label.
+            shared: Synchronize the random clearing across all channels.
+            clear: Integer labels to clear, as a scalar or iterable. When passing several values,
+                the layer will combine and treat them as a single structure.
+            seed: Integer for reproducible randomization.
+        """
+        self.prob = prob
+        self.clear = clear
+        self.shared = shared
+        self.seed = seed
+        super().__init__(**kwargs)
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'prob': self.prob,
+            'clear': self.clear,
+            'shared': self.shared,
+            'seed': self.seed,
+        })
+        return config
+
+    def call(self, inputs):
+        """
+        Parameters:
+            inputs: Input image and corresponding label map as an iterable.
+        """
+        image, labels = inputs
+        if self.prob == 0:
+            return image
+
+        # Labels to clear.
+        bg = [self.clear] if np.isscalar(self.clear) else np.unique(self.clear)
+        bg = tf.convert_to_tensor(bg, labels.dtype)
+
+        # Dimensions.
+        num_dim = len(image.shape) - 2
+        num_batch = tf.shape(image)[0]
+        num_chan = 1 if self.shared else tf.shape(image)[-1]
+        shape = (num_batch, *[1] * num_dim, num_chan)
+
+        # Randomization.
+        rand = tf.random.uniform(shape, dtype=self.dtype, seed=self.seed)
+        rand = tf.less(rand, self.prob)
+
+        # Mask.
+        mask = tf.reduce_any(tf.equal(labels[..., None], bg), axis=-1)
+        mask = tf.math.logical_and(mask, rand)
+        mask = tf.math.logical_xor(True, mask)
+
+        return image * tf.cast(mask, image.dtype)
+
+
 class DrawImage(Layer):
     """ Generate an image from a label map by uniformly sampling a random intensity for each label.
 
