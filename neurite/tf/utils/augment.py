@@ -178,8 +178,11 @@ def draw_perlin_full(shape,
     if not featured:
         shape = tf.concat((shape, [1]), axis=0)
 
-    # SD shape. Index into rather than iterate over tensor.
-    shape_sd = [shape[i] if i in axes else 1 for i in range(len(shape))]
+    # SD shape.
+    indices = tf.range(tf.size(shape))
+    in_axes = tf.reduce_any(tf.equal(indices[..., None], axes), axis=-1)
+    in_axes = tf.cast(in_axes, shape.dtype)
+    shape_sd = shape * in_axes + tf.ones_like(shape) * (1 - in_axes)
 
     if not hasattr(fwhm_min, '__iter__'):
         fwhm_min = [fwhm_min]
