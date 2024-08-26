@@ -690,6 +690,98 @@ class RandomGamma(Layer):
         return tf.pow(x, gamma)
 
 
+class RandomIntensityLookup(Layer):
+    """Augment the contrast of a grayscale image using random intensity lookup tables.
+
+    At each invocation, this layer will synthesize a smoothly varying lookup table (LUT),
+    associating a new output intensity to each intensity value in the input image. We will apply
+    the LUT to the input image to synthesize a new image contrast. Each batch will undergo an
+    independent lookup.
+
+    If you find this layer useful, please cite:
+        Anatomy-specific acquisition-agnostic affine registration learned from fictitious images
+        M Hoffmann, A Hoopes, B Fischl*, AV Dalca* (*equal contribution)
+        SPIE Medical Imaging: Image Processing, 12464, p 1246402, 2023
+        https://doi.org/10.1117/12.2653251
+    """
+
+    def __init__(self,
+                 levels=256,
+                 blur_min=32,
+                 blur_max=64,
+                 seed=None,
+                 **kwargs):
+        """
+        Parameters:
+            levels: Number of grayscale levels to look up and re-assign.
+            blur_min: Lower bound on the smoothing SD for random-contrast lookup.
+            blur_max: Upper bound on the smoothing SD for random-contrast lookup.
+            seed: Integer for reproducible randomization.
+        """
+        self.levels = levels
+        self.blur_min = blur_min
+        self.blur_max = blur_max
+        self.seed = seed
+        super().__init__(**kwargs)
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'levels': self.levels,
+            'blur_min': self.blur_min,
+            'blur_max': self.blur_max,
+            'seed': self.seed,
+        })
+        return config
+
+    def call(self, x):
+        """
+        Parameters:
+            x: Input image.
+        """
+        max_val = self.levels - 1
+        if not x.dtype.is_floating:
+            x = tf.cast(x, self.dtype)
+
+        # Oversample LUT. Convolution requires trailing singleton dimension.
+        num_draw = 5 * self.levels
+        lut = tf.random.uniform(
+            shape=(tf.shape(x)[0], num_draw, 1),
+            minval=0,
+            maxval=max_val,
+            dtype=x.dtype,
+            seed=self.seed,
+        )
+
+        # Smoothing. Filter shape: space, in, out.
+        kernel = utils.gaussian_kernel(
+            sigma=self.blur_max,
+            min_sigma=self.blur_min,
+            random=self.blur_min != self.blur_max,
+            dtype=x.dtype,
+            seed=self.seed,
+        )
+        kernel = tf.reshape(kernel, shape=(-1, 1, 1))
+        lut = tf.nn.convolution(lut, kernel, padding='SAME')[..., 0]
+
+        # Remove tapered edges from zero-padding.
+        keep = np.arange(self.levels) + (num_draw - self.levels) // 2
+        lut = tf.gather(lut, indices=keep, axis=1)
+
+        # Normalize batches independently.
+        space = range(1, len(x.shape) - 1)
+        x = max_val * utils.minmax_norm(x, axis=space)
+        lut = max_val * utils.minmax_norm(lut, axis=1)
+
+        # Lookup.
+        indices = tf.cast(x, tf.int32)
+        return tf.map_fn(
+            fn=lambda x: tf.gather(*x, axis=0),
+            elems=(lut, indices),
+            fn_output_signature=lut.dtype,
+        )
+
+
 class RandomClearLabel(Layer):
     """Randomly clear image regions corresponding to specific labels.
 
