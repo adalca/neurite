@@ -955,6 +955,8 @@ def labels_to_image(
     crop_max=0.2,
     crop_prob=0,
     crop_axes=None,
+    crop_bilat=False,
+    crop_labels=False,
     mean_min=None,
     mean_max=None,
     noise_min=0.1,
@@ -971,6 +973,10 @@ def labels_to_image(
     slice_stride_max=8,
     slice_prob=0,
     slice_axes=None,
+    clip_min=0.1,
+    clip_max=0.9,
+    clip_prob_min=0,
+    clip_prob_max=0,
     normalize=True,
     gamma=0.5,
     one_hot=True,
@@ -1022,6 +1028,8 @@ def labels_to_image(
         crop_max: Upper bound on the proportion of the FOV to crop.
         crop_prob: Probability that we crop the FOV along an axis.
         crop_axes: Axes from which to draw for FOV cropping. None means all spatial axes.
+        crop_bilat: Randomly distribute the cropping proportion between top and bottom end.
+        crop_labels: Crop both the image and the output label map.
         mean_min: List of lower bounds on the intensities drawn for each label. None means 0.
         mean_max: List of upper bounds on the intensities drawn for each label. None means 1.
         noise_min: Lower bound on the noise SD relative to the max image intensity, 0.1 means 10%.
@@ -1038,6 +1046,10 @@ def labels_to_image(
         slice_stride_max: Upper bound on slice thickness in original voxel units.
         slice_prob: Probability that we subsample to create thick slices.
         slice_axes: Axes from which to draw slice normal direction. None means all spatial axes.
+        clip_min: Minimum value to clip to. Pass a list to sample from an interval.
+        clip_max: Maximum value to clip to. Pass a list to sample from an interval.
+        clip_prob_min: Probability that we clip the low intensities.
+        clip_prob_max: Probability that we clip the high intensities.
         normalize: Min-max normalize the image.
         gamma: Maximum deviation of the gamma augmentation exponent from 1. Careful: without
             normalization, you may attempt to compute random exponents of negative numbers.
@@ -1088,7 +1100,7 @@ def labels_to_image(
         input_model = tf.keras.Model(*[labels] * 2)
     labels = input_model.output
     if labels.dtype != compute_type:
-        labels = tf.cast(labels, compute_type)
+        labels = KL.Lambda(lambda x: tf.cast(x, compute_type))(labels)
 
     # Dimensions.
     in_shape = np.asarray(labels.shape[1:-1])
@@ -1096,7 +1108,6 @@ def labels_to_image(
         out_shape = in_shape
     out_shape = np.array(out_shape) // (2 if half_res else 1)
     num_dim = len(in_shape)
-    batch_size = tf.shape(labels)[0]
 
     # Affine transform.
     parameters = vxm.layers.DrawAffineParams(
@@ -1119,14 +1130,18 @@ def labels_to_image(
     # Shift origin to rotate about image center.
     origin = np.eye(num_dim + 1)
     origin[:num_dim, -1] = -0.5 * (in_shape - 1)
+    origin = np.expand_dims(origin, axis=0)
 
     # Symmetric padding: center output volume within input volume.
     center = np.eye(num_dim + 1)
     center[:num_dim, -1] = np.round(0.5 * (in_shape - (2 if half_res else 1) * out_shape))
+    center = np.expand_dims(center, axis=0)
 
     # Apply transform in input space to avoid rescaling translations at half resolution.
     scale = np.diag((*[2 if half_res else 1] * num_dim, 1))
-    trans = np.linalg.inv(origin) @ affine @ origin @ center @ scale
+    scale = np.expand_dims(scale, axis=0)
+    trans = (np.linalg.inv(origin), affine, origin, center, scale)
+    trans = vxm.layers.ComposeTransform(shift_center=False)(trans)
 
     # Axis randomization.
     if axes_flip:
@@ -1157,7 +1172,9 @@ def labels_to_image(
             seed=seeds.pop('warp', None),
         )(labels)
         if warp_zero_mean:
-            vel_field -= tf.reduce_mean(vel_field, axis=range(1, num_dim + 1))
+            vel_field -= KL.Lambda(
+                lambda x: tf.reduce_mean(x, axis=range(1, num_dim + 1)),
+            )(vel_field)
         def_field = vxm.layers.VecInt(int_steps=5, name=f'vec_int_{id}')(vel_field)
         if not half_res:
             def_field = vxm.layers.RescaleTransform(zoom_factor=2, name=f'def_{id}')(def_field)
@@ -1169,15 +1186,16 @@ def labels_to_image(
     labels = vxm.layers.SpatialTransformer(
         interp_method='nearest', fill_value=0, name=f'trans_{id}',
     )([labels, trans])
-    labels = tf.cast(labels, integer_type)
+    labels = KL.Lambda(lambda x: tf.cast(x, integer_type))(labels)
 
     # Cropping.
-    labels = layers.RandomCrop(
+    cropped = layers.RandomCrop(
         crop_min=crop_min,
         crop_max=crop_max,
         prob=crop_prob,
         axis=crop_axes,
         seed=seeds.pop('crop', None),
+        bilateral=crop_bilat,
     )(labels)
 
     # Generation labels. Default to all input labels.
@@ -1189,27 +1207,21 @@ def labels_to_image(
     ind = {gen: i for i, gen in enumerate(labels_gen)}
     lut = [ind.get(labels_in.get(i), 0) for i in range(max(labels_in) + 1)]
     lut = tf.cast(lut, integer_type)
-    indices = tf.gather(lut, indices=labels)
+    indices = KL.Lambda(lambda x: tf.gather(*x), output_shape=lambda x: x[1])((lut, cropped))
 
-    # Intensity means and standard deviations.
+    # Image intensities.
     num_label = len(labels_gen)
     if mean_min is None:
         mean_min = [0] * num_label
     if mean_max is None:
         mean_max = [1] * num_label
-    mean = tf.random.uniform(
-        shape=(batch_size, num_chan, num_label),
-        minval=mean_min,
-        maxval=mean_max,
-        dtype=compute_type,
+    mean = layers.DrawImage(
+        max_label=len(labels_gen) - 1,
+        low=mean_min,
+        high=mean_max,
+        channels=num_chan,
         seed=seeds.pop('mean', None),
-    )
-
-    # Label intensities.
-    off_chan = tf.range(num_chan) * num_label
-    off_batch = tf.range(batch_size) * num_chan * num_label
-    indices += tf.reshape(off_batch, shape=(-1, *[1] * num_dim, 1)) + off_chan
-    mean = tf.gather(tf.reshape(mean, shape=(-1,)), indices=indices)
+    )(indices)
     image = mean
 
     # Bias field.
@@ -1231,16 +1243,11 @@ def labels_to_image(
     image = layers.GaussianNoise(noise_min, noise_max, seed=seeds.pop('noise', None))(image)
 
     # Background clearing.
-    if zero_background > 0:
-        bg_rand = tf.random.uniform(
-            shape=(batch_size, *[1] * num_dim, 1),
-            dtype=compute_type,
-            seed=seeds.pop('background', None),
-        )
-        bg_zero = tf.math.less(bg_rand, zero_background)
-        bg_zero = tf.math.logical_and(tf.equal(labels, 0), bg_zero)
-        bg_zero = tf.math.logical_xor(True, bg_zero)
-        image *= tf.cast(bg_zero, compute_type)
+    image = layers.RandomClearLabel(
+        prob=zero_background,
+        shared=True,
+        seed=seeds.pop('background', None),
+    )((image, cropped))
 
     # Blur.
     image = layers.GaussianBlur(
@@ -1260,18 +1267,24 @@ def labels_to_image(
     )(image)
 
     # Intensity manipulations.
+    image = layers.RandomClip(
+        clip_min=clip_min,
+        clip_max=clip_max,
+        prob_min=clip_prob_min,
+        prob_max=clip_prob_max,
+        axes=(0, -1),
+    )(image)
+
     if normalize:
         image = KL.Lambda(lambda x: tf.map_fn(utils.minmax_norm, x))(image)
+
     if gamma > 0:
         assert 0 < gamma < 1, f'gamma value {gamma} outside interval [0, 1)'
-        gamma = tf.random.uniform(
-            shape=(batch_size, *[1] * num_dim, num_chan),
-            minval=1 - gamma,
-            maxval=1 + gamma,
-            dtype=image.dtype,
-            seed=seeds.pop('gamma', None),
-        )
-        image = tf.pow(image, gamma)
+        seed = seeds.pop('gamma', None)
+        image = layers.RandomGamma(low=1 - gamma, high=1 + gamma, seed=seed)(image)
+
+    if crop_labels:
+        labels = cropped
 
     # Output labels. Recode the original input labels if desired.
     lut = list(labels_in) if labels_out is None else labels_out
@@ -1288,10 +1301,13 @@ def labels_to_image(
     if any(k != lut[k] for k in lut) or set(labels_in) - set(lut):
         lut = [lut.get(i, -1 if one_hot else 0) for i in range(max(labels_in) + 1)]
         lut = tf.cast(lut, integer_type)
-        labels = tf.gather(lut, indices=labels)
+        labels = KL.Lambda(lambda x: tf.gather(*x), output_shape=lambda x: x[1])((lut, labels))
 
     if one_hot:
-        labels = tf.one_hot(labels[..., 0], depth=len(labels_out), dtype=compute_type)
+        labels = KL.Lambda(
+            lambda x: tf.one_hot(x, depth=len(labels_out), dtype=compute_type),
+            output_shape=lambda x: (*x, len(labels_out)),
+        )(labels[..., 0])
 
     outputs = []
     if return_im:
