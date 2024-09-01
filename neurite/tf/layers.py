@@ -3080,7 +3080,7 @@ class HyperConvFromDense(HyperConv):
         Calls an internal dense 'pseudo-layer' described in the build() documentation.
         """
         kernel, bias, activation, target_shape = params
-        inputs = tf.cast(inputs, self._compute_dtype)
+        inputs = tf.cast(inputs, self.compute_dtype)
 
         if K.is_sparse(inputs):
             outputs = sparse_ops.sparse_tensor_dense_matmul(inputs, kernel)
@@ -3173,7 +3173,7 @@ class HyperDense(Layer):
         kernels weights, and optional bias weights.
         """
         x = tf.expand_dims(inputs[0], axis=0)  # add batch axis for input layer
-        x = tf.cast(x, self._compute_dtype)
+        x = tf.cast(x, self.compute_dtype)
         kernel = inputs[1]
 
         if K.is_sparse(x):
@@ -3309,7 +3309,7 @@ class HyperDenseFromDense(HyperDense):
         Calls an internal dense 'pseudo-layer' described in the build() documentation.
         """
         kernel, bias, activation, target_shape = params
-        inputs = tf.cast(inputs, self._compute_dtype)
+        inputs = tf.cast(inputs, self.compute_dtype)
 
         if K.is_sparse(inputs):
             outputs = sparse_ops.sparse_tensor_dense_matmul(inputs, kernel)
