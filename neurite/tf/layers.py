@@ -2810,6 +2810,51 @@ class PerlinNoise(tf.keras.layers.Layer):
                                               reduce=self.reduce)
 
 
+class Constant(Layer):
+    """Convert an input value to a constant Keras layer with a batch dimension.
+
+    The layer will derive the batch size from an input tensor. Without an input tensor or if you
+    pass an empty list, the batch size will be one.
+
+    If you find this layer useful, please cite:
+        Anatomy-specific acquisition-agnostic affine registration learned from fictitious images
+        M Hoffmann, A Hoopes, B Fischl*, AV Dalca* (*equal contribution)
+        SPIE Medical Imaging: Image Processing, 12464, p 1246402, 2023
+        https://doi.org/10.1117/12.2653251
+    """
+
+    def __init__(self, value, **kwargs):
+        """
+        Parameters:
+            value: Constant value. Must be convertible to a tensor and exclude the batch dimension.
+            out_type: Data type of the constant. Has to be convertible to a TensorFlow type.
+                Defaults to None, meaning the type will be inferred from the passed value.
+        """
+        self.value = value
+        super().__init__(**kwargs)
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update(value=self.value)
+        return config
+
+    def build(self, _):
+        self.const = tf.constant(self.value, self.dtype)
+        if tf.rank(self.const) == 0:
+            self.const = tf.reshape(self.const, shape=(1,))
+
+    def call(self, x=[]):
+        """
+        Parameters:
+            x: Any input tensor that we can derive a batch size from. Without an input tensor or an
+                empty list, the batch size will be one. Some Keras versions may be incompatible
+                with the default argument and require that you explicitly pass an empty list.
+        """
+        batch = tf.maximum(tf.shape(x)[0], 1)
+        shape = tf.concat(([batch], tf.shape(self.const)), axis=0)
+        return tf.broadcast_to(self.const, shape)
+
+
 ##########################################
 # HyperMorph Layers
 ##########################################
