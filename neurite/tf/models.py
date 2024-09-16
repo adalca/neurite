@@ -973,6 +973,7 @@ def labels_to_image(
     slice_stride_max=8,
     slice_prob=0,
     slice_axes=None,
+    slice_labels=False,
     clip_min=0.1,
     clip_max=0.9,
     clip_prob_min=0,
@@ -1046,6 +1047,7 @@ def labels_to_image(
         slice_stride_max: Upper bound on slice thickness in original voxel units.
         slice_prob: Probability that we subsample to create thick slices.
         slice_axes: Axes from which to draw slice normal direction. None means all spatial axes.
+        slice_labels: Subsample both the image and the output label map.
         clip_min: Minimum value to clip to. Pass a list to sample from an interval.
         clip_max: Maximum value to clip to. Pass a list to sample from an interval.
         clip_prob_min: Probability that we clip the low intensities.
@@ -1257,14 +1259,20 @@ def labels_to_image(
         seed=seeds.pop('blur', None),
     )(image)
 
+    if crop_labels:
+        labels = cropped
+
     # Create thick slices.
-    image = layers.Subsample(
+    prop = dict(
         prob=slice_prob,
         stride_min=max(1, slice_stride_min / (2 if half_res else 1)),
         stride_max=max(1, slice_stride_max / (2 if half_res else 1)),
         axes=slice_axes,
-        seed=seeds.pop('slice', None),
-    )(image)
+        seed=seeds.pop('slice', 1234 if slice_labels else None),
+    )
+    image = layers.Subsample(**prop)(image)
+    if slice_labels:
+        labels = layers.Subsample(**prop)(labels)
 
     # Intensity manipulations.
     image = layers.RandomClip(
@@ -1282,9 +1290,6 @@ def labels_to_image(
         assert 0 < gamma < 1, f'gamma value {gamma} outside interval [0, 1)'
         seed = seeds.pop('gamma', None)
         image = layers.RandomGamma(low=1 - gamma, high=1 + gamma, seed=seed)(image)
-
-    if crop_labels:
-        labels = cropped
 
     # Output labels. Recode the original input labels if desired.
     lut = list(labels_in) if labels_out is None else labels_out

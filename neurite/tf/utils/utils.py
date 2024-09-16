@@ -787,23 +787,15 @@ def subsample_axis(x,
     # Validate inputs.
     if not tf.is_tensor(x):
         x = tf.constant(x)
+    axes = ne.py.utils.normalize_axes(axes, shape=x.shape, none_means_all=True)
     rand = np.random.default_rng(seed)
     seed = lambda: rand.integers(np.iinfo(int).max)
 
-    # Validate axes.
-    num_dim = len(x.shape)
-    if axes is None:
-        axes = range(num_dim)
-    if np.isscalar(axes):
-        axes = [axes]
-    assert all(i in range(num_dim) for i in axes), 'invalid axis passed'
-
-    # Draw axis and thickness.
+    # Draw thickness and subsampling axis.
     assert 0 < stride_min and stride_min <= stride_max, 'invalid strides'
-    ind = tf.random.uniform(shape=[], minval=0, maxval=len(axes), dtype=tf.int32, seed=seed())
-    ax = tf.gather(axes, ind)
-    width = tf.gather(tf.shape(x), indices=ax)
     thick = tf.random.uniform(shape=[], minval=stride_min, maxval=stride_max, seed=seed())
+    ind = tf.random.uniform(shape=[], minval=0, maxval=len(axes), dtype=tf.int32, seed=seed())
+    subsample = tf.gather(axes, ind)
 
     # Decide whether to downsample.
     assert 0 <= prob <= 1, f'{prob} not a probability'
@@ -813,15 +805,26 @@ def subsample_axis(x,
         thick = thick * tf.cast(rand_bit, thick.dtype) + tf.cast(rand_not, thick.dtype)
 
     # Resample.
-    num_slice = tf.cast(width, thick.dtype) / thick + 0.5
-    num_slice = tf.cast(num_slice, width.dtype)
-    ind = tf.linspace(start=0, stop=width - 1, num=num_slice)
-    ind = tf.cast(ind + 0.5, width.dtype)
-    x = tf.gather(x, ind, axis=ax)
-    if upsample:
-        ind = tf.linspace(start=0, stop=tf.shape(x)[ax] - 1, num=width)
+    if not upsample:
+        num_slice = tf.cast(width, thick.dtype) / thick
+        num_slice = tf.cast(num_slice + 0.5, width.dtype)
+        ind = tf.linspace(start=0, stop=width - 1, num=num_slice)
         ind = tf.cast(ind + 0.5, width.dtype)
-        x = tf.gather(x, ind, axis=ax)
+        return tf.gather(x, ind, axis=subsample)
+
+    # Resample with constant tensor sizes at compile time, for XLA. Make sure
+    # the operation is symmetric on average.
+    for ax in axes:
+        width = tf.shape(x)[ax]
+        ind = tf.range(width, dtype=tf.float32) // thick
+        ind = tf.cast(ind * thick + 0.5, tf.int32)
+
+        bit = tf.less(tf.random.uniform(shape=[], seed=seed()), 0.5)
+        bit = tf.cast(bit, ind.dtype)
+        ind = bit * ind + (1 - bit) * (width - 1 - ind)[::-1]
+
+        is_axis = tf.cast(tf.equal(subsample, ax), x.dtype)
+        x = is_axis * tf.gather(x, ind, axis=ax) + (1 - is_axis) * x
 
     return x
 

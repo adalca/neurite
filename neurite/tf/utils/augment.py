@@ -274,17 +274,30 @@ def draw_crop_mask(x, crop_min=0, crop_max=0.5, axis=None, prob=1, bilateral=Fal
     prop_low = prop_cut * rand_prop
     prop_cen = 1 - prop_cut
 
-    # Draw axis and determine FOV width.
+    # Draw cropping axis.
     ind = tf.random.uniform(shape=[], maxval=len(axis), dtype=tf.int32, seed=seed())
-    axis = tf.gather(axis, ind)
-    width = tf.gather(tf.shape(x), indices=axis)
+    crop = tf.gather(axis, ind)
 
-    # Assemble mask and reshape for multiplication.
-    prop = tf.range(1, delta=1 / tf.cast(width, prop_cut.dtype))
-    mask = tf.logical_and(
-        tf.greater_equal(prop, prop_low),
-        tf.less(prop, prop_low + prop_cen),
-    )
-    mask = tf.cast(mask, x.dtype)
-    shape = tf.roll((width, *np.ones(len(x.shape) - 1)), shift=axis, axis=0)
-    return tf.reshape(mask, shape)
+    # One-dimensional masks for each axis.
+    masks = []
+    for ax in axis:
+        width = tf.shape(x)[ax]
+        prop = tf.range(1, delta=1 / tf.cast(width, prop_cut.dtype))
+        mask = tf.logical_and(
+            tf.greater_equal(prop, prop_low),
+            tf.less(prop, prop_low + prop_cen),
+        )
+        mask = tf.cast(mask, x.dtype)
+        is_axis = tf.cast(tf.equal(crop, ax), x.dtype)
+        mask = mask * is_axis + tf.ones_like(mask) * (1 - is_axis)
+        shape = tf.roll(input=(width, *[1] * len(x.shape[1:])), shift=ax, axis=0)
+        mask = tf.reshape(mask, shape)
+        mask = tf.cast(mask, x.dtype)
+        masks.append(mask)
+
+    # Broadcast-muliply together.
+    out = masks.pop()
+    for mask in masks:
+        out *= mask
+
+    return out

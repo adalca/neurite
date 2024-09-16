@@ -506,17 +506,13 @@ class RandomCrop(Layer):
         if self.prob == 0:
             return x
 
-        shape = tf.shape(x)
-        x *= utils.augment.draw_crop_mask(x,
-                                          crop_min=self.crop_min,
-                                          crop_max=self.crop_max,
-                                          axis=self.axis,
-                                          prob=self.prob,
-                                          bilateral=self.bilateral,
-                                          seed=self.seed)
-
-        # Avoid unnecessary dynamic shapes (showing up as `None`).
-        return tf.reshape(x, shape)
+        return x * utils.augment.draw_crop_mask(x,
+                                                crop_min=self.crop_min,
+                                                crop_max=self.crop_max,
+                                                axis=self.axis,
+                                                prob=self.prob,
+                                                bilateral=self.bilateral,
+                                                seed=self.seed)
 
 
 class RandomClip(Layer):
