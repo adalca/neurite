@@ -2835,7 +2835,7 @@ class Constant(Layer):
         return config
 
     def build(self, _):
-        self.const = tf.constant(self.value, self.dtype)
+        self.const = tf.cast(self.value, self.dtype)
         if tf.rank(self.const) == 0:
             self.const = tf.reshape(self.const, shape=(1,))
 
