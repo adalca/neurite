@@ -985,6 +985,7 @@ def labels_to_image(
     return_mean=False,
     return_bias=False,
     id=0,
+    **kwargs,
 ):
     """Build model that augments label maps and synthesizes images from them.
 
@@ -1076,6 +1077,15 @@ def labels_to_image(
         https://doi.org/10.1117/12.2653251
     """
     import voxelmorph as vxm
+
+    # Deprecation.
+    slice_new = kwargs.pop('slice_new', False)
+    if not slice_new:
+        warnings.warn('model `labels_to_image` will switch from `ne.layers.Subsample` to '
+                      '`vxm.layers.Downsample` soon. Enable the new behavior by setting '
+                      '`slice_new=True`.')
+    if kwargs:
+        raise ValueError(f'unknown argument {kwargs}')
 
     # Compute type.
     compute_type = tf.keras.mixed_precision.global_policy().compute_dtype
@@ -1264,9 +1274,14 @@ def labels_to_image(
         axes=slice_axes,
         seed=seeds.pop('slice', 1234 if slice_labels else None),
     )
-    image = layers.Subsample(**prop)(image)
-    if slice_labels:
-        labels = layers.Subsample(**prop)(labels)
+    if slice_new:
+        image = vxm.layers.Downsample(**prop)(image)
+        if slice_labels:
+            labels = vxm.layers.Downsample(interp_method='nearest', **prop)(labels)
+    else:
+        image = layers.Subsample(**prop)(image)
+        if slice_labels:
+            labels = layers.Subsample(**prop)(labels)
 
     # Intensity manipulations.
     image = layers.RandomClip(
