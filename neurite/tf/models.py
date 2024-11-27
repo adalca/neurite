@@ -962,8 +962,8 @@ def labels_to_image(
     bias_blur_min=32,
     bias_blur_max=64,
     bias_func=tf.exp,
-    slice_stride_min=1,
-    slice_stride_max=8,
+    slice_min=1,
+    slice_max=8,
     slice_prob=0,
     slice_axes=None,
     slice_labels=False,
@@ -1036,8 +1036,8 @@ def labels_to_image(
         bias_blur_min: Lower bound on the bias smoothing FWHM.
         bias_blur_max: Upper bound on the bias smoothing FWHM.
         bias_func: Function applied voxel-wise to condition the bias field.
-        slice_stride_min: Lower bound on slice thickness in original voxel units.
-        slice_stride_max: Upper bound on slice thickness in original voxel units.
+        slice_min: Lower bound on slice thickness in original voxel units.
+        slice_max: Upper bound on slice thickness in original voxel units.
         slice_prob: Probability that we subsample to create thick slices.
         slice_axes: Axes from which to draw slice normal direction. None means all spatial axes.
         slice_labels: Subsample both the image and the output label map.
@@ -1088,6 +1088,16 @@ def labels_to_image(
         warnings.warn('argument `warp_zero_mean` to `labels_to_image` is deprecated and will be '
                       'removed in the future, as the SVF components will always have zero mean. '
                       'Enable the new behavior by setting `warp_zero_mean=True`.')
+
+    if 'slice_stride_min' in kwargs:
+        slice_min = kwargs.pop('slice_stride_min')
+        warnings.warn('argument `slice_stride_min` to `labels_to_image` is deprecated and will be '
+                      'removed in the future. Please use `slice_min` instead.')
+
+    if 'slice_stride_max' in kwargs:
+        slice_max = kwargs.pop('slice_stride_max')
+        warnings.warn('argument `slice_stride_max` to `labels_to_image` is deprecated and will be '
+                      'removed in the future. Please use `slice_max` instead.')
 
     if kwargs:
         raise ValueError(f'unknown argument {kwargs}')
@@ -1274,8 +1284,8 @@ def labels_to_image(
     # Create thick slices.
     prop = dict(
         prob=slice_prob,
-        stride_min=max(1, slice_stride_min / (2 if half_res else 1)),
-        stride_max=max(1, slice_stride_max / (2 if half_res else 1)),
+        stride_min=max(1, slice_min / (2 if half_res else 1)),
+        stride_max=max(1, slice_max / (2 if half_res else 1)),
         axes=slice_axes,
         seed=seeds.pop('slice', 1234 if slice_labels else None),
     )
