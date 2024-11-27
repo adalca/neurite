@@ -944,7 +944,6 @@ def labels_to_image(
     warp_max=2,
     warp_blur_min=(8, 8),
     warp_blur_max=(32, 32),
-    warp_zero_mean=False,
     crop_min=0,
     crop_max=0.2,
     crop_prob=0,
@@ -1019,7 +1018,6 @@ def labels_to_image(
             be used with lateralized labels. Requires an isotropic output shape.
         warp_min: Lower bound on the SDs used when drawing the SVF.
         warp_max: Upper bound on the SDs used when drawing the SVF.
-        warp_zero_mean: Ensure that the SVF components have zero mean.
         crop_min: Lower bound on the proportion of the FOV to crop.
         crop_max: Upper bound on the proportion of the FOV to crop.
         crop_prob: Probability that we crop the FOV along an axis.
@@ -1084,6 +1082,13 @@ def labels_to_image(
         warnings.warn('model `labels_to_image` will switch from `ne.layers.Subsample` to '
                       '`vxm.layers.Downsample` soon. Enable the new behavior by setting '
                       '`slice_new=True`.')
+
+    warp_zero_mean = kwargs.pop('warp_zero_mean', False)
+    if not warp_zero_mean:
+        warnings.warn('argument `warp_zero_mean` to `labels_to_image` is deprecated and will be '
+                      'removed in the future, as the SVF components will always have zero mean. '
+                      'Enable the new behavior by setting `warp_zero_mean=True`.')
+
     if kwargs:
         raise ValueError(f'unknown argument {kwargs}')
 
