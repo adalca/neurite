@@ -923,12 +923,6 @@ def labels_to_image_old(
     return tf.keras.Model(labels_input, outputs, name=f'synth_{id}')
 
 
-def labels_to_image_new(*args, **kwargs):
-    warnings.warn('model `labels_to_image_new` has been renamed to `labels_to_image` and will be '
-                  'removed in the future')
-    return labels_to_image(*args, **kwargs)
-
-
 def labels_to_image(
     labels_in,
     labels_out=None,
