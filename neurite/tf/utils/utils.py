@@ -784,6 +784,11 @@ def subsample_axis(x,
         SPIE Medical Imaging: Image Processing, 12464, p 1246402, 2023
         https://doi.org/10.1117/12.2653251
     """
+    import warnings
+    warnings.warn('`utils.subsample_axis` and `layers.Subsample` are deprecated and will be '
+                  'removed in the future. Please use vxm.augment.down_up_sample` and '
+                  '`vxm.layers.DownUpSample` instead.')
+
     # Validate inputs.
     if not tf.is_tensor(x):
         x = tf.constant(x)
