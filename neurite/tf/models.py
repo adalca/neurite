@@ -1080,7 +1080,7 @@ def labels_to_image(
     slice_new = kwargs.pop('slice_new', False)
     if not slice_new:
         warnings.warn('model `labels_to_image` will switch from `ne.layers.Subsample` to '
-                      '`vxm.layers.Downsample` soon. Enable the new behavior by setting '
+                      '`vxm.layers.DownUpSample` soon. Enable the new behavior by setting '
                       '`slice_new=True`.')
 
     warp_zero_mean = kwargs.pop('warp_zero_mean', False)
@@ -1290,9 +1290,9 @@ def labels_to_image(
         seed=seeds.pop('slice', 1234 if slice_labels else None),
     )
     if slice_new:
-        image = vxm.layers.Downsample(**prop)(image)
+        image = vxm.layers.DownUpSample(**prop)(image)
         if slice_labels:
-            labels = vxm.layers.Downsample(interp_method='nearest', **prop)(labels)
+            labels = vxm.layers.DownUpSample(interp_method='nearest', **prop)(labels)
     else:
         image = layers.Subsample(**prop)(image)
         if slice_labels:

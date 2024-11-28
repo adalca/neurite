@@ -786,8 +786,8 @@ def subsample_axis(x,
     """
     import warnings
     warnings.warn('`utils.subsample_axis` and `layers.Subsample` are deprecated and will be '
-                  'removed in the future. Please use vxm.utils.downsample` and '
-                  '`vxm.layers.Downsample` instead.')
+                  'removed in the future. Please use vxm.augment.down_up_sample` and '
+                  '`vxm.layers.DownUpSample` instead.')
 
     # Validate inputs.
     if not tf.is_tensor(x):
