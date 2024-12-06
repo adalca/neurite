@@ -710,9 +710,6 @@ def multiple_metrics_decorator(metrics, weights=None):
         weights = np.ones(len(metrics))
 
     def metric(y_true, y_pred):
-        total_val = 0
-        for idx, met in enumerate(metrics):
-            total_val += weights[idx] * met(y_true, y_pred)
-        return total_val
+        return np.dot(weights[:len(metrics)], [met(y_true, y_pred) for met in metrics]).tolist()
 
     return metric

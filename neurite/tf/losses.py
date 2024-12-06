@@ -238,9 +238,6 @@ def multiple_losses_decorator(losses, weights=None):
         weights = np.ones(len(losses))
 
     def loss(y_true, y_pred):
-        total_val = 0
-        for idx, los in enumerate(losses):
-            total_val += weights[idx] * los(y_true, y_pred)
-        return total_val
+        return np.dot(weights[:len(losses)], [los(y_true, y_pred) for los in losses]).tolist()
 
     return loss

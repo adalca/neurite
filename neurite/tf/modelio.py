@@ -34,8 +34,7 @@ def store_config_args(func):
 
         # lastly handle keyword args
         if kwargs:
-            for attr, val in kwargs.items():
-                params[attr] = val
+            params.update(kwargs.items())
 
         # cache for model input arguments to be saved with model
         self.config = ModelConfig(params)
