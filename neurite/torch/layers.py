@@ -116,20 +116,20 @@ class Resize(nn.Module):
         >>> input_tensor = torch.randn(1, 1, 32, 32, 32)
 
         ### Resizing with fixed `scale_factor`
-        >>> transform = Resize(scale_factor=2)
-        >>> resized_tensor = transform(input_tensor)
+        >>> resize_module = Resize(scale_factor=2)
+        >>> resized_tensor = resize_module(input_tensor)
         >>> print(resized_tensor.shape)
         torch.Size([1, 1, 64, 64, 64])
 
         ### Resizing with a sampled `scale_factor`
-        >>> transform = Resize(scale_factor=Uniform(0.5, 4))
-        >>> resized_tensor = transform(input_tensor)
+        >>> resize_module = Resize(scale_factor=Uniform(0.5, 4))
+        >>> resized_tensor = resize_module(input_tensor)
         >>> print(resized_tensor)
         torch.Size([1, 1, 74, 74, 74])
 
         ### Resizing to a specific size
-        >>> transform = Resize(size=(96, 96, 96))
-        >>> resized_tensor = transform(input_tensor)
+        >>> resize_module = Resize(size=(96, 96, 96))
+        >>> resized_tensor = resize_module(input_tensor)
         >>> print(resized_tensor)
         torch.Size([1, 1, 96, 96, 96])
 
@@ -549,25 +549,25 @@ class RandomClip(nn.Module):
             The upper bound for clipping. Elements greater than `clip_max` are set to `clip_max`.
             Defaults to 1.
         clip_prob : Union[float, int, Sampler], optional
-            Probability of applying the clipping transformation. Defaults to 0.5.
+            Probability of applying this operation. Defaults to 0.5.
         seed : Union[int, Sampler], optional
             Seed for random number generation to ensure reproducibility. Defaults to None.
 
         Examples
         --------
         ### Initialize the `RandomClip` module and apply it to a tensor:
-        >>> transform = RandomClip(clip_min=0.1, clip_max=0.9, clip_prob=0.5)
+        >>> random_clip = RandomClip(clip_min=0.1, clip_max=0.9, clip_prob=0.5)
         >>> input_tensor = torch.randn(3, 3)
-        >>> output_tensor = transform(input_tensor)
+        >>> output_tensor = random_clip(input_tensor)
         >>> print(output_tensor)
 
         ### Use a sampler for dynamic clipping bounds:
         >>> from my_samplers import UniformSampler
-        >>> transform = RandomClip(
+        >>> random_clip = RandomClip(
                 clip_min=UniformSampler(0, 0.5),
                 clip_max=UniformSampler(0.5, 1.0)
             )
-        >>> output_tensor = transform(input_tensor)
+        >>> output_tensor = random_clip(input_tensor)
         >>> print(output_tensor)
         """
         super().__init__()
@@ -602,9 +602,9 @@ class RandomClip(nn.Module):
 
 class RandomGamma(nn.Module):
     """
-    Apply a random gamma transformation to the input tensor.
+    Random nonlinear gamma scaling operation.
 
-    The gamma transformation adjusts the contrast of the input tensor by applying a non-linear
+    The gamma scaling operation adjusts the contrast of the input tensor by applying a non-linear
     operation. Specifically, each element in the tensor is raised to the power of `gamma`. This can
     enhance or diminish the contrast of the input data, making it a valuable augmentation tool for
     various deep learning tasks.
@@ -622,44 +622,44 @@ class RandomGamma(nn.Module):
         Parameters
         ----------
         gamma : Union[float, int, Sampler], optional
-            The gamma value to apply for the transformation.
+            The gamma value to apply for the scaling operation.
             - If a `float` is provided, it represents a fixed gamma value.
             - If a `Sampler` is provided, the gamma value is dynamically sampled from the specified
             distribution.
             By default `1.0`, which leaves the tensor unchanged.
         prob : Union[float, int, Sampler], optional
-            The probability of applying the gamma transformation.
-            - If a `float` is provided, it's used as a fixed probability for the transformation.
+            The probability of applying the gamma operation.
+            - If a `float` is provided, it's used as a fixed probability for the operation.
             - If a `Sampler` is provided, probabilities are dynamically generated for each
             invocation.
             Default is `1.0` (always apply).
         seed : Union[int, Sampler], optional
-            A random seed or sampler to control the randomness of the gamma transformation. If
-            provided, it ensures reproducibility of the transformation. Defaults to `None`.
+            A random seed or sampler to control the randomness of the gamma scaling operation. If
+            provided, it ensures reproducibility of the operation. Defaults to `None`.
 
         Examples
         --------
-        ### Fixed gamma transformation
-        >>> transform = RandomGamma(gamma=2.0, prob=1.0)
+        ### Fixed gamma scaling operation
+        >>> gamma_module = RandomGamma(gamma=2.0, prob=1.0)
         >>> tensor = torch.tensor([0.25, 0.5, 0.75])
-        >>> gamma_tensor = transform(tensor)
+        >>> gamma_tensor = gamma_module(tensor)
         >>> print(gamma_tensor)
         tensor([0.0625, 0.2500, 0.5625])
 
-        ### Randomized gamma transformation with a range of gamma values
+        ### Randomized gamma scaling with a range of gamma values
         >>> gamma_sampler = Uniform(0.5, 1.5)
-        >>> transform = RandomGamma(gamma=gamma_sampler, prob=0.8)
+        >>> gamma_module = RandomGamma(gamma=gamma_sampler, prob=0.8)
         >>> tensor = torch.tensor([0.25, 0.5, 0.75])
-        >>> gamma_tensor = transform(tensor)
+        >>> gamma_tensor = gamma_module(tensor)
         >>> print(gamma_tensor)
         tensor([0.1768, 0.5000, 0.8367])
 
-        ### Applying gamma transformation with reproducibility
-        >>> transform1 = RandomGamma(gamma=2.0, prob=1.0, seed=42)
-        >>> transform2 = RandomGamma(gamma=2.0, prob=1.0, seed=42)
+        ### Applying gamma operation with reproducibility
+        >>> gamma_module1 = RandomGamma(gamma=2.0, prob=1.0, seed=42)
+        >>> gamma_module2 = RandomGamma(gamma=2.0, prob=1.0, seed=42)
         >>> tensor = torch.tensor([0.25, 0.5, 0.75])
-        >>> gamma_tensor1 = transform1(tensor)
-        >>> gamma_tensor2 = transform2(tensor)
+        >>> gamma_tensor1 = gamma_module1(tensor)
+        >>> gamma_tensor2 = gamma_module2(tensor)
         >>> print(torch.equal(gamma_tensor1, gamma_tensor2))
         True
         """
@@ -675,13 +675,13 @@ class RandomGamma(nn.Module):
         Parameters
         ----------
         input_tensor : torch.Tensor
-            The input tensor to which the gamma transformation will be applied. It is assumed to
+            The input tensor to which the gamma operation will be applied. It is assumed to
             have a range suitable for gamma correction (typically normalized between 0 and 1).
 
         Returns
         -------
         torch.Tensor
-            The tensor after applying the gamma transformation. If the transformation is not applied
+            The tensor after applying the gamma scaling operation. If operation is not applied
             (based on `prob`), the original `input_tensor` is returned unchanged.
         """
 
@@ -727,20 +727,20 @@ class RandomClearLabel(nn.Module):
     Examples
     --------
     ### Clearing labels with a fixed probability
-    >>> transform = RandomClearLabel(prob=0.75)
+    >>> clear_label = RandomClearLabel(prob=0.75)
     >>> input_tensor = torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
     >>> label_tensor = torch.tensor([1, 2, 3, 4, 5, 6])
-    >>> cleared_tensor = transform(input_tensor, label_tensor)
+    >>> cleared_tensor = clear_label(input_tensor, label_tensor)
     >>> print(cleared_tensor)
     tensor([0.0000, 0.2000, 0.0000, 0.0000, 0.0000, 0.0000])
 
     ### Reproducibility with a seed
-    >>> transform1 = RandomClearLabel(seed=32)
-    >>> transform2 = RandomClearLabel(seed=32)
+    >>> clear_label1 = RandomClearLabel(seed=32)
+    >>> clear_label2 = RandomClearLabel(seed=32)
     >>> input_tensor = torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
     >>> label_tensor = torch.tensor([1, 2, 3, 4, 5, 6])
-    >>> cleared_tensor1 = transform1(input_tensor, label_tensor)
-    >>> cleared_tensor2 = transform2(input_tensor, label_tensor)
+    >>> cleared_tensor1 = clear_label1(input_tensor, label_tensor)
+    >>> cleared_tensor2 = clear_label2(input_tensor, label_tensor)
     >>> print(torch.equal(cleared_tensor1, cleared_tensor2))
     True
     """
@@ -842,7 +842,7 @@ class SampleImageFromLabels(nn.Module):
 
     def forward(self, label_tensor: torch.Tensor) -> torch.Tensor:
         """
-        Defines the transformation for the `SampleImageFromLabels` module.
+        Perform the sampling operation.
 
         Parameters
         ----------
