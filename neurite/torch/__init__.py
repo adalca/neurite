@@ -4,7 +4,7 @@
 Modules
 -------
 layers
-    Transformations and augmentations for model training.
+    Operations and augmentations for model training.
 losses
     Loss functions for various learning objectives.
 random
