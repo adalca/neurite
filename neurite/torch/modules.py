@@ -215,18 +215,22 @@ class Activation(nn.Module):
         super(Activation, self).__init__()
         if activation_type is None:
             self.activation = None
+
         elif isinstance(activation_type, torch.nn.Module):
             self.activation = activation_type
+
         elif isinstance(activation_type, type) and issubclass(activation_type, nn.Module):
             self.activation = activation_type()
+
         elif activation_type == "relu":
             self.activation = nn.ReLU(inplace=inplace)
+
         elif activation_type == "leaky_relu":
-            self.activation = nn.LeakyReLU(
-                negative_slope=negative_slope, inplace=inplace
-            )
+            self.activation = nn.LeakyReLU(negative_slope=negative_slope, inplace=inplace)
+
         elif activation_type == "elu":
             self.activation = nn.ELU(alpha=alpha, inplace=inplace)
+
         else:
             raise ValueError(
                 f"Unsupported activation_type '{activation_type}'. "
@@ -662,7 +666,7 @@ class Pool(nn.Module):
     Attributes
     ----------
     pool : nn.Module
-        The pooling operation to apply. It is one of `MaxPool`, `AvgPool`, 
+        The pooling operation to apply. It is one of `MaxPool`, `AvgPool`,
         or `LPPool` for 1D, 2D, or 3D inputs.
     """
 
