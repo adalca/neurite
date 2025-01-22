@@ -134,7 +134,7 @@ def random_crop(
             # Sample a random proportion of the dimension to crop and convert it to a point along
             # the axis.
             crop_size = round((1 - crop_sampler()) * dim_size)
-    
+
             # Calculate the maximum translation to avoid going out of bounds.
             translation_max = dim_size - crop_size
 
@@ -245,47 +245,47 @@ def random_gamma(
     seed: Union[Sampler, int] = None,
 ) -> torch.Tensor:
     """
-    Applies a randomized gamma transformation to the input tensor with a specified probability.
+    Applies a randomized nonlinear gamma scaling to the input tensor with a specified probability.
 
-    The gamma transformation adjusts the contrast of the input tensor by applying a non-linear
+    The gamma scaling operation adjusts the contrast of the input tensor by applying a non-linear
     operation. Specifically, each element in the tensor is raised to the power of `gamma`. This can
     enhance or diminish the contrast of the input data.
 
     Parameters
     ----------
     input_tensor : torch.Tensor
-        The tensor that the gamma transformation will be applied. It is assumed to have a range
+        The tensor to which the gamma scaling operation will be applied. Assumed to have a range
         suitable for gamma correction (typically normalized between 0 and 1).
     gamma : Union[float, Sampler], optional
-        The gamma value to apply for the transformation.
+        The gamma value to apply for the scaling operation.
         - If a `float` is provided, it represents a fixed gamma value.
         - If a `Sampler` is provided, the gamma value is dynamically sampled based on the specified
           distribution.
         By default `1.0`, which leaves the tensor unchanged.
     prob : Union[float, Sampler], optional
-        The probability of applying the gamma transformation.
-        - If a `float` is provided, it's used as a fixed probability for the transformation.
+        The probability of applying the gamma scaling operation.
+        - If a `float` is provided, it's used as a fixed probability for the operation.
         - If a `Sampler` is provided, probabilities are dynamically generated for each invocation.
         By default `1.0` (always apply).
     seed : Union[int, Sampler], optional
-        A random seed or sampler to control the randomness of the gamma transformation. If provided,
-        it ensures reproducibility of the transformation. Defaults to `None`.
+        A random seed or sampler to control the randomness of the gamma operation. If provided,
+        it ensures reproducibility of the operation. Defaults to `None`.
 
     Returns
     -------
     torch.Tensor
-        The tensor after applying the gamma transformation. If the transformation is not applied
+        The tensor after applying the gamma scaling operation. If the operation is not applied
         (based on `prob`), the original `input_tensor` is returned unchanged.
 
     Examples
     --------
-    ### Fixed gamma transformation
+    ### Fixed gamma scaling operation
     >>> tensor = torch.tensor([0.25, 0.5, 0.75])
     >>> gamma_tensor = random_gamma(tensor, gamma=2.0, prob=1.0)
     >>> print(gamma_tensor)
     tensor([0.0625, 0.2500, 0.5625])
 
-    ### Randomized gamma transformation with a range of gamma values
+    ### Randomized gamma scaling operation with a range of gamma values
     >>> from neurite.torch.random import Uniform
     >>> tensor = torch.tensor([0.25, 0.5, 0.75])
     >>> gamma_sampler = Uniform(0.5, 1.5)
@@ -293,7 +293,7 @@ def random_gamma(
     >>> print(gamma_tensor)
     tensor([0.1768, 0.5000, 0.8367])
 
-    ### Applying gamma transformation with reproducibility
+    ### Applying gamma scaling operation with reproducibility
     >>> tensor = torch.tensor([0.25, 0.5, 0.75])
     >>> gamma_tensor1 = random_gamma(tensor, gamma=2.0, prob=1.0, seed=42)
     >>> gamma_tensor2 = random_gamma(tensor, gamma=2.0, prob=1.0, seed=42)
@@ -311,13 +311,13 @@ def random_gamma(
     # Make prob into a Bernoulli distribution
     prob = Bernoulli.make(prob)
 
-    # Sample Bernoulli trial to determine whether to apply gamma transformation
+    # Sample Bernoulli trial to determine whether to apply gamma scaling operation
     if bool(prob()):
 
         # Sample gamma
         gamma = Fixed.make(gamma)()
 
-        # Apply gamma transformation
+        # Apply nonlinear gamma scaling operation
         return input_tensor.pow(gamma)
     else:
         return input_tensor
