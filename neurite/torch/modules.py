@@ -5,7 +5,6 @@ nD building blocks for neural networks.
 __all__ = [
     "Norm",
     "Activation",
-    "Conv",
     "ConvBlock",
     "TransposedConv",
     "Pool",
@@ -257,109 +256,6 @@ class Activation(nn.Module):
             return self.activation(input_tensor)
 
 
-class Conv(nn.Module):
-    """
-    Dynamically constructs an n-dimensional convolutional layer (Conv1d, Conv2d, or Conv3d) based on
-    the input dimensionality `ndim`.
-
-    This module enables flexible construction of convolutional layers for 1D, 2D, or 3D data, by
-    internally selecting the appropriate PyTorch convolution operation (`torch.nn.Conv1d`,
-    `torch.nn.Conv2d`, or `torch.nn.Conv3d`).
-    """
-
-    def __init__(
-        self,
-        ndim: int,
-        in_channels: int,
-        out_channels: int,
-        kernel_size: int = 3,
-        stride: int = 1,
-        padding: int = 1,
-        dilation: int = 1,
-        groups: int = 1,
-        bias: bool = True,
-    ):
-        """
-        Initialize the `Conv` module.
-
-        Parameters
-        ----------
-        ndim : int
-            Dimensionality of the convolution (1 for Conv1d, 2 for Conv2d, 3 for Conv3d).
-
-            - 1: Uses `torch.nn.Conv1d` and expects input tensors of shape
-              `(N, C, L)`, where `N` is the batch size, `C` is the number of
-              input channels, and `L` is the length of the input sequence.
-
-            - 2: Uses `torch.nn.Conv2d` and expects input tensors of shape
-              `(N, C, H, W)`, where `H` and `W` are the spatial dimensions of the input image or
-              feature map.
-
-            - 3: Uses `torch.nn.Conv3d` and expects input tensors of shape
-              `(N, C, D, H, W)`, where `D`, `H`, and `W` are the spatial dimensions of the input
-              image or feature map.
-
-        in_channels : int
-            Number of input channels.
-        out_channels : int
-            Number of output channels.
-        kernel_size : int or tuple
-            Size of the convolving kernel.
-        stride : int or tuple, optional
-            Stride of the convolution. Default is 1.
-        padding : int or tuple, optional
-            Padding added to all sides of the input. Default is 1.
-        dilation : int or tuple, optional
-            Spacing between kernel elements. Default is 1.
-        groups : int, optional
-            Number of blocked connections from input to output channels.
-            Default is 1.
-        bias : bool, optional
-            If True, a learnable bias is added to the output. Default is True.
-        """
-        super(Conv, self).__init__()
-
-        # Mapping of spatial dimensions for convolutions
-        conv_dim_map = {1: '1d', 2: '2d', 3: '3d'}
-
-        # Determine if `ndim` is valid
-        if ndim not in conv_dim_map:
-            # This only supports 1, 2, and 3 dimensions!
-            raise ValueError(f"Unsupported ndim={ndim}. Must be 1, 2, or 3.")
-
-        # Dynamically retreive nn.convXd
-        conv_cls_name = f"Conv{conv_dim_map[ndim]}"
-        conv_cls = getattr(nn, conv_cls_name)
-
-        # Init the dynamically retreived conv class with necessary input arguments
-        self.conv = conv_cls(
-            in_channels,
-            out_channels,
-            kernel_size,
-            stride,
-            padding,
-            dilation,
-            groups,
-            bias,
-        )
-
-    def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass of the convolutional layer.
-
-        Parameters
-        ----------
-        input_tensor : torch.Tensor
-            Input tensor.
-
-        Returns
-        -------
-        torch.Tensor
-            Convolved output tensor.
-        """
-        return self.conv(input_tensor)
-
-
 class ConvBlock(nn.Sequential):
     """
     Convolutional Block comprising a convolutional layer, and optionally, an activation function and
@@ -396,6 +292,8 @@ class ConvBlock(nn.Sequential):
     >>> print(output.shape)
     torch.Size([16, 128, 32, 32])
     """
+    # Mapping of spatial dimensions for convolutions
+    conv_dim_map = {1: '1d', 2: '2d', 3: '3d'}
 
     def __init__(
         self,
@@ -410,7 +308,7 @@ class ConvBlock(nn.Sequential):
         bias: bool = True,
         norm: Union[str, nn.Module, None] = None,
         activation: Union[str, nn.Module, None] = None,
-        order: str = 'nca'
+        order: str = 'cna'
     ):
         """
         Initialize the `ConvBlock`.
@@ -450,7 +348,7 @@ class ConvBlock(nn.Sequential):
             - `None`: No activation is applied. Default is `None`.
 
         order : str, optional
-            The order of operations in the block. Default is 'nca'
+            The order of operations in the block. Default is 'cna'
             (normalization -> convolution -> activation).
             Each character in the string represents one of the following:
             - `'c'`: Convolution
@@ -504,7 +402,8 @@ class ConvBlock(nn.Sequential):
         num_features = in_channels
 
         if order is None:
-            order = 'nca'
+            order = 'cna'
+
         # Break order into list of letters (operations)
         self.order = list(order)
 
@@ -514,24 +413,24 @@ class ConvBlock(nn.Sequential):
             raise ValueError(
                 f"Invalid order. Must be a subset of {valid_operations}."
             )
+        # Determine if `ndim` is valid
+        if ndim not in ConvBlock.conv_dim_map:
+            # This only supports 1, 2, and 3 dimensions!
+            raise ValueError(f"Unsupported ndim={ndim}. Must be 1, 2, or 3.")
+        else:
+            conv_cls_name = f"Conv{ConvBlock.conv_dim_map[ndim]}"
+            conv_cls = getattr(nn, conv_cls_name)
 
         # Init layers container
         layers = []
         # Collect layers in the appropriate order
         for operation in self.order:
             if operation == 'c':
-                # Make convolution
+                # Init the conv with appropriate params
                 layers.append(
-                    Conv(
-                        ndim,
-                        num_features,
-                        out_channels,
-                        kernel_size,
-                        stride=stride,
-                        padding=padding,
-                        dilation=dilation,
-                        groups=groups,
-                        bias=bias
+                    conv_cls(
+                        num_features, out_channels, kernel_size, stride, padding, dilation, groups,
+                        bias,
                     )
                 )
                 if first_conv:
