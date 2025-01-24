@@ -397,16 +397,13 @@ class ConvBlock(nn.Sequential):
         torch.Size([1, 32, 64, 64])
         """
         super().__init__()
-        # Store layers explicitly
-        self.layers = nn.ModuleDict()
-        self.order = order
+        layers = nn.ModuleDict()
+        self.order = list(order)  # make string of letters into list of letters
         valid_operations = ['c', 'n', 'a']
 
         # Validate the operations
         if not set(order).issubset(valid_operations):
-            raise ValueError(
-                f"Invalid order. Must be a subset of {valid_operations}."
-            )
+            raise ValueError(f"Invalid order. Must be a subset of {valid_operations}.")
 
         # Validate the dimensions
         if ndim not in ConvBlock.conv_dim_map:
@@ -417,40 +414,42 @@ class ConvBlock(nn.Sequential):
         conv_cls_name = f"Conv{ConvBlock.conv_dim_map[ndim]}"
         conv_cls = getattr(nn, conv_cls_name)
 
-        # Tracker to determine the logic for the first convolution as opposed to later ones.
-        first_conv = True
+        # Initialize trackers for the order in the conv
+        conv_id, norm_id, act_id = 0, 0, 0
 
-        if order is None:
-            order = 'cna'
-
-        # Break order into list of letters (operations)
-        self.order = list(order)
-
-        # Init layers container
-        layers = []
-        num_features = in_channels
         # Collect layers in the appropriate order
         for operation in self.order:
+
             if operation == 'c':
                 # Init the conv with appropriate params
-                layers.append(
-                    conv_cls(
-                        num_features, out_channels, kernel_size, stride, padding, dilation, groups,
-                        bias,
-                    )
+                layers[f"conv{conv_id}"] = conv_cls(
+                    in_channels, out_channels, kernel_size, stride,
+                    padding, dilation, groups, bias
                 )
-                num_features = out_channels
 
+                in_channels = out_channels  # All future convs and stuff will have this many in
+                conv_id += 1  # Increment conv id for easy tracking/accessing
+
+            # Dynamically construct the normalization and assign it to a named key in layers
             elif operation == 'n' and norm is not None:
-                # Make normalization
-                layers.append(Norm(norm, ndim, num_features))
+                layers[f'norm{norm_id}'] = Norm(norm, ndim, in_channels)
+                norm_id += 1
 
+            # Construct the activation and assign it to a named key in layers
             elif operation == 'a' and activation is not None:
-                # Make activation
-                layers.append(Activation(activation))
+                layers[f'activation{act_id}'] = Activation(activation)
+                act_id += 1
+
+        # Add layers to `Sequential`
+        for name, layer in layers.items():
+            self.add_module(name, layer)
+
+        # Add layers to `Sequential`
+        # for name, layer in self.layers.items():
+        #    self.add_module(name, layer)
 
         # Create the Sequential container
-        super(ConvBlock, self).__init__(*layers)
+        # super(ConvBlock, self).__init__(*layers)
 
 
 class TransposedConv(nn.Module):
