@@ -396,10 +396,29 @@ class ConvBlock(nn.Sequential):
         >>> print(output_tensor.shape)
         torch.Size([1, 32, 64, 64])
         """
+        super().__init__()
+        # Store layers explicitly
+        self.layers = nn.ModuleDict()
         self.order = order
+        valid_operations = ['c', 'n', 'a']
+
+        # Validate the operations
+        if not set(order).issubset(valid_operations):
+            raise ValueError(
+                f"Invalid order. Must be a subset of {valid_operations}."
+            )
+
+        # Validate the dimensions
+        if ndim not in ConvBlock.conv_dim_map:
+            # This only supports 1, 2, and 3 dimensions!
+            raise ValueError(f"Unsupported ndim={ndim}. Must be 1, 2, or 3.")
+
+        # Dynamically retreive the appropriate `Conv*` class
+        conv_cls_name = f"Conv{ConvBlock.conv_dim_map[ndim]}"
+        conv_cls = getattr(nn, conv_cls_name)
+
         # Tracker to determine the logic for the first convolution as opposed to later ones.
         first_conv = True
-        num_features = in_channels
 
         if order is None:
             order = 'cna'
@@ -407,22 +426,9 @@ class ConvBlock(nn.Sequential):
         # Break order into list of letters (operations)
         self.order = list(order)
 
-        # Validate the operations
-        valid_operations = ['c', 'n', 'a']
-        if not set(order).issubset(valid_operations):
-            raise ValueError(
-                f"Invalid order. Must be a subset of {valid_operations}."
-            )
-        # Determine if `ndim` is valid
-        if ndim not in ConvBlock.conv_dim_map:
-            # This only supports 1, 2, and 3 dimensions!
-            raise ValueError(f"Unsupported ndim={ndim}. Must be 1, 2, or 3.")
-        else:
-            conv_cls_name = f"Conv{ConvBlock.conv_dim_map[ndim]}"
-            conv_cls = getattr(nn, conv_cls_name)
-
         # Init layers container
         layers = []
+        num_features = in_channels
         # Collect layers in the appropriate order
         for operation in self.order:
             if operation == 'c':
@@ -433,9 +439,7 @@ class ConvBlock(nn.Sequential):
                         bias,
                     )
                 )
-                if first_conv:
-                    first_conv = False
-                    num_features = out_channels
+                num_features = out_channels
 
             elif operation == 'n' and norm is not None:
                 # Make normalization
@@ -578,7 +582,7 @@ class Pool(nn.Module):
         ndim : int
             The dimensionality of the pooling operation. Must be 1, 2, or 3.
         pool_mode : str, optional
-            The pooling mode to use. Options are 'max' for max pooling, 
+            The pooling mode to use. Options are 'max' for max pooling,
             'avg' for average pooling, and 'lp' for LP pooling. Default is
             'max'.
         kernel_size : int or tuple, optional
