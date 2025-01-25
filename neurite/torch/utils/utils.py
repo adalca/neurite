@@ -38,7 +38,8 @@ __all__ = [
     "sample_image_from_labels",
     "is_instantiated_normalization",
     "make_downsampling_conv_blocks",
-    "make_upsampling_conv_blocks"
+    "make_upsampling_conv_blocks",
+    "derive_dense_displacement_field_from_affines"
 ]
 
 from typing import Union, List
@@ -1097,3 +1098,77 @@ def make_upsampling_conv_blocks(
         upsampling_conv_blocks.append(upsampling_conv_block)
 
     return upsampling_conv_blocks
+
+
+def derive_dense_displacement_field_from_affines(
+    affine_a: torch.Tensor,
+    affine_b: torch.Tensor,
+    grid_size: tuple,
+    device: str = 'cpu',
+    dtype: torch.dtype = torch.float32,
+    normalize: bool = True
+) -> torch.Tensor:
+    """
+    Derive a dense displacement field from affine matrices.
+
+    Parameters
+    ----------
+    affine_a : torch.Tensor
+        Affine matrix A of shape (batch_size, ndim, ndim + 1), where ndim is 2 or 3.
+    affine_b : torch.Tensor
+        Affine matrix B of shape (batch_size, ndim, ndim + 1), same shape as affine_A.
+    grid_size : tuple
+        Spatial size of the grid, e.g., (H, W) for 2D or (D, H, W) for 3D.
+    device : torch.device, optional
+        Device for computations, default is 'cpu'.
+    dtype : torch.dtype, optional
+        Data type for computations, default is torch.float32.
+    normalize : bool, optional
+        If True, grid coordinates are normalized to [-1, 1]. Default is True.
+
+    Returns
+    -------
+    torch.Tensor
+        Dense displacement field of shape (batch_size, ndim, *grid_size), where each
+        vector represents displacement in each dimension from a to b.
+
+    Examples
+    --------
+    ### Dense displacement field for 2x scaled affines
+    >>> # Make first affine with ones
+    >>> aff_a_2d = torch.eye(2, 2 + 1).unsqueeze(0)
+    >>> # Dilate original affine by 2
+    >>> aff_b_2d = aff_a_2d * 2
+    >>> grid_size_2d = (128, 128)
+    >>> displacement_field = derive_dense_displacement_field_from_affines(
+                                aff_a_2d, aff_b_2d, grid_size_2d
+                            )
+    """
+
+    # Input validation (ensuring F.affine_grid() will be happy)
+    assert affine_a.dim() == 3 and affine_b.dim() == 3, "Affine matrices must be 3D tensors"
+    assert affine_a.shape == affine_b.shape, "Affine matrices must have the same shape"
+
+    # Validate rectangular shape of affine matricies
+    batch_size, ndim, ndim_plus_one = affine_a.shape
+    assert ndim_plus_one == ndim + 1, "Affine shape should be (batch_size, ndim, ndim+1)"
+    assert ndim in [2, 3], "Only 2D and 3D transformations are supported"
+
+    # Generate grids/flows for A and B using torch's affine_grid()
+    grid_a = F.affine_grid(affine_a, size=(batch_size, 1, *grid_size), align_corners=True)
+    grid_b = F.affine_grid(affine_b, size=(batch_size, 1, *grid_size), align_corners=True)
+
+    # Order of dimensions to permute (nD)
+    permuting_order = [0, ndim_plus_one] + list(range(1, ndim_plus_one))
+    # Calculate the displacement
+    displacement = grid_b - grid_a
+
+    # Permute the dimensions and make contiguious. Returns shape: (B, ndim, *grid_size)
+    displacement = displacement.permute(*permuting_order).contiguous()
+
+    if not normalize:
+        # Scale the displacement by the grid size
+        scale = torch.tensor(grid_size, device=device, dtype=dtype).view(1, ndim, *[1] * ndim)
+        displacement *= scale
+
+    return displacement
