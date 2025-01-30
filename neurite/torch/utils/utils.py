@@ -1179,7 +1179,7 @@ def make_grid(
     size: Tuple[int],
     device: Union[str, torch.device] = "cpu",
     dtype: Union[str, torch.dtype] = torch.float32,
-    normalize: bool = True,
+    normalize: bool = False,
 ) -> torch.Tensor:
     """
     Generate a grid of spatial coordinates.
@@ -1219,20 +1219,19 @@ def make_grid(
             [-1.,  1.]]]])
     """
 
-    # Initialize containter for axes
-    axes = []
-
     # Define coordinate axes/vectors: for each dimension in `size`, create a 1D vector for the
     # coord system
+    axes = []
+
     for axis_length in size:
 
         # Construct the axis for the ith spatial dimension
         if normalize:
-            # Create the axis spanning the range [-1, 1]
+            # Create the axis on [-1, 1], with the origin (ideally) at zero
             axis = torch.linspace(-1, 1, steps=axis_length, device=device, dtype=dtype)
 
         else:
-            # Create the axis to the `axis_length - 1`
+            # Create the axis to the `axis_length`
             axis = torch.linspace(0, axis_length, steps=axis_length, device=device, dtype=dtype)
         axes.append(axis)
 
@@ -1240,6 +1239,9 @@ def make_grid(
     grid = torch.meshgrid(*axes, indexing="ij")
 
     # Stack the grid tuples to make a tensor, and create new leading singleton dimension
-    grid = torch.stack(grid).unsqueeze(0)
+    grid = torch.stack(grid)
+
+    # Move the coordinate dim/axis to the back
+    grid = grid.moveaxis(0, -1).contiguous().unsqueeze(0)
 
     return grid
