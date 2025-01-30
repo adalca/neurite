@@ -39,10 +39,11 @@ __all__ = [
     "is_instantiated_normalization",
     "make_downsampling_conv_blocks",
     "make_upsampling_conv_blocks",
-    "derive_dense_displacement_field_from_affines"
+    "derive_dense_displcement_field_from_affines",
+    "make_grid"
 ]
 
-from typing import Union, List
+from typing import Union, List, Tuple
 import inspect
 import torch
 import torch.nn.functional as F
@@ -1100,7 +1101,7 @@ def make_upsampling_conv_blocks(
     return upsampling_conv_blocks
 
 
-def derive_dense_displacement_field_from_affines(
+def derive_dense_displcement_field_from_affines(
     affine_a: torch.Tensor,
     affine_b: torch.Tensor,
     grid_size: tuple,
@@ -1172,3 +1173,73 @@ def derive_dense_displacement_field_from_affines(
         displacement *= scale
 
     return displacement
+
+
+def make_grid(
+    size: Tuple[int],
+    device: Union[str, torch.device] = "cpu",
+    dtype: Union[str, torch.dtype] = torch.float32,
+    normalize: bool = True,
+) -> torch.Tensor:
+    """
+    Generate a grid of spatial coordinates.
+
+    This function defines the coordinate axes by generating vectors for each spatial dimension
+    represented by the elements of `shape`. It then creates a grid representing all spatial coords.
+
+    Parameters
+    ----------
+    size : Tuple[int] 
+        Size of the spatial dimensions of the input tensor. e.g. (H, W) or (D, W, H)
+    device : Union[str, torch.device], optional
+        The device on which the grid will reside. By default "cpu"
+    dtype : Union[str, torch.dtype], optional
+        The data type of the tensor grid, by default None
+    normalize : bool, optional
+        Normalize each dimension of the grid to the range [-1, 1]. Otherwise, the grid coords span
+        from 0 to `size[i] - 1` for each dimension.
+
+    Returns
+    -------
+    torch.Tensor
+        A tensor of shape `1, *size, len(size)` representing the grid of spatial coordinates.
+
+    Examples
+    --------
+    ### Make a 2d grid of size (3, 2)
+    >>> grid = make_grid(size=(3, 2))
+    >>> print(grid.shape)
+    torch.Size([1, 2, 3, 2])
+    >>> print(grid)
+    tensor([[[[-1., -1.],
+            [ 0.,  0.],
+            [ 1.,  1.]],
+            [[-1.,  1.],
+            [-1.,  1.],
+            [-1.,  1.]]]])
+    """
+
+    # Initialize containter for axes
+    axes = []
+
+    # Define coordinate axes/vectors: for each dimension in `size`, create a 1D vector for the
+    # coord system
+    for axis_length in size:
+
+        # Construct the axis for the ith spatial dimension
+        if normalize:
+            # Create the axis spanning the range [-1, 1]
+            axis = torch.linspace(-1, 1, steps=axis_length, device=device, dtype=dtype)
+
+        else:
+            # Create the axis to the `axis_length - 1`
+            axis = torch.linspace(0, axis_length, steps=axis_length, device=device, dtype=dtype)
+        axes.append(axis)
+
+    # Make grid as a tuple of torch.Tensor
+    grid = torch.meshgrid(*axes, indexing="ij")
+
+    # Stack the grid tuples to make a tensor, and create new leading singleton dimension
+    grid = torch.stack(grid).unsqueeze(0)
+
+    return grid
