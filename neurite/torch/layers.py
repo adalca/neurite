@@ -956,6 +956,9 @@ class SpatialTransformer(nn.Module):
                 f"deformation_field.dim()={deformation_field.dim()}"
             )
 
+        # Wow, this is legacy! Neither Adrian nor I know why the dims need to be permuted...
+        deformation_field = deformation_field.moveaxis(1, -1)
+
         # Warp the identity grid with the deformation field
         warped_grid = self.identity_grid + deformation_field
 
