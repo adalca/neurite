@@ -35,6 +35,7 @@ __all__ = [
     "RandomIntensityLookup",
     "RandomClearLabel",
     "SampleImageFromLabels",
+    "SpatialTransformer",
 ]
 
 from typing import Optional, Union, Tuple, List
@@ -42,8 +43,9 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from . import utils
-from ..torch.random import Sampler, Fixed, Uniform, Normal
 
+from ..torch.utils import make_grid
+from ..torch.random import Sampler, Fixed, Uniform, Normal
 
 class RescaleValues(nn.Module):
     """
@@ -862,3 +864,137 @@ class SampleImageFromLabels(nn.Module):
             self.noise_sampler,
             self.noise_variance
         )
+
+
+class SpatialTransformer(nn.Module):
+    """
+    nD Spatial transformation according to a deformation field.
+
+    Uses a deformation field to transform the moving image.
+
+    References
+    ----------
+    If you find this helpful, please cite the following paper:
+
+    @ARTICLE{8633930,
+    author={Balakrishnan, Guha and Zhao, Amy and Sabuncu, Mert R. and Guttag, John and Dalca,
+    Adrian V.},
+    journal={IEEE Transactions on Medical Imaging},
+    title={VoxelMorph: A Learning Framework for Deformable Medical Image Registration},
+    year={2019},
+    volume={38},
+    number={8},
+    pages={1788-1800},
+    keywords={Strain;Training;Biomedical imaging;Image segmentation;Optimization;Image registration;
+    Three-dimensional displays;Registration;machine learning;convolutional neural networks},
+    doi={10.1109/TMI.2019.2897538}}
+    """
+
+    def __init__(
+        self,
+        size: Tuple[int],
+        interpolation_mode: str = "bilinear",
+        align_corners: bool = False,
+        device: Union[str, torch.device] = "cpu",
+    ):
+        """
+        Initialize `SpatialTransformer`.
+
+        Parameters
+        ----------
+        size : tuple[int]
+            Expected size of `moving_image` (input image to be warped) for the forward pass.
+        interpolation_mode : str
+            Algorithm used for interpolating the warped image. Default is  'bilinear'. Options are:
+            'bilinear' | 'nearest' | 'bicubic'.
+        align_corners : bool
+            Map the corner points of the moving image to the corner points of the warped image.
+        device : str
+            Device to construct and hold the identity grid.
+        """
+        super().__init__()
+
+        self.size = size
+        self.device = device
+        self.interpolation_mode = interpolation_mode
+        self.align_corners = align_corners
+
+        # Make identity grid (the grid to later warp with deformation field) and register as a
+        # buffer (without saving to `state_dict`: persistent=False)
+        self.register_buffer(
+            name='identity_grid',
+            tensor=make_grid(size=size, device=device),
+            persistent=False  # Don't save to this module's state dict!
+        )
+
+    def forward(
+        self,
+        moving_image: torch.Tensor,
+        deformation_field: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Forward pass of `SpatialTransformer`
+
+        Parameters
+        ----------
+        moving_image : torch.Tensor
+            Tensor to be spatially transformed by `deformation_field`
+        deformation_field : torch.Tensor
+            Field causing the spatial transformation of `moving_image`.
+
+        Returns
+        -------
+        torch.Tensor
+            Warped `moving_image` according to the `deformation_field`.
+        """
+
+        # Validate the dimensions of the input
+        if moving_image.dim() < 4 or deformation_field.dim() != moving_image.dim():
+            raise ValueError(
+                f"Expected `moving_image` to have at least 4 dimensions and for `flow field` to "
+                f"match `moving_image` dimensions, got moving_image.dim()={moving_image.dim()}, "
+                f"deformation_field.dim()={deformation_field.dim()}"
+            )
+
+        # Warp the identity grid with the deformation field
+        warped_grid = self.identity_grid + deformation_field
+
+        # Normalize the axes so the range does not exceed the interval [-1, 1]
+        warped_grid = self._normalize_warped_grid(warped_grid)
+
+        # Sample grid
+        warped_image = F.grid_sample(
+            input=moving_image,
+            grid=warped_grid,
+            mode=self.interpolation_mode,
+            align_corners=self.align_corners,
+            padding_mode="border"
+        )
+
+        return warped_image
+
+    def _normalize_warped_grid(
+        self,
+        warped_grid: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Normalize a warped grid to make PyTorch `grid_sample()` happy!
+
+        PyTorch's `grid_sample()` requires coordinates in the range [-1, 1].
+        This function scales and shifts the warped grid accordingly.
+
+        Parameters
+        ----------
+        warped_grid : torch.Tensor
+            The resultant of the identity grid and the deformation field.
+
+        Returns
+        -------
+        torch.Tensor
+            The warped grid rescaled to the range [-1, 1] for each spatial axis
+        """
+
+        for i, dim in enumerate(self.size):
+            warped_grid[..., i] = 2 * (warped_grid[..., i] / (dim - 1) - 0.5)
+
+        return warped_grid
