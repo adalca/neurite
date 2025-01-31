@@ -1313,3 +1313,49 @@ def make_sample_checkerboard_image(
             checkerboard_image[(..., *slices)] = 1
 
     return checkerboard_image
+
+
+def make_sample_flow(shape: tuple = (1, 1, 16, 16), device: str = 'cpu') -> torch.Tensor:
+    """
+    Makes a simple flow field for testing registration in N-dimensional space.
+
+    This function generates a flow field with channels that represent the transformations to each
+    spatial dimension. E.g. channel 1 represents the dense transformation on the x-axis, channel 2
+    represents the dense transformation on the y axis, and so on...
+
+    Parameters
+    ----------
+    shape : tuple, optional
+        Shape of the input tensor, expected as (B, C, *spatial_dims).
+        Default is (1, 1, 4, 4) for a 2D case.
+    device : str, optional
+        The device to allocate tensors to ('cpu' or 'cuda').
+
+    Returns
+    -------
+    flow_field : torch.Tensor
+        A tensor representing the flow field, shaped as (B, n_spatial_dims, *spatial_dims).
+        The first spatial dimension is shifted by +1 in a normalized manner.
+
+    Example
+    -------
+    >>> flow = create_sample_flow((1, 1, 4, 4), device='cpu')
+    >>> flow.shape
+    torch.Size([1, 2, 4, 4])
+
+    >>> flow_3d = create_sample_flow((1, 1, 4, 4, 4), device='cpu')
+    >>> flow_3d.shape
+    torch.Size([1, 3, 4, 4, 4])
+    """
+    spatial_dims = shape[2:]  # Extract spatial dimensions
+    n_spatial_dims = len(spatial_dims)
+
+    # Create a flow field tensor
+    flow_field = torch.zeros(shape[0], n_spatial_dims, *spatial_dims, device=device)
+
+    # Shift along the first spatial dimension
+    flow_field[:, 0, ...] = 1
+    # If you want it normalized:
+    # flow_field[:, 0, ...] /= (spatial_dims[0] - 1)
+
+    return flow_field
