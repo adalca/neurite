@@ -40,7 +40,8 @@ __all__ = [
     "make_downsampling_conv_blocks",
     "make_upsampling_conv_blocks",
     "derive_dense_displcement_field_from_affines",
-    "make_grid"
+    "make_grid",
+    "make_sample_checkerboard_image"
 ]
 
 from typing import Union, List, Tuple
@@ -1008,7 +1009,8 @@ def make_upsampling_conv_blocks(
     order: str = 'nca'
 ) -> nn.ModuleList:
     """
-    Create an `nn.ModuleList` of upsampling conv blocks based the number of features per layer/level.
+    Create an `nn.ModuleList` of upsampling conv blocks based the number of features per layer/
+    level.
 
     Parameters
     ----------
@@ -1245,3 +1247,69 @@ def make_grid(
     grid = grid.moveaxis(0, -1).contiguous().unsqueeze(0)
 
     return grid
+
+
+def make_sample_checkerboard_image(
+        image_shape: tuple = (1, 1, 16, 16),
+        square_size: int = 3,
+        device: str = "cpu"
+):
+    """
+    Generate a checkerboard pattern in 2D or 3D.
+
+    This function creates an image with a checkerboard pattern where alternating 
+    squares of size `square_size` are filled with ones, while the rest remain zero.
+
+    Parameters
+    ----------
+    image_shape : tuple, optional
+        Shape of the output image tensor. The expected format is:
+        - (B, C, H, W) for 2D images
+        - (B, C, D, H, W) for 3D images
+        Default is (1, 1, 16, 16) for a single-channel 2D image.
+    square_size : int, optional
+        The size of each square in the checkerboard pattern. 
+        The default value is 3.
+
+    Returns
+    -------
+    torch.Tensor
+        A tensor of shape `image_shape` containing a checkerboard pattern.
+        Alternating squares are set to 1.
+
+    Example
+    -------
+    >>> img = make_sample_checkerboard_image((1, 1, 6, 6), square_size=2)
+    >>> img[0, 0]
+    tensor([[1., 1., 0., 0., 1., 1.],
+            [1., 1., 0., 0., 1., 1.],
+            [0., 0., 1., 1., 0., 0.],
+            [0., 0., 1., 1., 0., 0.],
+            [1., 1., 0., 0., 1., 1.],
+            [1., 1., 0., 0., 1., 1.]])
+    """
+
+    # Extract spatial dimensions
+    spatial_dims = image_shape[2:]
+
+    # Init the checkerboard tensor on the device
+    checkerboard_image = torch.zeros(image_shape, device=device)
+
+    # Create starting points on the axes for the squares (either light or dark)
+    checkerboard_startpoints_for_axes = []
+    for dim in spatial_dims:
+
+        # Make the starting points alternate every `square_size`
+        startpoints_for_axis = torch.arange(0, dim, square_size)
+        checkerboard_startpoints_for_axes.append(startpoints_for_axis)
+
+    # Get the cartesian product of all dims to make points in (2D or 3D) space
+    checkerboard_start_coords = torch.cartesian_prod(*checkerboard_startpoints_for_axes)
+
+    for start_coord in checkerboard_start_coords:
+        # Fill image with ones for all spatial dims starting at the point
+        if start_coord.sum().item() % (2 * square_size) == 0:
+            slices = tuple(slice(i, i + square_size) for i in start_coord)
+            checkerboard_image[(..., *slices)] = 1
+
+    return checkerboard_image
