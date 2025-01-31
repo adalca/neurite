@@ -36,6 +36,7 @@ __all__ = [
     "RandomClearLabel",
     "SampleImageFromLabels",
     "SpatialTransformer",
+    "VecInt",
 ]
 
 from typing import Optional, Union, Tuple, List
@@ -1001,3 +1002,90 @@ class SpatialTransformer(nn.Module):
             warped_grid[..., i] = 2 * (warped_grid[..., i] / (dim - 1) - 0.5)
 
         return warped_grid
+
+
+class VecInt(nn.Module):
+    """
+    Integrates a vector (typically velocity) field over multiple steps using the scaling and
+    squaring method.
+
+    This module ensures that transformations caused by velocity fields are diffeomorphic by
+    compounding small, intermediate transformations (by recursive scaling and squaring) to make sure
+    the resultant is both smooth and invertable.
+
+    Examples
+    -------
+    ### Integrate a 2D velocity field over multiple steps:
+    >>> shape = (128, 128)  # 2D spatial grid
+    >>> integrator = VecInt(shape, steps=3)
+    >>> velocity_field = torch.randn(1, 2, 128, 128)  # (B, C, H, W)
+    >>> displacement_field = integrator(velocity_field)
+    >>> displacement_field.shape
+    torch.Size([1, 2, 128, 128])
+
+    ### Perform integration on a 3D velocity field with a single scaling step:
+    >>> shape = (64, 64, 64)  # 3D spatial grid
+    >>> integrator = VecInt(shape, steps=1)
+    >>> velocity_field = torch.randn(1, 3, 64, 64, 64)  # (B, C, D, H, W)
+    >>> displacement_field = integrator(velocity_field)
+    >>> displacement_field.shape
+    torch.Size([1, 3, 64, 64, 64])
+
+    Attributes
+    ----------
+    steps : int
+        The number of recursive squaring steps used for integration.
+    scale : float
+        Scaling factor for the initial velocity field, determined as `1 / (2^steps)`.
+    transformer : nn.Module
+        A spatial transformer module used to iteratively warp the vector field.
+    """
+
+    def __init__(self, shape: tuple, steps: int = 1):
+        """
+        Initialize `VectInt`
+
+        Parameters
+        ----------
+        shape : tuple
+            Shape of the input vector field (excluding batch and channel dimensions).
+        steps : int, optional
+            Number of scaling and squaring (integration) steps. A higher value leads to a more
+            smooth and accurate integration at the cost of higher/longer computation. Default is 1.
+        """
+
+        super().__init__()
+
+        if steps < 0:
+            raise ValueError(f"steps should be >= 0, found: {steps}")
+
+        self.steps = steps
+        self.scale = 1.0 / (2 ** self.steps)  # Initial downscaling factor
+        self.transformer = SpatialTransformer(shape)  # Performs the warping operation
+
+    def forward(self, vector_field: torch.Tensor) -> torch.Tensor:
+        """
+        Integrates the input vector field using scaling and squaring.
+
+        Parameters
+        ----------
+        vector_field : torch.Tensor
+            A velocity field of shape (B, C, *spatial_dims), where B is batch size,
+            C is the number of vector components (typically spatial dimensions),
+            and `spatial_dims` represent the grid dimensions.
+
+        Returns
+        -------
+        torch.Tensor
+            The integrated displacement field with the same shape as the input.
+        """
+
+        # Apply initial scaling to the velocity field
+        vector_field = vector_field * self.scale
+
+        # Scaling and squaring integration loop
+        for _ in range(self.steps):
+            # Recursive integration step
+            vector_field = vector_field + self.transformer(vector_field, vector_field)
+
+        return vector_field
