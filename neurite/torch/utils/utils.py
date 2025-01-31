@@ -41,7 +41,8 @@ __all__ = [
     "make_upsampling_conv_blocks",
     "derive_dense_displcement_field_from_affines",
     "make_grid",
-    "make_sample_checkerboard_image"
+    "make_sample_checkerboard_image",
+    "make_sample_flow"
 ]
 
 from typing import Union, List, Tuple
@@ -1315,7 +1316,12 @@ def make_sample_checkerboard_image(
     return checkerboard_image
 
 
-def make_sample_flow(shape: tuple = (1, 1, 16, 16), device: str = 'cpu') -> torch.Tensor:
+def make_sample_flow(
+    shape: tuple = (1, 1, 16, 16),
+    device: str = 'cpu',
+    shift_size: int = 1,
+    normalize: bool = False,
+    ) -> torch.Tensor:
     """
     Makes a simple flow field for testing registration in N-dimensional space.
 
@@ -1354,8 +1360,10 @@ def make_sample_flow(shape: tuple = (1, 1, 16, 16), device: str = 'cpu') -> torc
     flow_field = torch.zeros(shape[0], n_spatial_dims, *spatial_dims, device=device)
 
     # Shift along the first spatial dimension
-    flow_field[:, 0, ...] = 1
-    # If you want it normalized:
-    # flow_field[:, 0, ...] /= (spatial_dims[0] - 1)
+    flow_field[:, 0, ...] = shift_size
+
+    # Optionally normalize
+    if normalize:
+        flow_field[:, 0, ...] /= (spatial_dims[0] - 1)
 
     return flow_field
