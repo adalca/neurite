@@ -36,7 +36,7 @@ __all__ = [
     "RandomClearLabel",
     "SampleImageFromLabels",
     "SpatialTransformer",
-    "VecInt",
+    "IntegrateVelocityField",
 ]
 
 from typing import Optional, Union, Tuple, List
@@ -1004,20 +1004,19 @@ class SpatialTransformer(nn.Module):
         return warped_grid
 
 
-class VecInt(nn.Module):
+class IntegrateVelocityField(nn.Module):
     """
-    Integrates a vector (typically velocity) field over multiple steps using the scaling and
-    squaring method.
+    Integrates a velocity field over multiple steps using the scaling and squaring method.
 
-    This module ensures that transformations caused by velocity fields are diffeomorphic by
-    compounding small, intermediate transformations (by recursive scaling and squaring) to make sure
-    the resultant is both smooth and invertable.
+    This module ensures that transformations caused by a velocity field is diffeomorphic by
+    compounding small, intermediate transformations (by recursive scaling and squaring). This
+    ensures the resultant is both smooth and invertable.
 
     Examples
     -------
     ### Integrate a 2D velocity field over multiple steps:
     >>> shape = (128, 128)  # 2D spatial grid
-    >>> integrator = VecInt(shape, steps=3)
+    >>> integrator = IntegrateVelocityField(shape, steps=256)
     >>> velocity_field = torch.randn(1, 2, 128, 128)  # (B, C, H, W)
     >>> displacement_field = integrator(velocity_field)
     >>> displacement_field.shape
@@ -1025,7 +1024,7 @@ class VecInt(nn.Module):
 
     ### Perform integration on a 3D velocity field with a single scaling step:
     >>> shape = (64, 64, 64)  # 3D spatial grid
-    >>> integrator = VecInt(shape, steps=1)
+    >>> integrator = IntegrateVelocityField(shape, steps=1)
     >>> velocity_field = torch.randn(1, 3, 64, 64, 64)  # (B, C, D, H, W)
     >>> displacement_field = integrator(velocity_field)
     >>> displacement_field.shape
@@ -1034,7 +1033,7 @@ class VecInt(nn.Module):
     Attributes
     ----------
     steps : int
-        The number of recursive squaring steps used for integration.
+        The number of squaring steps used for integration.
     scale : float
         Scaling factor for the initial velocity field, determined as `1 / (2^steps)`.
     transformer : nn.Module
@@ -1043,15 +1042,15 @@ class VecInt(nn.Module):
 
     def __init__(self, shape: tuple, steps: int = 1):
         """
-        Initialize `VectInt`
+        Initialize `IntegrateVelocityField`
 
         Parameters
         ----------
         shape : tuple
-            Shape of the input vector field (excluding batch and channel dimensions).
+            Shape of the input velocity field (excluding batch and channel dimensions).
         steps : int, optional
-            Number of scaling and squaring (integration) steps. A higher value leads to a more
-            smooth and accurate integration at the cost of higher/longer computation. Default is 1.
+            Number of integration steps. A higher value leads to a more smooth and accurate
+            integration at the cost of higher/longer computation. Default is 1.
         """
 
         super().__init__()
@@ -1063,9 +1062,9 @@ class VecInt(nn.Module):
         self.scale = 1.0 / (2 ** self.steps)  # Initial downscaling factor
         self.transformer = SpatialTransformer(shape)  # Performs the warping operation
 
-    def forward(self, vector_field: torch.Tensor) -> torch.Tensor:
+    def forward(self, velocity_field: torch.Tensor) -> torch.Tensor:
         """
-        Integrates the input vector field using scaling and squaring.
+        Integrates the input velocity field using scaling and squaring.
 
         Parameters
         ----------
@@ -1081,11 +1080,11 @@ class VecInt(nn.Module):
         """
 
         # Apply initial scaling to the velocity field
-        vector_field = vector_field * self.scale
+        velocity_field = velocity_field * self.scale
 
-        # Scaling and squaring integration loop
+        # Integration loop
         for _ in range(self.steps):
             # Recursive integration step
-            vector_field = vector_field + self.transformer(vector_field, vector_field)
+            velocity_field = velocity_field + self.transformer(velocity_field, velocity_field)
 
-        return vector_field
+        return velocity_field
