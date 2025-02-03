@@ -1371,7 +1371,11 @@ def make_sample_flow(
     return flow_field
 
 
-def cross_expand(x1: torch.Tensor, x2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def cross_expand(
+    x1: torch.Tensor,
+    x2: torch.Tensor,
+    return_batched: bool = True,
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Expands `x1` and `x2` along new dimensions to create pairwise combinations.
 
@@ -1384,12 +1388,17 @@ def cross_expand(x1: torch.Tensor, x2: torch.Tensor) -> Tuple[torch.Tensor, torc
         Input tensor of shape (B, Sx1, Cx1, ...), where Sx1 is the number of slices or subimages.
     x2 : torch.Tensor
         Input tensor of shape (B, Sx2, Cx2, ...), where Sx2 is the number of slices or subimages.
+    return_batched : bool, optional
+        Return paired expanded tensors patched into the batch dimension. 
 
     Returns
     -------
-    Tuple[torch.Tensor, torch.Tensor]
-        - `x1_reshaped` of shape (B, Sx1, Sx2, Cx1, ...) where each slice in `x1` is expanded.
-        - `x2_reshaped` of shape (B, Sx1, Sx2, Cx2, ...) where each slice in `x2` is expanded.
+    torch.Tensor or Tuple[torch.Tensor, torch.Tensor]
+        - If `return_batched=True`, returns:
+            - `batched_paired_tensors` paired expanded tensors patched into the batch dimension.
+        - If `return_batched=False`, returns
+            - `x1_expanded` of shape (B, Sx1, Sx2, Cx1, ...) where each slice in `x1` is expanded.
+            - `x2_expanded` of shape (B, Sx1, Sx2, Cx2, ...) where each slice in `x2` is expanded.
 
     References
     ----------
@@ -1411,7 +1420,28 @@ def cross_expand(x1: torch.Tensor, x2: torch.Tensor) -> Tuple[torch.Tensor, torc
     Bx2, Sx2, Cx2, *x2_spatial = x2.shape
 
     # n-Dimensional reshaping/cartesian product of tensors
-    x1_reshaped = einops.repeat(x1, "Bx1 Sx1 Cx1 ... -> Bx1 Sx1 Sx2 Cx1 ...", Sx2=Sx2)
-    x2_reshaped = einops.repeat(x2, "Bx2 Sx2 Cx2 ... -> Bx2 Sx1 Sx2 Cx2 ...", Sx1=Sx1)
+    x1_expanded = einops.repeat(x1, "Bx1 Sx1 Cx1 ... -> Bx1 Sx1 Sx2 Cx1 ...", Sx2=Sx2)
+    x2_expanded = einops.repeat(x2, "Bx2 Sx2 Cx2 ... -> Bx2 Sx1 Sx2 Cx2 ...", Sx1=Sx1)
 
-    return x1_reshaped, x2_reshaped
+    if return_batched:
+
+        # Raise an error if we're not going to be able to concatenate them
+        if Bx1 != Bx2 or x1_spatial != x2_spatial:
+            raise ValueError(
+                "The tensors must match in their batch and spatial dimensions. Got:"
+                f"x1.shape: {x1.shape}, x2.shape: {x2.shape}"
+            )
+
+        # Concatenate the expanded tensors along their batch dimension
+        paired_tensors = torch.cat([x1_expanded, x2_expanded], dim=3)
+
+        # Take advantage of the batch dimension collect the slices/subimages
+        batched_paired_tensors = einops.rearrange(
+            paired_tensors, "B Sx1 Sx2 C ... -> (B Sx1 Sx2) C ..."
+        )
+
+        return batched_paired_tensors
+
+    else:
+
+        return x1_expanded, x2_expanded
