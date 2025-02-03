@@ -1012,6 +1012,15 @@ class IntegrateVelocityField(nn.Module):
     compounding small, intermediate transformations (by recursive scaling and squaring). This
     ensures the resultant is both smooth and invertable.
 
+    Attributes
+    ----------
+    steps : int
+        The number of squaring steps used for integration.
+    scale : float
+        Scaling factor for the initial velocity field, determined as `1 / (2^steps)`.
+    transformer : nn.Module
+        A spatial transformer module used to iteratively warp the vector field.
+
     Examples
     -------
     ### Integrate a 2D velocity field over multiple steps:
@@ -1029,18 +1038,15 @@ class IntegrateVelocityField(nn.Module):
     >>> displacement_field = integrator(velocity_field)
     >>> displacement_field.shape
     torch.Size([1, 3, 64, 64, 64])
-
-    Attributes
-    ----------
-    steps : int
-        The number of squaring steps used for integration.
-    scale : float
-        Scaling factor for the initial velocity field, determined as `1 / (2^steps)`.
-    transformer : nn.Module
-        A spatial transformer module used to iteratively warp the vector field.
     """
 
-    def __init__(self, shape: tuple, steps: int = 1):
+    def __init__(
+        self, shape: tuple,
+        steps: int = 1,
+        interpolation_mode: str = "bilinear",
+        align_corners: bool = False,
+        device: str = "cpu"
+    ):
         """
         Initialize `IntegrateVelocityField`
 
@@ -1051,6 +1057,13 @@ class IntegrateVelocityField(nn.Module):
         steps : int, optional
             Number of integration steps. A higher value leads to a more smooth and accurate
             integration at the cost of higher/longer computation. Default is 1.
+        interpolation_mode : str
+            Algorithm used for interpolating the warped image. Default is  'bilinear'. Options are:
+            'bilinear' | 'nearest' | 'bicubic'.
+        align_corners : bool
+            Map the corner points of the moving image to the corner points of the warped image.
+        device : str
+            Device to construct and hold the identity grid.
         """
 
         super().__init__()
@@ -1060,7 +1073,8 @@ class IntegrateVelocityField(nn.Module):
 
         self.steps = steps
         self.scale = 1.0 / (2 ** self.steps)  # Initial downscaling factor
-        self.transformer = SpatialTransformer(shape)  # Performs the warping operation
+        # Make the transformer which will perform the warping operation
+        self.transformer = SpatialTransformer(shape, interpolation_mode, align_corners, device)
 
     def forward(self, velocity_field: torch.Tensor) -> torch.Tensor:
         """
