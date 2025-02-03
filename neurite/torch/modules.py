@@ -850,6 +850,35 @@ class CrossConvBlock(ConvBlock):
     ----------
     J. G. Ortiz et al., "UniverSeg: Universal Medical Image Segmentation,"
     GitHub repository, 2023. Available: https://github.com/JJGO/UniverSeg
+
+    Examples
+    --------
+    ### 2D pairwise convolution on CPU
+    >>> # Create random 2D inputs: 5 slices(x1) and 7 slices (x2).
+    >>> x1 = torch.randn(2, 5, 4, 64, 64)
+    >>> x2 = torch.randn(2, 7, 4, 64, 64)
+    >>> # Total in_channels = 4 + 4 = 8; out_channels = 16.
+    >>> cross_conv_block = CrossConvBlock(
+    ...     ndim=2, in_channels=8, out_channels=16, kernel_size=3, padding=1
+    ... )
+    >>> output = cross_conv_block(x1, x2)
+    >>> # Expected output shape: (2, 5, 7, 8, 64, 64)
+    >>> output.shape
+    torch.Size([2, 5, 7, 16, 64, 64])
+
+    ### 3D pairwise convolution on GPU (if available)
+    >>> device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    >>> # Create random 3D inputs:  slices and 6 slices.
+    >>> x1 = torch.randn(1, 13, 1, 64, 64, 64)
+    >>> x2 = torch.randn(1, 17, 1, 64, 64, 64)
+    >>> # Total in_channels = 1 + 1 = 2; out_channels = 16.
+    >>> cross_conv_block = CrossConvBlock(
+    ...     ndim=3, in_channels=2, out_channels=16, kernel_size=3, padding=1
+    ... )
+    >>> output = cross_conv_block(x1, x2)
+    >>> # Expected output shape: (1, 13, 17, 16, 64, 64, 64)
+    >>> output.shape
+    torch.Size([1, 13, 17, 16, 64, 64, 64])
     """
 
     def __init__(
