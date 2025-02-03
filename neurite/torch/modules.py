@@ -9,7 +9,8 @@ __all__ = [
     "TransposedConv",
     "Pool",
     "DownsampleConvBlock",
-    "UpsampleConvBlock"
+    "UpsampleConvBlock",
+    "CrossConvBlock"
 ]
 
 from typing import Union, Type, Optional
