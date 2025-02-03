@@ -1323,7 +1323,7 @@ def make_sample_flow(
     device: str = 'cpu',
     shift_size: int = 1,
     normalize: bool = False,
-    ) -> torch.Tensor:
+) -> torch.Tensor:
     """
     Makes a simple flow field for testing registration in N-dimensional space.
 
@@ -1389,7 +1389,7 @@ def cross_expand(
     x2 : torch.Tensor
         Input tensor of shape (B, Sx2, Cx2, ...), where Sx2 is the number of slices or subimages.
     return_batched : bool, optional
-        Return paired expanded tensors patched into the batch dimension. 
+        Return paired expanded tensors patched into the batch dimension.
 
     Returns
     -------
