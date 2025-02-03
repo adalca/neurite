@@ -8,7 +8,7 @@ __all__ = [
     "VxmDeformable",
 ]
 
-from typing import List, Union, Tuple
+from typing import List, Union, Tuple, Callable
 import torch
 from torch import nn
 from . import modules, utils, layers, random
@@ -53,11 +53,12 @@ class BasicUNet(nn.Module):
         in_channels: int,
         out_channels: int,
         nb_features: List[int] = (16, 16, 16, 16, 16),
-        norms: Union[List[str], str] = None,
-        activations: Union[List[str], str] = nn.ReLU,
-        order: str = 'ncaca',
+        norms: Union[List[Union[Callable, str]], Callable, str, None] = None,
+        activations: Union[List[Union[Callable, str]], Callable, str, None] = nn.ReLU,
+        order: str = 'caca',
         final_activation: Union[str, nn.Module, None] = nn.Sigmoid(),
     ):
+
         """
         Instantiate `BasicUNet`
 
@@ -80,11 +81,8 @@ class BasicUNet(nn.Module):
             a string, or a list of strings/callables.
         order : str, optional
             Order of operations in each convolutional block (e.g., 'ncaca').
-
-        Raises
-        ------
-
         """
+
         super().__init__()
         # Normalization layers
         if not isinstance(norms, list):
@@ -227,8 +225,8 @@ class VxmDeformable(BasicUNet):
         in_channels: int,
         out_channels: int,
         nb_features: List[int] = (16, 16, 16, 16, 16),
-        norms: Union[List[str], str] = None,
-        activations: Union[List[str], str] = nn.ReLU,
+        norms: Union[List[Union[Callable, str]], Callable, str, None] = None,
+        activations: Union[List[Union[Callable, str]], Callable, str, None] = nn.ReLU,
         order: str = 'caca',
         final_activation: Union[str, nn.Module, None] = None,
         flow_initializer: Union[float, random.Sampler] = random.Normal(0, 1e-5),
