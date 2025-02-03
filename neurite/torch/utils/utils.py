@@ -42,11 +42,13 @@ __all__ = [
     "derive_dense_displcement_field_from_affines",
     "make_grid",
     "make_sample_checkerboard_image",
-    "make_sample_flow"
+    "make_sample_flow",
+    "cross_expand",
 ]
 
 from typing import Union, List, Tuple
 import inspect
+import einops
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -1367,3 +1369,49 @@ def make_sample_flow(
         flow_field[:, 0, ...] /= (spatial_dims[0] - 1)
 
     return flow_field
+
+
+def cross_expand(x1: torch.Tensor, x2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Expands `x1` and `x2` along new dimensions to create pairwise combinations.
+
+    Each slice in `x1` is expanded along a new axis to match every slice in `x2`, and vice versa.
+    This is essentially just taking the cartesian product of two tensors at their second dimension.
+
+    Parameters
+    ----------
+    x1 : torch.Tensor
+        Input tensor of shape (B, Sx1, Cx1, ...), where Sx1 is the number of slices or subimages.
+    x2 : torch.Tensor
+        Input tensor of shape (B, Sx2, Cx2, ...), where Sx2 is the number of slices or subimages.
+
+    Returns
+    -------
+    Tuple[torch.Tensor, torch.Tensor]
+        - `x1_reshaped` of shape (B, Sx1, Sx2, Cx1, ...) where each slice in `x1` is expanded.
+        - `x2_reshaped` of shape (B, Sx1, Sx2, Cx2, ...) where each slice in `x2` is expanded.
+
+    References
+    ----------
+    J. G. Ortiz et al., "UniverSeg: Universal Medical Image Segmentation," 
+    GitHub repository, 2023. Available: https://github.com/JJGO/UniverSeg
+
+    Examples
+    --------
+    ### Cross expansion of two 2D tensors
+    >>> x1 = torch.randn(1, 3, 4, 5, 6)
+    >>> x2 = torch.randn(1, 7, 8, 9, 10)
+    >>> x1_cross_expanded, x2_cross_expanded = cross_expand(x1, x2)
+    >>> print(x1_cross_expanded.shape, x2_cross_expanded.shape)
+    torch.Size([1, 3, 7, 4, 5, 6]) torch.Size([1, 3, 7, 8, 9, 10])
+    """
+
+    # Unpack to get Sx1 and Sx2 slice dimensions
+    Bx1, Sx1, Cx1, *x1_spatial = x1.shape  # Could've used x1.size(1), but I like it this way :)
+    Bx2, Sx2, Cx2, *x2_spatial = x2.shape
+
+    # n-Dimensional reshaping/cartesian product of tensors
+    x1_reshaped = einops.repeat(x1, "Bx1 Sx1 Cx1 ... -> Bx1 Sx1 Sx2 Cx1 ...", Sx2=Sx2)
+    x2_reshaped = einops.repeat(x2, "Bx2 Sx2 Cx2 ... -> Bx2 Sx1 Sx2 Cx2 ...", Sx1=Sx1)
+
+    return x1_reshaped, x2_reshaped
