@@ -37,6 +37,7 @@ __all__ = [
     "SampleImageFromLabels",
     "SpatialTransformer",
     "IntegrateVelocityField",
+    "ResizeDisplacementField"
 ]
 
 from typing import Optional, Union, Tuple, List
@@ -1102,3 +1103,74 @@ class IntegrateVelocityField(nn.Module):
             velocity_field = velocity_field + self.transformer(velocity_field, velocity_field)
 
         return velocity_field
+
+
+class ResizeDisplacementField(nn.Module):
+    """
+    Resize and rescale a displacement field.
+
+    Resizd a displacement field both spatially (via interpolation) and in magnitude (via scaling).
+
+    Examples
+    -------
+    ### Resize a 2D displacement field
+    >>> resize_field = ResizeDisplacementField(scale_factor=2.0, interpolation_mode="bilinear")
+    >>> displacement_field = torch.rand(1, 2, 16, 16)  # Example displacement field in 2d
+    >>> resized_displacement_field = resize_field(displacement_field)
+    >>> print(resized_displacement_field.shape)  # Should be larger if scale_factor > 1
+    torch.Size([1, 2, 32, 32])
+    """
+
+    def __init__(
+        self,
+        scale_factor: Optional[Union[float, int, Sampler]] = 1.0,
+        interpolation_mode: str = "bilinear",
+        align_corners: bool = True,
+    ):
+        """
+        Instantiate the `ResizeDisplacementField` module.
+
+        Parameters
+        ----------
+        scale_factor : Optional[Union[float, int, Sampler]], optional
+            Factor by which to stretch or shrink the spatial dimensions of the displacement field.
+            Values of `scale_factor` > 1 stretch/expand the field, and values < 1 shrink it. By
+            default None.
+        interpolation_mode : str
+            Algorithm used for interpolating the warped image. Default is  'bilinear'. Options are:
+            'bilinear' | 'nearest' | 'bicubic', 'trilinear'.
+        align_corners : bool
+            Map the corner points of the moving image to the corner points of the warped image.
+        """
+        super().__init__()
+        self.interpolation_mode = interpolation_mode
+        self.align_corners = align_corners
+        self.scale_factor = Fixed.make(scale_factor)
+
+    def forward(self, displacement_field: torch.Tensor) -> torch.Tensor:
+        """
+        Instantiate the `ResizeDisplacementField` object.
+
+        Parameters
+        ----------
+        displacement_field : torch.Tensor
+            Vector field of shape (B, C, H, W) representing a displacement field, where C represents
+            each spatial component of the vector field.
+
+        Returns
+        -------
+        torch.Tensor
+            Resized displacement field.
+        """
+
+        # Sample from the scaling sampler. If type Fixed, just get the fixed value!
+        scale_factor = self.scale_factor()
+
+        resized_displacement_field = F.interpolate(
+            displacement_field * scale_factor,  # Scale the magnitudes of the displacement field
+            scale_factor=scale_factor,
+            mode=self.interpolation_mode,
+            align_corners=self.align_corners,
+        )
+
+        return resized_displacement_field
