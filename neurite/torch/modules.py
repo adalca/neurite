@@ -13,6 +13,7 @@ __all__ = [
 ]
 
 from typing import Union, Type, Optional
+import einops
 import torch
 from torch import nn
 from . import utils
@@ -396,6 +397,7 @@ class ConvBlock(nn.Sequential):
         >>> print(output_tensor.shape)
         torch.Size([1, 32, 64, 64])
         """
+
         super().__init__()
         layers = nn.ModuleDict()
         self.order = list(order)  # make string of letters into list of letters
@@ -827,3 +829,124 @@ class UpsampleConvBlock(nn.Module):
             return self.conv_block(features)
         else:
             return self.conv_block(self.upsample(input_tensor))
+
+
+class CrossConvBlock(ConvBlock):
+    """
+    nD Convolutional layer that performs pairwise convolutions between slice elements of two input
+    tensors.
+
+    Notes
+    -----
+    Modified from the original description in https://github.com/JJGO/UniverSeg:
+    The pairwise convolution is computed by first forming a Cartesian product of the slices in `x1`
+    and `x2`. For example, if `x1` has Sx1 slices and `x2` has Sx2 slices, then the concatenated
+    tensor has shape (B, Sx1, Sx2, Cx1 + Cx2, ...). This tensor is reshaped to combine the first
+    three dimensions so that the standard nn.Conv*d can be applied. Finally, the output is reshaped
+    back to separate the batch and slice indices.
+
+    References
+    ----------
+    J. G. Ortiz et al., "UniverSeg: Universal Medical Image Segmentation,"
+    GitHub repository, 2023. Available: https://github.com/JJGO/UniverSeg
+    """
+
+    def __init__(
+        self,
+        ndim: int,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int = 3,
+        stride: int = 1,
+        padding: int = 1,
+        dilation: int = 1,
+        groups: int = 1,
+        bias: bool = True,
+        norm: Union[str, nn.Module, None] = None,
+        activation: Union[str, nn.Module, None] = None,
+        order: str = 'cna',
+    ):
+        """
+        Initialize the `CrossConvBlock` module.
+
+        Parameters
+        ----------
+        ndim : int
+            Dimensionality of the convolution (1 for Conv1d, 2 for Conv2d, 3 for Conv3d).
+        in_channels : int
+            Combined number of channels between `x1` and `x2`.
+        out_channels : int
+            Number of output channels.
+        kernel_size : int or tuple, optional
+            Size of the convolving kernel. Default is 3.
+        stride : int or tuple, optional
+            Stride of the convolution. Default is 1.
+        padding : int or tuple, optional
+            Padding added to all sides of the input. Default is 1.
+        dilation : int or tuple, optional
+            Spacing between kernel elements. Every `dilation`-th element is used. Default is 1.
+        groups : int, optional
+            Number of blocked connections from input to output channels. Default is 1.
+        bias : bool, optional
+            If True, a learnable bias is added to the output. Default is True.
+
+        norm : str, nn.Module, or None, optional
+            Defines the normalization layer. Can be one of:
+            - A string: Supported options are 'batch', 'instance', 'layer', or 'group'.
+            - A `Norm` module: Instantiated or uninstantiated `Norm` layer.
+                e.g. nn.InstanceNorm3d(16) or nn.InstanceNorm3d
+            - `None`: No normalization is applied. Default is `None`.
+
+        activation : str, nn.Module, or None, optional
+            Defines the activation layer. Can be one of:
+            - A string: Supported options are 'relu', 'leaky_relu', or 'elu'.
+            - A `nn.Module`: Instantiated or uninstantiated activation module.
+                e.g. nn.Sigmoid(), nn.Sigmoid
+            - `None`: No activation is applied. Default is `None`.
+
+        order : str, optional
+            The order of operations in the block. Default is 'cna'
+            (normalization -> convolution -> activation).
+            Each character in the string represents one of the following:
+            - `'c'`: Convolution
+            - `'n'`: Normalization
+            - `'a'`: Activation
+        """
+
+        super().__init__(
+            ndim=ndim, in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size,
+            stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, norm=norm,
+            activation=activation, order=order
+        )
+
+    def forward(
+        self,
+        x1: torch.Tensor,
+        x2: torch.Tensor,
+    ):
+        """
+        Compute pairwise convolution between all slices of x1 and x2.
+
+        Parameters
+        ----------
+        x1 : torch.Tensor
+            Input tensor of shape (B, Sx1, Cx1, ...), where Sx1 is the number of slices or
+            subimages.
+        x2 : torch.Tensor
+            Input tensor of shape (B, Sx2, Cx2, ...), where Sx2 is the number of slices or
+            subimages.
+        """
+
+        # Compute all pairs of slices and patch into batch dimension
+        batched_paired_tensors = utils.cross_expand(x1, x2)
+
+        # Run through `ConvBlock`
+        batched_output = super().forward(batched_paired_tensors)
+
+        output = einops.rearrange(
+            batched_output,
+            "(B Sx1 Sx2) C ... -> B Sx1 Sx2 C ...",
+            B=x1.size(0), Sx1=x1.size(1), Sx2=x2.size(1)
+        )
+
+        return output
