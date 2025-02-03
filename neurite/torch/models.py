@@ -5,14 +5,13 @@ components of the neurite for streamlined object construction.
 """
 __all__ = [
     "BasicUNet",
-    "BasicRegistrationUNet"
+    "VxmDeformable",
 ]
 
-from typing import List, Union, Tuple, Optional, Callable
+from typing import List, Union, Tuple
 import torch
 from torch import nn
-import neurite as ne
-from . import modules, utils
+from . import modules, utils, layers, random
 
 
 class BasicUNet(nn.Module):
@@ -173,7 +172,7 @@ class BasicUNet(nn.Module):
         return feature_tensor
 
 
-class BasicRegistrationUNet(ne.models.BasicUNet):
+class VxmDeformable(BasicUNet):
     '''
     A network archetecture built on `BasicUNet` to perform nD image registration using a flow field.
 
@@ -232,7 +231,7 @@ class BasicRegistrationUNet(ne.models.BasicUNet):
         activations: Union[List[str], str] = nn.ReLU,
         order: str = 'caca',
         final_activation: Union[str, nn.Module, None] = None,
-        flow_initializer: Union[float, ne.random.Sampler] = ne.random.Normal(0, 1e-5),
+        flow_initializer: Union[float, random.Sampler] = random.Normal(0, 1e-5),
         bidirectional_cost: bool = False,
         integration_steps: int = 0,
         resize_integrated_fields: bool = False,
@@ -240,7 +239,7 @@ class BasicRegistrationUNet(ne.models.BasicUNet):
     ):
 
         """
-        Initialize the `RegistrationUNet`.
+        Initialize the `VxmDeformable`.
 
         Parameters
         ----------
@@ -298,7 +297,7 @@ class BasicRegistrationUNet(ne.models.BasicUNet):
         register: bool = False
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
-        Forward pass of `BasicRegistrationUNet`.
+        Forward pass of `VxmDeformable`.
 
         The forward pass concatenates the `source` and `target` images, passes them through the
         `BasicUNet` backbone, applies a flow layer to obtain the flow (velocity) field, then warps
@@ -382,7 +381,7 @@ class BasicRegistrationUNet(ne.models.BasicUNet):
         self,
         ndim: int,
         features: int,
-        flow_initializer: Union[float, ne.random.Sampler] = ne.random.Normal(0, 1e-5)
+        flow_initializer: Union[float, random.Sampler] = random.Normal(0, 1e-5)
     ):
 
         """
@@ -405,13 +404,13 @@ class BasicRegistrationUNet(ne.models.BasicUNet):
         """
 
         # Initialize the conv ("flow") layer with congruent in and out features
-        flow_layer = ne.modules.ConvBlock(ndim, features, features).to(self.device)
+        flow_layer = modules.ConvBlock(ndim, features, features).to(self.device)
 
         # Optionally, apply custom initialization if `flow_initializer`` is provided
         if flow_initializer is not None:
 
             # Make the distribution to sample the flow parameters
-            flow_initializer = ne.random.Fixed.make(flow_initializer)
+            flow_initializer = random.Fixed.make(flow_initializer)
 
             # Sample the weight parameters from the distribution for first (and only) conv
             flow_layer.conv0.weight = nn.Parameter(
@@ -456,7 +455,7 @@ class BasicRegistrationUNet(ne.models.BasicUNet):
         if not hasattr(self, "velocity_field_integrator"):
 
             # Dynamically construct the integrator based on the spatial shape
-            velocity_field_integrator = ne.torch.layers.IntegrateVelocityField(
+            velocity_field_integrator = layers.IntegrateVelocityField(
                 shape=pos_flow.shape[2:], steps=self.integration_steps, device=self.device
             )
 
@@ -500,7 +499,7 @@ class BasicRegistrationUNet(ne.models.BasicUNet):
 
         if not hasattr(self, "spatial_transformer"):
             # Dynamically construct the spatial transformer with the correct spatial shape
-            spatial_transformer = ne.layers.SpatialTransformer(
+            spatial_transformer = layers.SpatialTransformer(
                 size=moving_image.shape[2:], device=self.device
             )
 
