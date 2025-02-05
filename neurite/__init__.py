@@ -39,8 +39,13 @@ if backend == 'pytorch':
     except ImportError:
         raise ImportError('Please install pytorch to use this neurite backend')
 
-    from . import torch
+    from . import torch as torch_backend
     from .torch import *
+
+    # Explicitly assign backend
+    models = torch_backend.models
+    layers = torch_backend.layers
+
 else:
     # tensorflow is default backend
     try:
