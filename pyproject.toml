@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neurite"
+description = "Neural networks toolbox focused on medical image analysis."
+authors = [
+    {name="Adrian V. Dalca"},
+    {name="Etienne Chollet", email="etiennepchollet@gmail.com"},
+    {name="Malte Hoffmann"},
+    {name="Andrew Hoopes"}
+]
+maintainers = [{name = "Etienne Chollet", email = "etiennepchollet@gmail.com"}]
+dependencies = ["einops", "pystrum"]
+readme = "README.md"
+keywords = ["python", "pytorch", "medical-imaging", "segmentation", "medical-image-computing"]
+
+[project.urls]
+GitHub = "https://github.com/adalca/neurite"
+PyPi = "https://pypi.org/project/neurite/0.1/"
