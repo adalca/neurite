@@ -103,9 +103,9 @@ def fs_lut_to_cmap(lut):
     fs_cmap = ne.py.utils.fs_lut_to_cmap(lut)
 
     Args:
-        lut (dict/str): string (path to LUT file) or 
-            dict with keys being integers (label ids), and each value should be a 
-            dictionary with the key 'color' which is a list with 3 elements, 
+        lut (dict/str): string (path to LUT file) or
+            dict with keys being integers (label ids), and each value should be a
+            dictionary with the key 'color' which is a list with 3 elements,
             the RGB colors (0 to 255)
 
     Returns:
