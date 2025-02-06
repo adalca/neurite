@@ -94,7 +94,8 @@ def _load_backend_module(backend: str) -> None:
     if backend == "pytorch":
 
         try:
-            import torch  # noqa: F401
+            import torch  # noqa: C0415
+            from . import torch  # noqa: C0415
 
         except ImportError as error:
             raise ImportError(
@@ -107,7 +108,7 @@ def _load_backend_module(backend: str) -> None:
     elif backend == "tensorflow":
 
         try:
-            import tensorflow  # noqa: F401
+            import tensorflow  # noqa: C0415
 
         except ImportError as error:
             raise ImportError(
@@ -132,10 +133,11 @@ def _load_backend_module(backend: str) -> None:
         if not attr.startswith("_"):
             globals()[attr] = getattr(backend_module, attr)
 
+    return backend_module_name
 
 # Determine the backend to use via py.utils.get_backend.
 _backend = py.utils.get_backend()
-_load_backend_module(_backend)
+backend_module_name = _load_backend_module(_backend)
 
 
 # Optionally, define __all__ to control the public API.
@@ -146,3 +148,11 @@ __all__ = [
         "pkg_version", "importlib", "logging", "logger", "_MIN_PYSTRUM_VERSION"
         }
     ]
+
+# From Etienne (2025-02-06): please do not remove. If removed, VS code's language server gets
+# confused and doesn't show function/class documentation. This can be ameliorated by removing the
+# dynamic backend, but we likely do not want to do that.
+if backend_module_name == ".torch":
+    from .torch import *
+else:
+    from .tf import *
