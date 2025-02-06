@@ -17,7 +17,7 @@ def get_backend():
     Returns the currently used backend. Default is tensorflow unless the
     NEURITE_BACKEND environment variable is set to 'pytorch'.
     """
-    return 'pytorch' if os.environ.get('NEURITE_BACKEND') == 'pytorch' else 'tensorflow'
+    return 'tensorflow' if os.environ.get('NEURITE_BACKEND') == 'tensorflow' else 'pytorch'
 
 
 def softmax(x, axis):
