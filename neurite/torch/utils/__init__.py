@@ -1,8 +1,13 @@
 """
 This package contains various torch utilities.
 """
+from .. import import_submodules
 
-from . import utils
-
-from .augment import *
-from .utils import *
+import_submodules(
+    [
+        "augment",
+        "utils",
+    ],
+    __name__,
+    import_into=True
+)

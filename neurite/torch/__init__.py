@@ -20,12 +20,19 @@ models
     segmentation, registration, or classification. models leverage layers and modules from
     other components of the neurite for streamlined object construction.
 """
-# Importing modules
-from . import layers
-from . import losses
-from . import random
-from . import utils
-from . import modules
-from . import models
 
-from .utils import *
+# Relative import from parent `neurite` __init__.py
+from .. import import_submodules
+
+import_submodules(
+    [
+        "layers",
+        "losses",
+        'modules',
+        'models',
+        "random",
+        "utils",
+    ],
+    __name__,
+    import_into=True
+)
