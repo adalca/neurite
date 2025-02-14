@@ -50,56 +50,6 @@ if (
     )
 
 
-def import_submodules(
-    submodules: List[str],
-    module: str,
-    all_names: Optional[List[str]] = None,
-    import_into: bool = False
-) -> None:
-    """
-    Pre-import submodules into a parent module so that submodules (and optionally
-    their public objects) can be accessed directly from the parent.
-
-    Parameters
-    ----------
-    submodules : List[str]
-        Names of submodules to import.
-    module : str
-        The full name of the parent module, typically given by `__name__`.
-    all_names : Optional[List[str]]
-        Reference to the parent module's `__all__` list, which will be populated
-        with the imported submodules' names and, if requested, their objects.
-    import_into : bool, optional
-        If True, also import all objects listed in each submodule's `__all__`
-        attribute into the parent module. Default is False.
-    """
-
-    parent_module = import_module(module)
-
-    for submodule_name in submodules:
-
-        # Add the relative import thing
-        relative_name = '.' + submodule_name
-        child_module = import_module(relative_name, module)
-        setattr(parent_module, submodule_name, child_module)
-
-        if all_names is not None:
-            all_names.append(submodule_name)
-
-        # Get all the public attributes of the submodule from __all__ and make them available at
-        # this level
-        if import_into:
-            # Get all public attributes explicitly defined in the __all__
-            public_attributes_of_submodule = getattr(child_module, "__all__", None)
-            if public_attributes_of_submodule is not None:
-                for attribute in public_attributes_of_submodule:
-                    setattr(parent_module, attribute, getattr(child_module, attribute))
-
-                    if all_names is not None:
-                        print(attribute)
-                        all_names.append(attribute)
-
-
 def _load_backend_module(backend: str) -> None:
     """
     Dynamically load the backend-specifuc module and import its public symbols into the global
