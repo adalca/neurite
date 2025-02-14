@@ -310,7 +310,7 @@ class ConvBlock(nn.Sequential):
         bias: bool = True,
         norm: Union[str, nn.Module, None] = None,
         activation: Union[str, nn.Module, None] = None,
-        order: str = 'cna'
+        order: str = 'cna',
     ):
         """
         Initialize the `ConvBlock`.
@@ -400,6 +400,7 @@ class ConvBlock(nn.Sequential):
         """
 
         super().__init__()
+
         layers = nn.ModuleDict()
         self.order = list(order)  # make string of letters into list of letters
         valid_operations = ['c', 'n', 'a']
@@ -446,13 +447,6 @@ class ConvBlock(nn.Sequential):
         # Add layers to `Sequential`
         for name, layer in layers.items():
             self.add_module(name, layer)
-
-        # Add layers to `Sequential`
-        # for name, layer in self.layers.items():
-        #    self.add_module(name, layer)
-
-        # Create the Sequential container
-        # super(ConvBlock, self).__init__(*layers)
 
 
 class TransposedConv(nn.Module):
@@ -652,6 +646,7 @@ class DownsampleConvBlock(nn.Module):
         pool_mode: str = "max",
         pool_kernel_size: int = 2,
         order='nca',
+        return_residual: bool = False,
     ):
         """
         Initialize the `DownsampleConvBlock`.
@@ -685,8 +680,11 @@ class DownsampleConvBlock(nn.Module):
             - `'c'`: Convolution
             - `'n'`: Normalization
             - `'a'`: Activation
+        return_residual : bool
+            Optionally return a residual (skip connection) from the output of the forward pass.
         """
         super().__init__()
+        self.return_residual = return_residual
 
         self.conv_block = ConvBlock(
             ndim=ndim,
@@ -702,7 +700,7 @@ class DownsampleConvBlock(nn.Module):
 
         self.pool = Pool(ndim=ndim, pool_mode=pool_mode, kernel_size=pool_kernel_size)
 
-    def forward(self, input_tensor: torch.Tensor, return_residual: bool = False) -> torch.Tensor:
+    def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
         Forward pass of the downsampling convolutional block.
 
@@ -716,7 +714,8 @@ class DownsampleConvBlock(nn.Module):
         torch.Tensor
             Downsampled tensor after applying convolution and pooling.
         """
-        if return_residual:
+
+        if self.return_residual:
             conv_resultant = self.conv_block(input_tensor)
             return self.pool(conv_resultant), conv_resultant
         else:

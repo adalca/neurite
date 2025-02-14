@@ -915,6 +915,7 @@ def make_downsampling_conv_blocks(
     pool_mode: str = "max",
     pool_kernel_size: int = 2,
     order: str = 'nca',
+    return_residual: bool = False,
 ) -> nn.ModuleList:
     """
     Create an `nn.ModuleList` of downsampling conv blocks based the number of features per layer.
@@ -946,6 +947,8 @@ def make_downsampling_conv_blocks(
         - `'c'`: Convolution
         - `'n'`: Normalization
         - `'a'`: Activation
+    return_residual : bool
+        Optionally return a residual (skip connection) from the output of the forward pass.
 
     Returns
     -------
@@ -990,7 +993,8 @@ def make_downsampling_conv_blocks(
             activation=activations[i],
             pool_mode=pool_mode,
             pool_kernel_size=pool_kernel_size,
-            order=order
+            order=order,
+            return_residual=return_residual,
         )
 
         downsampling_conv_blocks.append(downsampling_conv_block)
