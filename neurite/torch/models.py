@@ -272,6 +272,7 @@ class BasicAutoencoder(nn.Module):
             order=order,
         )
 
+        # Add bottleneck to downsampling_conv_blocks so users can easily predict the latent space.
         self.downsampling_conv_blocks = self.downsampling_conv_blocks.append(bottleneck)
 
         # Decoder network
