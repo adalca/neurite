@@ -24,6 +24,7 @@ models
 # Relative import from parent `neurite` __init__.py
 
 from . import samplers
+from . import utils
 from . import models
 from . import modules
 from . import layers
@@ -32,6 +33,7 @@ from . import losses
 # Allows us to import symbols within `models` for example, by doing `ne.BasicUNet` instead of
 # `ne.models.BasicUNet`
 from .samplers import *
+from .utils import *
 from .models import *
 from .modules import *
 from .layers import *

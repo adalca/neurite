@@ -17,7 +17,7 @@ from typing import Union, Type, Optional, Tuple
 import einops
 import torch
 from torch import nn
-from .utils import utils
+import neurite as ne
 
 
 class Norm(nn.Module):
@@ -115,7 +115,7 @@ class Norm(nn.Module):
         super().__init__()
 
         # Norm object has been instantiated with parameters
-        if utils.is_instantiated_normalization(norm_type):
+        if ne.utils.is_instantiated_normalization(norm_type):
             self.norm = norm_type
             return
 
@@ -1010,7 +1010,7 @@ class CrossConvBlock(ConvBlock):
         """
 
         # Compute all pairs of slices and patch into batch dimension
-        batched_paired_tensors = utils.cross_expand(target, support)
+        batched_paired_tensors = ne.utils.cross_expand(target, support)
 
         # perform the cross convolution
         batched_output = super().forward(batched_paired_tensors)
