@@ -258,11 +258,12 @@ class BasicAutoencoder(nn.Module):
             norms=self.norms,
             activations=self.activations,
             order=order,
+            return_residual=False,
         )
 
         # Bottleneck layer (latent space)
-        self.bottleneck = modules.ConvBlock(
-            ndim=ndim, 
+        bottleneck = modules.ConvBlock(
+            ndim=ndim,
             in_channels=nb_features[-1],
             out_channels=latent_features,
             kernel_size=1,
@@ -270,6 +271,8 @@ class BasicAutoencoder(nn.Module):
             activation=activations if callable(activations) else nn.ReLU(),
             order=order,
         )
+
+        self.downsampling_conv_blocks = self.downsampling_conv_blocks.append(bottleneck)
 
         # Decoder network
         self.upsampling_conv_blocks = utils.make_upsampling_conv_blocks(
@@ -309,10 +312,7 @@ class BasicAutoencoder(nn.Module):
 
         # Downsampling path
         for downsampling_conv_block in self.downsampling_conv_blocks:
-            feature_tensor = downsampling_conv_block(feature_tensor, return_residual=False)
-
-        # Bottleneck
-        feature_tensor = self.bottleneck(feature_tensor)
+            feature_tensor = downsampling_conv_block(feature_tensor)
 
         # Decode
         for upsampling_conv_block in self.upsampling_conv_blocks:
