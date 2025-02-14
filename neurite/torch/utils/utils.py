@@ -974,7 +974,7 @@ def make_downsampling_conv_blocks(
         activations = [activations] * len(nb_features)
 
     # Init container for downsampling convs
-    downsampling_conv_blocks = nn.ModuleList()
+    downsampling_conv_blocks = nn.Sequential()
 
     # Make downsampling conv block and append to list of them
     for i in range(len(nb_features) - 1):
