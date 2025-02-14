@@ -45,6 +45,7 @@ __all__ = [
     "make_sample_flow",
     "cross_expand",
     "filter_dim",
+    "crop_to_nearest_multiple"
 ]
 
 from typing import Union, List, Tuple
@@ -1531,3 +1532,73 @@ def filter_dim(
         )
 
     return filtered_tensor
+
+
+def crop_to_nearest_multiple(tensor, multiple=128):
+    """
+    Crops the spatial dimensions of a tensor to the nearest multiple of
+    `multiple`. Supports 1D, 2D, or 3D spatial dimensions.
+
+    Parameters
+    ----------
+    tensor : torch.Tensor
+        The input tensor with shape (B, C, *spatial_dims), where `spatial_dims`
+        can represent 1D, 2D, or 3D spatial dimensions.
+    multiple : int, optional
+        The multiple to which spatial dimensions are cropped. Default is 128.
+
+    Returns
+    -------
+    torch.Tensor
+        The tensor with spatial dimensions cropped to the nearest multiple of
+        `multiple`.
+
+    Examples
+    --------
+    >>> import torch
+    >>> tensor_1d = torch.randn(1, 3, 250)  # 1D spatial tensor
+    >>> cropped_1d = crop_to_nearest_multiple(tensor_1d, multiple=64)
+    >>> cropped_1d.shape
+    torch.Size([1, 3, 192])
+
+    >>> tensor_2d = torch.randn(1, 3, 250, 330)  # 2D spatial tensor
+    >>> cropped_2d = crop_to_nearest_multiple(tensor_2d, multiple=128)
+    >>> cropped_2d.shape
+    torch.Size([1, 3, 128, 256])
+
+    >>> tensor_3d = torch.randn(1, 3, 100, 250, 330)  # 3D spatial tensor
+    >>> cropped_3d = crop_to_nearest_multiple(tensor_3d, multiple=64)
+    >>> cropped_3d.shape
+    torch.Size([1, 3, 64, 192, 320])
+    """
+    # Ensure the tensor has at least 3 dimensions (batch, channel, and spatial)
+    if tensor.ndim < 3:
+        raise ValueError(
+            "Tensor must have at least 3 dimensions (B, C, *spatial_dims)."
+        )
+
+    # Get the spatial dimensions (ignoring batch and channel dimensions)
+    spatial_dims = tensor.shape[2:]
+
+    # Compute the new spatial shape (nearest multiple of `multiple`)
+    new_spatial_shape = [
+        dim - (dim % multiple) for dim in spatial_dims
+    ]
+
+    # Compute the starting indices to center the crop
+    start_indices = [
+        (dim - new_dim) // 2 for dim, new_dim in zip(
+            spatial_dims, new_spatial_shape
+        )
+    ]
+
+    # Compute the slices for cropping (batch and channel are untouched)
+    slices = [slice(None), slice(None)] + [
+        slice(start, start + new_dim)
+        for start, new_dim in zip(start_indices, new_spatial_shape)
+    ]
+
+    # Apply the slices to crop the tensor
+    cropped_tensor = tensor[tuple(slices)]
+
+    return cropped_tensor
