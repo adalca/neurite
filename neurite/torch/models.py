@@ -5,6 +5,7 @@ components of the neurite for streamlined object construction.
 """
 __all__ = [
     "BasicUNet",
+    "BasicAutoencoder",
     "VxmDeformable",
 ]
 
@@ -170,8 +171,66 @@ class BasicUNet(nn.Module):
         return feature_tensor
 
 
+class BasicAutoencoder(nn.Module):
+    """
+    Flexible autoencoder.
+
+    Attributes
+    ----------
+    downsampling_conv_blocks : nn.ModuleList
+        Downsampling convolutional blocks.
+    lowest_resolution_conv_block : nn.Module
+        Central convolutional block at the lowest spatial resolution.
+    upsampling_conv_blocks : nn.ModuleList
+        Upsampling convolutional blocks.
+    out_layer : nn.Module
+        Final output layer.
+    """
+    def __init__(
+        self,
+        ndim: int,
+        in_channels: int,
+        latent_features: int,
+        out_channels: int
+    ):
+        """
+        Instantiate `BasicAutoencoder`.
+
+        Parameters
+        ----------
+        ndim : int
+            Dimensionality of the input (1, 2, or 3).
+        in_channels : int
+            Number of input channels.
+        latent_features : int
+            Number of features/channels in the latent space.
+        out_channels : int
+            Number of output channels.
+        """
+
+        super().__init__()
+
+        raise NotImplementedError("`BasicAutoencoder` isn't ready yet :(")
+
+    def forward(self, feature_tensor: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass through the `BasicAutoencoder` model.
+
+        Parameters
+        ----------
+        feature_tensor : torch.Tensor
+            Tensor to be passed through the model. Assumed to have batch and channel dimensions.
+
+        Returns
+        -------
+        torch.Tensor
+            Result of forward pass of the model.
+        """
+        raise NotImplementedError("`BasicAutoencoder` Doesn't have a forward pass :(")
+
+
 class VxmDeformable(BasicUNet):
-    '''
+    """
     A network archetecture built on `BasicUNet` to perform nD image registration using a flow field.
 
     Parameters
@@ -217,7 +276,7 @@ class VxmDeformable(BasicUNet):
     forward(source, target)
         Combines source and target images, processes them through the
         UNet and the flow layer, and returns the resulting flow field.
-    '''
+    """
 
     def __init__(
         self,
