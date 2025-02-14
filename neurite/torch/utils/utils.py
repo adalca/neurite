@@ -44,6 +44,7 @@ __all__ = [
     "make_sample_checkerboard_image",
     "make_sample_flow",
     "cross_expand",
+    "filter_dim",
 ]
 
 from typing import Union, List, Tuple
@@ -1455,3 +1456,78 @@ def cross_expand(
     else:
 
         return x1_expanded, x2_expanded
+
+
+def filter_dim(
+    tensor: torch.Tensor,
+    dim: int = 0,
+    verbose: bool = False
+) -> torch.Tensor:
+    """
+    Filters dimensions of a tensor that contain NaNs, infinite values, or are entirely zero.
+
+    Parameters:
+    ----------
+    tensor : torch.Tensor
+        An n-dimensional tensor.
+    verbose : bool, optional
+        If True, prints the number of elements filtered for each condition. Default is False.
+
+    Returns:
+    -------
+    torch.Tensor
+        The filtered tensor containing only dim elements without NaNs, infinite values, and not
+        entirely zeros.
+    """
+
+    dims_to_test = list(range(tensor.dim()))
+    dims_to_test.remove(dim)
+
+    # Create mask for batches without any NaN values.
+    nan_mask = ~torch.isnan(tensor).any(dim=dims_to_test)
+    nan_mask = torch.nonzero(nan_mask, as_tuple=True)[0]
+
+    # Filter out batches that contain NaNs
+    filtered_tensor = torch.index_select(tensor, dim, nan_mask)
+
+    # Create mask for batches without any infinite values
+    inf_mask = ~torch.isinf(filtered_tensor).any(dim=dims_to_test)
+    inf_mask = torch.nonzero(inf_mask, as_tuple=True)[0]
+
+    # Filter out batches that contain infinite values
+    filtered_tensor = torch.index_select(filtered_tensor, dim, inf_mask)
+
+    # Create mask for batches that are not entirely zeros
+    zero_mask = ~torch.all(filtered_tensor == 0, dim=dims_to_test)
+    zero_mask = torch.nonzero(zero_mask, as_tuple=True)[0]
+    # Filter out batches that are entirely zeros
+    filtered_tensor = torch.index_select(filtered_tensor, dim, zero_mask)
+
+    if verbose:
+        # Print number of batches removed due to NaNs
+        n_nans = torch.sum(~nan_mask)
+        print("N Batches with NaNs: ", n_nans)
+
+        # Pring number of batches removed due to infinite values
+        n_infs = torch.sum(~inf_mask)
+        print("N Batches with Inf: ", n_infs)
+
+        # Print number of batches removed because they were entirely zeros
+        n_zeros = torch.sum(zero_mask)
+        print("N Batches with Zero: ", n_zeros)
+
+    has_zero_dim = torch.any(
+        torch.tensor(filtered_tensor.shape) == 0
+    )
+
+    if has_zero_dim:
+        zero_dims = []
+        for d, size in enumerate(tensor.shape):
+            if size == 0:
+                zero_dims.append(d)
+
+        raise ValueError(
+            f"Dimension {zero_dims} of the filtered tensor has shape == 0."
+        )
+
+    return filtered_tensor
