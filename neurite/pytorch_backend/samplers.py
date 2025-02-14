@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 """
 Random (samplers) for the neurite project.
 """
+
 __all__ = [
     "register_init_arguments",
     "ensure_list",

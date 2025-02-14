@@ -54,8 +54,9 @@ import einops
 import torch
 import torch.nn.functional as F
 from torch import nn
-from neurite.torch.random import Fixed, RandInt, Sampler, Normal, Uniform
-from neurite.torch import modules
+# from neurite.pytorch_backend.samplers import Fixed, RandInt, Sampler, Normal, Uniform
+# from neurite.pytorch_backend import modules
+import neurite.pytorch_backend as ne
 
 
 def identity(input_argument):
@@ -65,10 +66,10 @@ def identity(input_argument):
 
 def soft_quantize(
     input_tensor: torch.Tensor,
-    nb_bins: Union[int, Sampler] = 16,
-    softness: Union[float, int, Sampler] = 1.0,
-    min_clip: Union[float, int, Sampler] = -float('inf'),
-    max_clip: Union[float, int, Sampler] = float('inf'),
+    nb_bins: Union[int, ne.samplers.Sampler] = 16,
+    softness: Union[float, int, ne.samplers.Sampler] = 1.0,
+    min_clip: Union[float, int, ne.samplers.Sampler] = -float('inf'),
+    max_clip: Union[float, int, ne.samplers.Sampler] = float('inf'),
     return_log: bool = False
 ) -> torch.Tensor:
     """
@@ -115,10 +116,10 @@ def soft_quantize(
     >>> plt.imshow(softly_quantized_tensor[0, 0, 16])
     """
     # Initialize and draw realizations from samplers from input arguments
-    nb_bins = Fixed.make(nb_bins)()
-    softness = Fixed.make(softness)()
-    min_clip = Fixed.make(min_clip)()
-    max_clip = Fixed.make(max_clip)()
+    nb_bins = ne.samplers.Fixed.make(nb_bins)()
+    softness = ne.samplers.Fixed.make(softness)()
+    min_clip = ne.samplers.Fixed.make(min_clip)()
+    max_clip = ne.samplers.Fixed.make(max_clip)()
 
     # Invert softness
     softness = 1 / softness
@@ -185,8 +186,8 @@ def mse(input_tensor: torch.Tensor, target_tensor: torch.Tensor) -> torch.Tensor
 
 
 def create_gaussian_kernel(
-    kernel_size: Union[int, Sampler] = 3,
-    sigma: Union[float, int, Sampler] = 1,
+    kernel_size: Union[int, ne.samplers.Sampler] = 3,
+    sigma: Union[float, int, ne.samplers.Sampler] = 1,
     ndim: int = 3,
     nchannels: int = 1
 ) -> torch.Tensor:
@@ -217,8 +218,8 @@ def create_gaussian_kernel(
     torch.Size([1, 1, 3, 3, 3])
     """
     # Initialize and sample parameters
-    kernel_size = Fixed.make(kernel_size)()
-    sigma = Fixed.make(sigma)()
+    kernel_size = ne.samplers.Fixed.make(kernel_size)()
+    sigma = ne.samplers.Fixed.make(sigma)()
 
     # Create a coordinate grid centered at zero
     coords = torch.arange(kernel_size).float() - (kernel_size - 1) / 2
@@ -242,8 +243,8 @@ def create_gaussian_kernel(
 
 def gaussian_smoothing(
     input_tensor: torch.Tensor,
-    kernel_size: Union[int, Sampler] = 3,
-    sigma: Union[float, int, Sampler] = 1,
+    kernel_size: Union[int, ne.samplers.Sampler] = 3,
+    sigma: Union[float, int, ne.samplers.Sampler] = 1,
 ) -> torch.Tensor:
     """
     Applies Gaussian smoothing to the {1D, 2D, 3D} input tensor based on the given kernel size and
@@ -272,8 +273,8 @@ def gaussian_smoothing(
     >>> smoothed_tensor = gaussian_smoothing(input_tensor)
     """
     # Sampling parameters
-    kernel_size = Fixed.make(kernel_size)()
-    sigma = Fixed.make(sigma)()
+    kernel_size = ne.samplers.Fixed.make(kernel_size)()
+    sigma = ne.samplers.Fixed.make(sigma)()
 
     # Infer dimensionality in voxel/pixel space. Squeeze to remove batch and/or channel dims.
     ndim = input_tensor.dim() - 2
@@ -595,9 +596,9 @@ def subsample_tensor_random_dims(
     # If the stride is an int we'll set it to be a fixed sampler.
     # This prevents us from trying to stride 0 elements (not possible), and one element (no effect).
     if isinstance(stride, int | float):
-        stride_sampler = Fixed(stride)
+        stride_sampler = ne.samplers.Fixed(stride)
     else:
-        stride_sampler = RandInt.make(stride)
+        stride_sampler = ne.samplers.RandInt.make(stride)
 
     # Perform the subsampling.
     for dimension in dimensions_to_subsample:
@@ -701,14 +702,14 @@ def make_range(*args, **kwargs) -> tuple:
     """
     # Return arguments of type {Sampler, list, tuple} as-is
     for arg in args:
-        if isinstance(arg, Sampler):
+        if isinstance(arg, ne.samplers.Sampler):
             return arg
         elif isinstance(arg, (list, tuple)):
             return arg
 
     # Return keyword arguments of type {Sampler, list, tuple} as-is
     for arg in kwargs.values():
-        if isinstance(arg, Sampler):
+        if isinstance(arg, ne.samplers.Sampler):
             return arg
         elif isinstance(arg, (list, tuple)):
             return arg
@@ -743,7 +744,7 @@ def make_range(*args, **kwargs) -> tuple:
 def random_clear_label(
     input_tensor: torch.Tensor,
     label_tensor: torch.Tensor,
-    prob: Union[float, int, Sampler] = 0.5,
+    prob: Union[float, int, ne.samplers.Sampler] = 0.5,
     exclude_zero: bool = True,
     seed: int = None
 ) -> torch.Tensor:
@@ -804,7 +805,7 @@ def random_clear_label(
     """
     # Initialize random seed if provided
     if seed is not None:
-        if isinstance(seed, Sampler):
+        if isinstance(seed, ne.samplers.Sampler):
             seed = seed()
         torch.manual_seed(seed)
 
@@ -826,9 +827,9 @@ def random_clear_label(
 
 def sample_image_from_labels(
     label_tensor: torch.Tensor,
-    mean_sampler: Sampler = Uniform(0, 1),
-    noise_sampler: Sampler = Normal,
-    noise_variance: Union[float, int, Sampler] = 0.25
+    mean_sampler: ne.samplers.Sampler = ne.samplers.Uniform(0, 1),
+    noise_sampler: ne.samplers.Sampler = ne.samplers.Normal,
+    noise_variance: Union[float, int, ne.samplers.Sampler] = 0.25
 ) -> torch.Tensor:
     """
     Sample textures/intensities from an integer label map.
@@ -861,7 +862,7 @@ def sample_image_from_labels(
         A tensor of sampled image intensities with the same shape as `label_tensor`.
     """
     # Make the variance
-    noise_variance = Fixed.make(noise_variance)
+    noise_variance = ne.samplers.Fixed.make(noise_variance)
     # Extract unique labels
     unique_labels = torch.unique(label_tensor)
 
@@ -984,7 +985,7 @@ def make_downsampling_conv_blocks(
     # Make downsampling conv block and append to list of them
     for i in range(len(nb_features) - 1):
 
-        downsampling_conv_block = modules.DownsampleConvBlock(
+        downsampling_conv_block = ne.modules.DownsampleConvBlock(
             ndim=ndim,
             in_channels=nb_features[i],
             out_channels=nb_features[i + 1],
@@ -1097,7 +1098,7 @@ def make_upsampling_conv_blocks(
     # Make upsampling conv block and append to list of them
     for i in range(len(nb_features) - 1):
 
-        upsampling_conv_block = modules.UpsampleConvBlock(
+        upsampling_conv_block = ne.modules.UpsampleConvBlock(
             ndim=ndim,
             in_channels=nb_features[i],
             out_channels=nb_features[i + 1],

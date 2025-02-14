@@ -22,17 +22,17 @@ models
 """
 
 # Relative import from parent `neurite` __init__.py
-from .. import import_submodules
 
-import_submodules(
-    [
-        "layers",
-        "losses",
-        'modules',
-        'models',
-        "random",
-        "utils",
-    ],
-    __name__,
-    import_into=True
-)
+from . import samplers
+from . import models
+from . import modules
+from . import layers
+from . import losses
+
+# Allows us to import symbols within `models` for example, by doing `ne.BasicUNet` instead of
+# `ne.models.BasicUNet`
+from .samplers import *
+from .models import *
+from .modules import *
+from .layers import *
+from .losses import *

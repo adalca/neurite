@@ -44,17 +44,19 @@ from typing import Optional, Union, Tuple, List
 import torch
 from torch import nn
 import torch.nn.functional as F
-from . import utils
 
-from ..torch.utils import make_grid
-from ..torch.random import Sampler, Fixed, Uniform, Normal
+import neurite.pytorch_backend as ne
+# from . import utils
+# from ..torch.utils import make_grid
+# from ..torch.random import Sampler, Fixed, Uniform, Normal
+
 
 class RescaleValues(nn.Module):
     """
     Scale each element of the input tensor by a multiplicative factor.
     """
 
-    def __init__(self, scale_factor: Union[float, int, Sampler]):
+    def __init__(self, scale_factor: Union[float, int, ne.samplers.Sampler]):
         """
         Initialize the `RescaleValues` module.
 
@@ -64,7 +66,7 @@ class RescaleValues(nn.Module):
             Factor (or sampler) by which to rescale the values of the input tensor.
         """
         super().__init__()
-        self.scale_factor = Fixed.make(scale_factor)
+        self.scale_factor = ne.samplers.Fixed.make(scale_factor)
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
@@ -148,11 +150,11 @@ class Resize(nn.Module):
 
         # Either scale factor or size must be defined. If neither is, make scale factor 1.
         if size is None and scale_factor is None:
-            scale_factor = Fixed(1)
+            scale_factor = ne.samplers.Fixed(1)
 
         elif scale_factor is not None:
             # Make a fixed if passed a single number. Maks sampler if passed sampler.
-            scale_factor = Fixed.make(scale_factor)
+            scale_factor = ne.samplers.Fixed.make(scale_factor)
 
         self.size = size
         self.scale_factor = scale_factor
@@ -201,10 +203,10 @@ class SoftQuantize(nn.Module):
 
     def __init__(
         self,
-        nb_bins: Union[int, Sampler] = 16,
-        softness: Union[float, int, Sampler] = 1.0,
-        min_clip: Union[float, int, Sampler] = -float('inf'),
-        max_clip: Union[float, int, Sampler] = float('inf'),
+        nb_bins: Union[int, ne.samplers.Sampler] = 16,
+        softness: Union[float, int, ne.samplers.Sampler] = 1.0,
+        min_clip: Union[float, int, ne.samplers.Sampler] = -float('inf'),
+        max_clip: Union[float, int, ne.samplers.Sampler] = float('inf'),
         return_log: bool = False,
     ):
         """
@@ -263,7 +265,7 @@ class SoftQuantize(nn.Module):
             Softly quantized tensor with the same dimensions as `input_tensor`.
         """
 
-        return utils.soft_quantize(
+        return ne.utils.utils.soft_quantize(
             input_tensor=input_tensor,
             nb_bins=self.nb_bins,
             softness=self.softness,
@@ -301,7 +303,7 @@ class MSE(nn.Module):
             The mean squared error between `input_tensor` and `target_tensor`.
         """
 
-        return utils.mse(input_tensor=input_tensor, target_tensor=target_tensor)
+        return ne.utils.utils.mse(input_tensor=input_tensor, target_tensor=target_tensor)
 
 
 class GaussianBlur(nn.Module):
@@ -343,7 +345,7 @@ class GaussianBlur(nn.Module):
             The smoothed tensor.
         """
 
-        return utils.gaussian_smoothing(
+        return ne.utils.utils.gaussian_smoothing(
             input_tensor=input_tensor,
             kernel_size=self.kernel_size,
             sigma=self.sigma
@@ -440,7 +442,7 @@ class Resample(nn.Module):
         original_spatial_shape = input_tensor.shape[2:]
 
         # Start by subsampling the input tensor
-        resampled_tensor = utils.subsample_tensor_random_dims(
+        resampled_tensor = ne.utils.utils.subsample_tensor_random_dims(
             input_tensor=resampled_tensor,
             stride=self.theta.get('stride'),
             forbidden_dims=self.theta.get('forbidden_dims'),
@@ -451,7 +453,10 @@ class Resample(nn.Module):
         # Optionally upsample the resuling subsampled tensor
         if self.upsample:
             # Apply upsampling
-            resampled_tensor = utils.upsample_tensor(resampled_tensor, original_spatial_shape)
+            resampled_tensor = ne.utils.utils.upsample_tensor(
+                resampled_tensor,
+                original_spatial_shape
+            )
 
         return resampled_tensor
 
@@ -469,10 +474,10 @@ class RandomCrop(nn.Module):
 
     def __init__(
         self,
-        crop_proportion: Union[Sampler, float] = 0.5,
-        prob: Union[Sampler, float] = 1,
-        forbidden_dims: Union[Tuple, List] = (0, 1),
-        seed: Union[int, Sampler] = None,
+        crop_proportion: Union[ne.samplers.Sampler, float] = 0.5,
+        prob: Union[ne.samplers.Sampler, float] = 1,
+        forbidden_dims: ne.samplers.Union[Tuple, List] = (0, 1),
+        seed: Union[int, ne.samplers.Sampler] = None,
     ):
         """
         Initialize the `RandomCrop` module.
@@ -520,7 +525,7 @@ class RandomCrop(nn.Module):
             The tensor that has been randomly cropped.
         """
 
-        return utils.random_crop(
+        return ne.utils.utils.random_crop(
             input_tensor=input_tensor,
             crop_proportion=self.crop_proportion,
             prob=self.prob,
@@ -536,10 +541,10 @@ class RandomClip(nn.Module):
 
     def __init__(
         self,
-        clip_min: Union[float, int, Sampler] = 0,
-        clip_max: Union[float, int, Sampler] = 1,
-        clip_prob: Union[float, int, Sampler] = 0.5,
-        seed: Union[int, Sampler] = None,
+        clip_min: Union[float, int, ne.samplers.Sampler] = 0,
+        clip_max: Union[float, int, ne.samplers.Sampler] = 1,
+        clip_prob: Union[float, int, ne.samplers.Sampler] = 0.5,
+        seed: Union[int, ne.samplers.Sampler] = None,
     ):
         """
         Initialize `RandomClip` with specified clipping bounds and sampling probability.
@@ -595,7 +600,7 @@ class RandomClip(nn.Module):
             The clipped tensor (if Bernoulli trial defined by parameter `clip_prob` is successful).
         """
 
-        return utils.random_clip(
+        return ne.utils.utils.random_clip(
             input_tensor=input_tensor,
             clip_min=self.clip_min,
             clip_max=self.clip_max,
@@ -616,9 +621,9 @@ class RandomGamma(nn.Module):
 
     def __init__(
         self,
-        gamma: Union[float, int, Sampler] = 1.0,
-        prob: Union[float, int, Sampler] = 1.0,
-        seed: Union[int, Sampler] = None,
+        gamma: Union[float, int, ne.samplers.Sampler] = 1.0,
+        prob: Union[float, int, ne.samplers.Sampler] = 1.0,
+        seed: Union[int, ne.samplers.Sampler] = None,
     ):
         """
         Initialize the `RandomGamma` module.
@@ -689,7 +694,7 @@ class RandomGamma(nn.Module):
             (based on `prob`), the original `input_tensor` is returned unchanged.
         """
 
-        return utils.random_gamma(
+        return ne.utils.augment.random_gamma(
             input_tensor=input_tensor,
             gamma=self.gamma,
             prob=self.prob,
@@ -751,7 +756,7 @@ class RandomClearLabel(nn.Module):
 
     def __init__(
         self,
-        prob: Union[float, int, Sampler] = 0.5,
+        prob: Union[float, int, ne.samplers.Sampler] = 0.5,
         exclude_zero: bool = True,
         seed: int = None,
     ):
@@ -797,7 +802,7 @@ class RandomClearLabel(nn.Module):
             cleared, the original `input_tensor` is returned unchanged.
         """
 
-        return utils.random_clear_label(
+        return ne.utils.utils.random_clear_label(
             input_tensor=input_tensor,
             label_tensor=label_tensor,
             prob=self.prob,
@@ -819,9 +824,9 @@ class SampleImageFromLabels(nn.Module):
 
     def __init__(
         self,
-        mean_sampler: Sampler = Uniform(0, 1),
-        noise_sampler: Sampler = Normal,
-        noise_variance: Union[float, int, Sampler] = 0.25,
+        mean_sampler: ne.samplers.Sampler = ne.samplers.Uniform(0, 1),
+        noise_sampler: ne.samplers.Sampler = ne.samplers.Normal,
+        noise_variance: Union[float, int, ne.samplers.Sampler] = 0.25,
     ):
         """
         Initialize the `SampleImageFromLabels` module.
@@ -860,7 +865,7 @@ class SampleImageFromLabels(nn.Module):
             A tensor of sampled image intensities with the same shape as `label_tensor`.
         """
 
-        return utils.sample_image_from_labels(
+        return ne.utils.utils.sample_image_from_labels(
             label_tensor,
             self.mean_sampler,
             self.noise_sampler,
@@ -925,7 +930,7 @@ class SpatialTransformer(nn.Module):
         # buffer (without saving to `state_dict`: persistent=False)
         self.register_buffer(
             name='identity_grid',
-            tensor=make_grid(size=size, device=device),
+            tensor=ne.utils.utils.make_grid(size=size, device=device),
             persistent=False  # Don't save to this module's state dict!
         )
 
@@ -1123,7 +1128,7 @@ class ResizeDisplacementField(nn.Module):
 
     def __init__(
         self,
-        scale_factor: Optional[Union[float, int, Sampler]] = 1.0,
+        scale_factor: Optional[Union[float, int, ne.samplers.Sampler]] = 1.0,
         interpolation_mode: str = "bilinear",
         align_corners: bool = True,
     ):
@@ -1145,7 +1150,7 @@ class ResizeDisplacementField(nn.Module):
         super().__init__()
         self.interpolation_mode = interpolation_mode
         self.align_corners = align_corners
-        self.scale_factor = Fixed.make(scale_factor)
+        self.scale_factor = ne.samplers.Fixed.make(scale_factor)
 
     def forward(self, displacement_field: torch.Tensor) -> torch.Tensor:
         """

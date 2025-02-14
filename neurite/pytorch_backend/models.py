@@ -1,8 +1,10 @@
+from __future__ import annotations
 """
 Prebuilt yet flexible neural network architectures designed for specific tasks, such as image
 segmentation, registration, or classification. models leverage layers and modules from other
 components of the neurite for streamlined object construction.
 """
+
 __all__ = [
     "BasicUNet",
     "BasicAutoencoder",
@@ -12,8 +14,9 @@ __all__ = [
 from typing import List, Union, Tuple, Callable
 import torch
 from torch import nn
-from . import modules, layers, random
-from .utils import utils
+import neurite.pytorch_backend as ne
+# from . import modules, layers, random
+# from .utils import utils
 
 
 class BasicUNet(nn.Module):
@@ -101,7 +104,7 @@ class BasicUNet(nn.Module):
         self.reversed_features = list(reversed(nb_features))
 
         # Downsampling convolutional blocks
-        self.downsampling_conv_blocks = utils.make_downsampling_conv_blocks(
+        self.downsampling_conv_blocks = ne.utils.utils.make_downsampling_conv_blocks(
             ndim=ndim,
             nb_features=self.nb_features,
             norms=self.norms,
@@ -110,7 +113,7 @@ class BasicUNet(nn.Module):
         )
 
         # Convolutional block between downsampling and upsampling arms (lowest resolution)
-        self.lowest_resolution_conv_block = modules.ConvBlock(
+        self.lowest_resolution_conv_block = ne.modules.ConvBlock(
             ndim=ndim,
             in_channels=self.nb_features[-1],
             out_channels=self.nb_features[-1],
@@ -118,7 +121,7 @@ class BasicUNet(nn.Module):
         )
 
         # Upsampling convolutional blocks
-        self.upsampling_conv_blocks = utils.make_upsampling_conv_blocks(
+        self.upsampling_conv_blocks = ne.utils.utils.make_upsampling_conv_blocks(
             ndim=ndim,
             nb_features=self.reversed_features,
             norms=self.norms,
@@ -130,7 +133,7 @@ class BasicUNet(nn.Module):
         )
 
         # Final convolutional block
-        self.out_layer = modules.ConvBlock(
+        self.out_layer = ne.modules.ConvBlock(
             ndim=ndim,
             in_channels=nb_features[0],
             out_channels=out_channels,
@@ -252,7 +255,7 @@ class BasicAutoencoder(nn.Module):
             self.activations = [activations] * len(nb_features)
 
         # Encoder network
-        self.downsampling_conv_blocks = utils.make_downsampling_conv_blocks(
+        self.downsampling_conv_blocks = ne.utils.utils.make_downsampling_conv_blocks(
             ndim=ndim,
             nb_features=[in_channels, *nb_features],
             norms=self.norms,
@@ -262,7 +265,7 @@ class BasicAutoencoder(nn.Module):
         )
 
         # Bottleneck layer (latent space)
-        bottleneck = modules.ConvBlock(
+        bottleneck = ne.modules.ConvBlock(
             ndim=ndim,
             in_channels=nb_features[-1],
             out_channels=latent_features,
@@ -276,7 +279,7 @@ class BasicAutoencoder(nn.Module):
         self.downsampling_conv_blocks = self.downsampling_conv_blocks.append(bottleneck)
 
         # Decoder network
-        self.upsampling_conv_blocks = utils.make_upsampling_conv_blocks(
+        self.upsampling_conv_blocks = ne.utils.utils.make_upsampling_conv_blocks(
             ndim=ndim,
             nb_features=[latent_features, *reversed(nb_features[1:])],
             norms=self.norms,
@@ -286,7 +289,7 @@ class BasicAutoencoder(nn.Module):
         )
 
         # Output layer
-        self.out_layer = modules.ConvBlock(
+        self.out_layer = ne.modules.ConvBlock(
             ndim=ndim,
             in_channels=nb_features[1],
             out_channels=out_channels,
@@ -384,7 +387,7 @@ class VxmDeformable(BasicUNet):
         activations: Union[List[Union[Callable, str]], Callable, str, None] = nn.ReLU,
         order: str = 'caca',
         final_activation: Union[str, nn.Module, None] = None,
-        flow_initializer: Union[float, random.Sampler] = random.Normal(0, 1e-5),
+        flow_initializer: Union[float, ne.samplers.Sampler] = ne.samplers.Normal(0, 1e-5),
         bidirectional_cost: bool = False,
         integration_steps: int = 0,
         resize_integrated_fields: bool = False,
@@ -534,7 +537,7 @@ class VxmDeformable(BasicUNet):
         self,
         ndim: int,
         features: int,
-        flow_initializer: Union[float, random.Sampler] = random.Normal(0, 1e-5)
+        flow_initializer: Union[float, ne.samplers.Sampler] = ne.samplers.Normal(0, 1e-5)
     ):
 
         """
@@ -557,13 +560,13 @@ class VxmDeformable(BasicUNet):
         """
 
         # Initialize the conv ("flow") layer with congruent in and out features
-        flow_layer = modules.ConvBlock(ndim, features, features).to(self.device)
+        flow_layer = ne.modules.ConvBlock(ndim, features, features).to(self.device)
 
         # Optionally, apply custom initialization if `flow_initializer`` is provided
         if flow_initializer is not None:
 
             # Make the distribution to sample the flow parameters
-            flow_initializer = random.Fixed.make(flow_initializer)
+            flow_initializer = ne.samplers.Fixed.make(flow_initializer)
 
             # Sample the weight parameters from the distribution for first (and only) conv
             flow_layer.conv0.weight = nn.Parameter(
@@ -608,7 +611,7 @@ class VxmDeformable(BasicUNet):
         if not hasattr(self, "velocity_field_integrator"):
 
             # Dynamically construct the integrator based on the spatial shape
-            velocity_field_integrator = layers.IntegrateVelocityField(
+            velocity_field_integrator = ne.layers.IntegrateVelocityField(
                 shape=pos_flow.shape[2:], steps=self.integration_steps, device=self.device
             )
 
@@ -652,7 +655,7 @@ class VxmDeformable(BasicUNet):
 
         if not hasattr(self, "spatial_transformer"):
             # Dynamically construct the spatial transformer with the correct spatial shape
-            spatial_transformer = layers.SpatialTransformer(
+            spatial_transformer = ne.layers.SpatialTransformer(
                 size=moving_image.shape[2:], device=self.device
             )
 
