@@ -17,7 +17,7 @@ from typing import Union, Type, Optional, Tuple
 import einops
 import torch
 from torch import nn
-from . import utils
+from .utils import utils
 
 
 class Norm(nn.Module):
@@ -749,7 +749,8 @@ class UpsampleConvBlock(nn.Module):
         upsample_padding: int = 1,
         norm: Union[str, nn.Module, None] = None,
         activation: Union[str, nn.Module, None] = "relu",
-        order: str = 'nca'
+        order: str = 'nca',
+        accepts_residuals: bool = True,
     ):
         """
         Initialize `UpsampleConvBlock`.
@@ -785,8 +786,14 @@ class UpsampleConvBlock(nn.Module):
             - `'c'`: Convolution
             - `'n'`: Normalization
             - `'a'`: Activation
+        accepts_residuals : bool
+            If True, the block is configured to accept residual connections. This doubles the
+            expected number of input channels, allowing the block to concatenate skip features with
+            the main input.
         """
+
         super().__init__()
+
         self.upsample = TransposedConv(
             ndim=ndim,
             in_channels=in_channels,
@@ -796,9 +803,12 @@ class UpsampleConvBlock(nn.Module):
             padding=upsample_padding,
         )
 
+        if accepts_residuals:
+            in_channels += in_channels
+
         self.conv_block = ConvBlock(
             ndim=ndim,
-            in_channels=in_channels + in_channels,
+            in_channels=in_channels,
             out_channels=out_channels,
             kernel_size=kernel_size,
             stride=stride,
