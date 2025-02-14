@@ -12,7 +12,8 @@ __all__ = [
 from typing import List, Union, Tuple, Callable
 import torch
 from torch import nn
-from . import modules, utils, layers, random
+from . import modules, layers, random
+from .utils import utils
 
 
 class BasicUNet(nn.Module):
@@ -186,12 +187,18 @@ class BasicAutoencoder(nn.Module):
     out_layer : nn.Module
         Final output layer.
     """
+
     def __init__(
         self,
         ndim: int,
         in_channels: int,
         latent_features: int,
-        out_channels: int
+        out_channels: int,
+        nb_features: List[int] = [16, 16, 16, 16, 16],
+        norms: Union[List[Union[Callable, str]], Callable, str, None] = None,
+        activations: Union[List[Union[Callable, str]], Callable, str, None] = nn.ReLU,
+        order: str = 'caca',
+        final_activation: Union[str, nn.Module, None] = nn.Sigmoid(),
     ):
         """
         Instantiate `BasicAutoencoder`.
@@ -206,11 +213,70 @@ class BasicAutoencoder(nn.Module):
             Number of features/channels in the latent space.
         out_channels : int
             Number of output channels.
+        nb_features : List[int]
+            Number of features at each level of the unet. Must be a list of positive integers.
+        norms : Union[List[str], str, None], optional
+            Normalization layers to use in each block. Can be a string or a list
+            of strings specifying norms for each layer, or `None` for no norm.
+        activations : Union[List[str], str, Callable], optional
+            Activation functions to use in each block. Can be a callable,
+            a string, or a list of strings/callables.
+        order : str, optional
+            Order of operations in each convolutional block (e.g., 'ncaca').
+        final_activation : Union[str, nn.Module, None], optional
+            Activation function applied after the last convolution.
         """
 
         super().__init__()
 
-        raise NotImplementedError("`BasicAutoencoder` isn't ready yet :(")
+        # Normalization layers
+        if not isinstance(norms, list):
+            self.norms = [norms] * len(nb_features)
+
+        # Activation layers
+        if not isinstance(activations, list):
+            self.activations = [activations] * len(nb_features)
+
+        # Encoder network
+        self.downsampling_conv_blocks = utils.make_downsampling_conv_blocks(
+            ndim=ndim,
+            nb_features=[in_channels, *nb_features],
+            norms=self.norms,
+            activations=self.activations,
+            order=order,
+        )
+
+        # Bottleneck layer (latent space)
+        self.bottleneck = modules.ConvBlock(
+            ndim=ndim, 
+            in_channels=nb_features[-1],
+            out_channels=latent_features,
+            kernel_size=1,
+            padding=0,
+            activation=activations if callable(activations) else nn.ReLU(),
+            order=order,
+        )
+
+        # Decoder network
+        self.upsampling_conv_blocks = utils.make_upsampling_conv_blocks(
+            ndim=ndim,
+            nb_features=[latent_features, *reversed(nb_features[1:])],
+            norms=self.norms,
+            activations=self.activations,
+            accepts_residuals=False,
+            order=order,
+        )
+
+        # Output layer
+        self.out_layer = modules.ConvBlock(
+            ndim=ndim,
+            in_channels=nb_features[1],
+            out_channels=out_channels,
+            kernel_size=1,
+            padding=0,
+            activation=final_activation,
+            order=order,
+        )
 
     def forward(self, feature_tensor: torch.Tensor) -> torch.Tensor:
         """
