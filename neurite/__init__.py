@@ -22,14 +22,32 @@ TensorFlow unless `NEURITE_BACKEND` is set to 'pytorch'.
 # Define the version of neurite
 __version__ = '0.2'
 
-# Importing some things
+# Standard library imports
 import importlib
-from packaging import version
+from importlib import import_module
+from typing import List, Optional
 
+# Third-party imports
+from packaging import version
+import pystrum
+
+# Local imports
+from . import py
+
+# Set the minimum allowable pystrum version
 _MIN_PYSTRUM_VERSION = "0.2"
 
-from typing import List, Optional
-from importlib import import_module
+current_pystrum_version = getattr(pystrum, '__version__', None)
+
+if (
+    current_pystrum_version is None or
+    version.parse(current_pystrum_version) <
+    version.parse(_MIN_PYSTRUM_VERSION)
+):
+    raise ImportError(
+        f'neurite requires pystrum version {_MIN_PYSTRUM_VERSION} or greater, but found version '
+        f'{current_pystrum_version}'
+    )
 
 
 def import_submodules(
@@ -80,44 +98,6 @@ def import_submodules(
                     if all_names is not None:
                         print(attribute)
                         all_names.append(attribute)
-
-
-def _check_pystrum_version():
-    """
-    Validate that the installed version of PyStrum meets the minimum requirement.
-
-    Raises
-    ------
-    ImportError
-        If PyStrum is not installed or its version is below the required minimum.
-    """
-    try:
-        # Check if pystrum is installed
-        import pystrum  # noqa: C0415
-
-    except ImportError as error:
-        raise ImportError(
-            f"PyStrum is required by neurite. Please install PyStrum >= {_MIN_PYSTRUM_VERSION}."
-        ) from error
-
-    # Dynamically fetch the current version of PyStrum
-    current_version = getattr(pystrum, "__version__", None)
-
-    if (
-        current_version is None or
-        version.parse(current_version) < version.parse(_MIN_PYSTRUM_VERSION)
-    ):
-
-        raise ImportError(
-            f"neurite requires pystrum version {_MIN_PYSTRUM_VERSION} or greater, "
-            f"but found version {current_version}."
-        )
-
-_check_pystrum_version()
-
-# Import core utilities from the 'py' subpackage.
-from . import py
-from .py import utils, plot, dataproc
 
 
 def _load_backend_module(backend: str) -> None:
