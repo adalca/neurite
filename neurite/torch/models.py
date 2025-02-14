@@ -292,7 +292,22 @@ class BasicAutoencoder(nn.Module):
         torch.Tensor
             Result of forward pass of the model.
         """
-        raise NotImplementedError("`BasicAutoencoder` Doesn't have a forward pass :(")
+
+        # Downsampling path
+        for downsampling_conv_block in self.downsampling_conv_blocks:
+            feature_tensor = downsampling_conv_block(feature_tensor, return_residual=False)
+
+        # Bottleneck
+        feature_tensor = self.bottleneck(feature_tensor)
+
+        # Decode
+        for upsampling_conv_block in self.upsampling_conv_blocks:
+            feature_tensor = upsampling_conv_block(feature_tensor)
+
+        # Output layer
+        feature_tensor = self.out_layer(feature_tensor)
+
+        return feature_tensor
 
 
 class VxmDeformable(BasicUNet):
