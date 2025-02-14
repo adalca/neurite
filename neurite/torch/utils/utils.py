@@ -1009,7 +1009,8 @@ def make_upsampling_conv_blocks(
     upsample_padding: int = 1,
     norms: List[Union[str, nn.Module, None]] = None,
     activations: List[Union[str, nn.Module, None]] = None,
-    order: str = 'nca'
+    order: str = 'nca',
+    accepts_residuals: bool = True,
 ) -> nn.ModuleList:
     """
     Create an `nn.ModuleList` of upsampling conv blocks based the number of features per layer/
@@ -1046,6 +1047,10 @@ def make_upsampling_conv_blocks(
         - `'c'`: Convolution
         - `'n'`: Normalization
         - `'a'`: Activation
+    accepts_residuals : bool
+        If True, the blocks are configured to accept residual connections. This doubles the
+        expected number of input channels, allowing the blocks to concatenate skip features with
+        the main input.
 
     Returns
     -------
@@ -1078,7 +1083,7 @@ def make_upsampling_conv_blocks(
         activations = [activations] * len(nb_features)
 
     # Init upsampling conv blocks container
-    upsampling_conv_blocks = nn.ModuleList()
+    upsampling_conv_blocks = nn.Sequential()
 
     # make the number of features for the upsampling conv blocks
     nb_features = [*nb_features, nb_features[-1]]
@@ -1099,6 +1104,7 @@ def make_upsampling_conv_blocks(
             norm=norms[-i],
             activation=activations[-i],
             order=order,
+            accepts_residuals=accepts_residuals,
         )
 
         upsampling_conv_blocks.append(upsampling_conv_block)
