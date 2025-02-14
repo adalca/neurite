@@ -1,21 +1,41 @@
 [build-system]
-requires = ["setuptools >= 61.0"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "neurite"
+version = "0.2"
 description = "Neural networks toolbox focused on medical image analysis."
-authors = [
-    {name="Adrian V. Dalca"},
-    {name="Etienne Chollet", email="etiennepchollet@gmail.com"},
-    {name="Malte Hoffmann"},
-    {name="Andrew Hoopes"}
-]
-maintainers = [{name = "Etienne Chollet", email = "etiennepchollet@gmail.com"}]
-dependencies = ["einops", "pystrum"]
+requires-python = ">=3.6"
 readme = "README.md"
-keywords = ["python", "pytorch", "medical-imaging", "segmentation", "medical-image-computing"]
+license = { text = "MIT" }
+classifiers = [
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent"
+]
+authors = [
+  { name = "Adrian V. Dalca" },
+  { name = "Etienne Chollet", email = "etiennepchollet@gmail.com" },
+  { name = "Malte Hoffmann" },
+  { name = "Andrew Hoopes" }
+]
+maintainers = [
+  { name = "Etienne Chollet", email = "etiennepchollet@gmail.com" }
+]
+dependencies = [
+  "einops",
+  "pystrum"
+]
+keywords = [
+  "python",
+  "pytorch",
+  "medical-imaging",
+  "segmentation",
+  "medical-image-computing"
+]
 
 [project.urls]
 GitHub = "https://github.com/adalca/neurite"
-PyPi = "https://pypi.org/project/neurite/0.1/"
+PyPi = "https://pypi.org/project/neurite/0.2/"
