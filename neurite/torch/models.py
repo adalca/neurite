@@ -186,6 +186,20 @@ class BasicAutoencoder(nn.Module):
         Upsampling convolutional blocks.
     out_layer : nn.Module
         Final output layer.
+
+    Examples
+    --------
+    >>> autoencoder = BasicAutoencoder(
+    ...    ndim=3,
+    ...    in_channels=1,
+    ...    latent_features=4,
+    ...    out_channels=1,
+    ...    activations="elu"
+    ... )
+    >>> input_tensor = torch.randn(1, 1, 64, 64, 64)
+    >>> output = model(input_tensor)
+    >>> output.shape
+    torch.Size([1, 1, 64, 64, 64])
     """
 
     def __init__(
