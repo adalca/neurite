@@ -54,8 +54,6 @@ import einops
 import torch
 import torch.nn.functional as F
 from torch import nn
-# from neurite.pytorch_backend.samplers import Fixed, RandInt, Sampler, Normal, Uniform
-# from neurite.pytorch_backend import modules
 import neurite.pytorch_backend as ne
 
 

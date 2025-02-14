@@ -1,4 +1,3 @@
-from __future__ import annotations
 """
 Augmentation Tools
 
@@ -26,6 +25,9 @@ distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, e
 implied. See the License for the specific language governing permissions and limitations under
 the License.
 """
+
+from __future__ import annotations
+
 __all__ = [
     "random_crop",
     "random_clip",
@@ -35,16 +37,14 @@ __all__ = [
 from typing import Union, Tuple, List
 import torch
 import neurite as ne
-# from neurite.torch.random import RandInt, Sampler, Bernoulli, Uniform, Fixed
-# from neurite.torch.utils import utils
 
 
 def random_crop(
     input_tensor: torch.Tensor,
     crop_proportion: Union[ne.samplers.Sampler, float] = 0.5,
-    prob: Union[ne.Sampler, float] = 1,
+    prob: Union[ne.samplers.Sampler, float] = 1,
     forbidden_dims: Union[Tuple, List] = (0, 1),
-    seed: Union[ne.random.Sampler, int] = None,
+    seed: Union[ne.samplers.Sampler, int] = None,
 ):
     """
     Randomly crops the input tensor along specified dimensions based on a given proportion and

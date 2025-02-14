@@ -951,9 +951,9 @@ class CrossConvBlock(ConvBlock):
         """
 
         super().__init__(
-            ndim=ndim, in_channels=sum(in_channels), out_channels=out_channels, kernel_size=kernel_size,
-            stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, norm=norm,
-            activation=activation, order=order
+            ndim=ndim, in_channels=sum(in_channels), out_channels=out_channels,
+            kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
+            groups=groups, bias=bias, norm=norm, activation=activation, order=order
         )
 
         # Separate ConvBlock to further process the aggregated features
@@ -1031,11 +1031,11 @@ class CrossConvBlock(ConvBlock):
 
         # Process each branch with more convs!
         new_target = self.target_conv_block(
-            new_target.flatten(0, 1)).unflatten(0, new_target.shape[:2]
-        )
+            new_target.flatten(0, 1)
+        ).unflatten(0, new_target.shape[:2])
 
         new_support = self.support_conv_block(
-            new_support.flatten(0, 1)).unflatten(0, new_support.shape[:2]
-        )
+            new_support.flatten(0, 1)
+        ).unflatten(0, new_support.shape[:2])
 
         return new_target, new_support

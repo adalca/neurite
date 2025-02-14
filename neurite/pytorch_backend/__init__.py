@@ -21,8 +21,6 @@ models
     other components of the neurite for streamlined object construction.
 """
 
-# Relative import from parent `neurite` __init__.py
-
 from . import samplers
 from . import utils
 from . import models

@@ -46,9 +46,6 @@ from torch import nn
 import torch.nn.functional as F
 
 import neurite.pytorch_backend as ne
-# from . import utils
-# from ..torch.utils import make_grid
-# from ..torch.random import Sampler, Fixed, Uniform, Normal
 
 
 class RescaleValues(nn.Module):
