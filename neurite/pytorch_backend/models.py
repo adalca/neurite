@@ -60,6 +60,7 @@ class BasicUNet(nn.Module):
         activations: Union[List[Union[Callable, str]], Callable, str, None] = nn.ReLU,
         order: str = 'caca',
         final_activation: Union[str, nn.Module, None] = nn.Sigmoid(),
+        residual_connections: bool = True,
     ):
 
         """
@@ -84,9 +85,16 @@ class BasicUNet(nn.Module):
             a string, or a list of strings/callables.
         order : str, optional
             Order of operations in each convolutional block (e.g., 'ncaca').
+        residual_connections : bool
+            Enable residual connections to communicate information between levels of the
+            downsampling and upsampling paths.
         """
 
         super().__init__()
+
+        # Make `residual_connections` an attribute as we will need it later in forward pass
+        self.residual_connections = residual_connections
+
         # Normalization layers
         if not isinstance(norms, list):
             self.norms = [norms] * len(nb_features)
@@ -107,7 +115,8 @@ class BasicUNet(nn.Module):
             nb_features=self.nb_features,
             norms=self.norms,
             activations=self.activations,
-            order=order
+            order=order,
+            return_residual=residual_connections,
         )
 
         # Convolutional block between downsampling and upsampling arms (lowest resolution)
@@ -128,6 +137,7 @@ class BasicUNet(nn.Module):
             upsample_kernel_size=2,
             upsample_stride=2,
             upsample_padding=0,
+            accepts_residuals=residual_connections,
         )
 
         # Final convolutional block
@@ -154,19 +164,27 @@ class BasicUNet(nn.Module):
         torch.Tensor
             Result of forward pass of the model.
         """
+
         # Downsampling path
         skip_connections = []
+
         for downsampling_conv_block in self.downsampling_conv_blocks:
-            feature_tensor, residual = downsampling_conv_block(feature_tensor, return_residual=True)
-            skip_connections.append(residual)  # Save for skip connection
+            if self.residual_connections:
+                feature_tensor, residual = downsampling_conv_block(feature_tensor)
+                skip_connections.append(residual)  # Save for skip connection
+            else:
+                feature_tensor = downsampling_conv_block(feature_tensor)
 
         # Convolutional block between downsampling and upsampling arms (lowest resolution)
         feature_tensor = self.lowest_resolution_conv_block(feature_tensor)
 
         # Upsampling path
         for i, upsampling_conv_block in enumerate(self.upsampling_conv_blocks):
-            skip = skip_connections[-(i + 1)]
-            feature_tensor = upsampling_conv_block(feature_tensor, skip)
+            if self.residual_connections:
+                skip = skip_connections[-(i + 1)]
+                feature_tensor = upsampling_conv_block(feature_tensor, skip)
+            else:
+                feature_tensor = upsampling_conv_block(feature_tensor)
 
         # Output layer
         feature_tensor = self.out_layer(feature_tensor)
