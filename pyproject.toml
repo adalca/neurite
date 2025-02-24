@@ -25,6 +25,7 @@ maintainers = [
   { name = "Etienne Chollet", email = "etiennepchollet@gmail.com" }
 ]
 dependencies = [
+  "torch",
   "einops",
   "pystrum"
 ]
