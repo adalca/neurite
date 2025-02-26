@@ -15,6 +15,7 @@ __all__ = [
     "Poisson",
     "LogNormal",
     "RandInt",
+    "make_sampler"
 ]
 
 import inspect
@@ -1076,3 +1077,166 @@ class RandInt(Sampler):
         samples = torch.randint(low=low, high=high, size=shape, **backend)
 
         return samples
+
+
+def _get_sampler_checking_info(sampler_to_check: Union[type, Sampler]):
+    """
+    Retrieve the sampler class and the number of required arguments for its constructor.
+
+    This function inspects the given sampler (which can be either a class or an instance of a
+    sampler) and determines the corresponding sampler class. It then uses Python's introspection to
+    count the number of parameters in the sampler's constructor.
+
+    Parameters
+    ----------
+    sampler_to_check : type or Sampler
+        The sampler to inspect. This can either be a sampler class or an instance of a sampler.
+
+    Returns
+    -------
+    tuple
+        A tuple containing:
+            - `sampler_cls`: The sampler class corresponding to the input.
+            - `max_number_of_arguments`: The max number of parameters in the sampler's constructor.
+    """
+
+    # Determine if sampler is a class or an instance and get the class
+    if isinstance(sampler_to_check, type):
+        sampler_cls = sampler_to_check
+
+    elif isinstance(sampler_to_check, Sampler):
+        sampler_cls = sampler_to_check.__class__
+
+    # Use inspect.signature to obtain the constructor's parameters
+    inspected_arguments = inspect.signature(sampler_cls)
+
+    # Introspection to get the parameters/init args
+    max_number_of_arguments = len(dict(inspected_arguments.parameters))
+
+    return sampler_cls, max_number_of_arguments
+
+
+def make_sampler(default_sampler: Sampler = Fixed, maker_input: Any = None):
+    """
+    Construct a sampler based on the provided default sampler and optionally, the maker input.
+
+    This function dynamically constructs a sampler instance using the `default_sampler` class or
+    instance, and the provided `maker_input`. Depending on the type and content of `maker_input`,
+    it validates and  processes the input, then instantiates or returns an appropriate sampler.
+
+    Parameters
+    ----------
+    default_sampler : ne.Sampler, optional
+        The default sampler class or instance to be used if no valid sampler is provided through
+        `maker_input`. Defaults to `ne.Fixed`.
+
+    maker_input : list, tuple, dict, ne.Sampler, int, float, type, or None, optional
+        The input used for constructing or validating the sampler. This input can be:
+            - A list or tuple of arguments for the sampler constructor.
+            - A dict of keyword arguments for the sampler constructor.
+            - An instance of `ne.Sampler`, in which case it is returned as is.
+            - An int or float to be passed as a single argument.
+            - A type object to be rejected if both inputs are types.
+            - None, which triggers a special case if `default_sampler` is a type.
+
+    Returns
+    -------
+    ne.Sampler
+        An instance of a sampler constructed with the provided input.
+
+    Examples
+    --------
+    >>> # Case 1: Input is an existing instance of a Sampler
+    >>> sampler1 = ne.Uniform(min_val=0, max_val=1)
+    >>> sampler2 = ne.make_sampler(sampler1)
+    >>> print(sampler1 is sampler2)
+    True
+
+    >>> # Case 2: Input is an existing instance of Sampler, but there is already a default sampler
+    >>> new_sampler = ne.Poisson(37)
+    >>> sampler = ne.make_sampler(ne.Uniform(-1, 0), new_sampler)
+    >>> print(sampler.serialize())
+    {
+        'qualname': 'Poisson',
+        'parent': 'Sampler',
+        'module': 'neurite.pytorch_backend.samplers',
+        'theta': {'rate': 37}
+    }
+
+    >>> # Case 3: Input is a dictionary
+    >>> sampler_theta_params = {"mean": 0, "variance": 1}
+    >>> sampler1 = ne.make_sampler(ne.LogNormal, sampler_theta_params)
+    >>> print(sampler1.theta)
+    {'mean': 0, 'variance': 1}
+
+    >>> # Case 4: Input is a tuple
+    >>> sampler_theta_params_tuple = (1, 2)
+    >>> sampler = ne.make_sampler(ne.Normal, sampler_theta_params_tuple)
+    >>> print(sampler.theta)
+    {'mean': 1, 'variance': 2}
+    """
+
+    # Get the class of the sampler and the max number of arguments for the sampler
+    default_sampler_cls, max_number_of_arguments = _get_sampler_checking_info(default_sampler)
+
+    # Logic for `maker_input` if it is a collection
+    if isinstance(maker_input, (list, tuple)):
+
+        # If the list/tuple has a single element, simplify by extracting that element
+        if len(maker_input) == 1:
+            maker_input = maker_input[0]
+
+        elif len(maker_input) <= max_number_of_arguments:
+            # If it's a valid list/tuple, construct the class by unpacking the collection
+            return default_sampler_cls(*maker_input)
+
+        else:
+            # Too many arguments have been provided
+            raise ValueError(
+                f"`maker_input` can only have at most {max_number_of_arguments} argument(s)!"
+            )
+
+    # Process maker_input when it is a dictionary
+    elif isinstance(maker_input, dict):
+
+        # Unpack the kwarg mapping to construct instance from class
+        return default_sampler_cls(**maker_input)
+
+    elif isinstance(maker_input, Sampler):
+        # But! If maker_input is already a sampler instance, return it directly
+        return maker_input
+
+    elif maker_input is None:
+
+        if isinstance(default_sampler, type):
+
+            # Cannot use None if default_sampler is not a sampler object
+            raise ValueError(
+                "`default_sampler` must be an instance of a (Sampler) class if you want to pass "
+                "null input to `make_sampler()`"
+            )
+
+        else:
+            return default_sampler
+
+    elif isinstance(maker_input, type) and isinstance(default_sampler, type):
+
+        # If both maker_input and default_sampler are types, raise an error
+        raise ValueError(
+            "Neither the default sampler nor maker input are sampler objects! I can't sample like "
+            "this!"
+        )
+
+    # Process maker_input when it is a numeric type (int or float)
+    if isinstance(maker_input, (int, float)):
+
+        if max_number_of_arguments == 0:
+            #  If no arguments are expected, the numeric input is invalid
+            raise ValueError(
+                f"The input to `make_sampler` must have {max_number_of_arguments} arguments"
+            )
+
+        else:
+
+            # Use the numeric input as a single argument for instantiation
+            return default_sampler_cls(maker_input)
