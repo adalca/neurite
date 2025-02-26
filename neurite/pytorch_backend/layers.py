@@ -60,7 +60,9 @@ class RescaleValues(nn.Module):
             Factor (or sampler) by which to rescale the values of the input tensor.
         """
         super().__init__()
-        self.scale_factor = ne.samplers.Fixed.make(scale_factor)
+
+        # Declare the scale factor as a sampled quantity
+        self.scale_factor = ne.make_sampler(ne.Fixed, scale_factor)
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
@@ -142,13 +144,13 @@ class Resize(nn.Module):
         """
         super().__init__()
 
-        # Either scale factor or size must be defined. If neither is, make scale factor 1.
+        # Either scale factor or size must be defined. If neither is, make scale factor fixed @ 1.
         if size is None and scale_factor is None:
-            scale_factor = ne.samplers.Fixed(1)
+            scale_factor = 1
 
         elif scale_factor is not None:
             # Make a fixed if passed a single number. Maks sampler if passed sampler.
-            scale_factor = ne.samplers.Fixed.make(scale_factor)
+            scale_factor = ne.make_sampler(ne.Fixed, scale_factor)
 
         self.size = size
         self.scale_factor = scale_factor
