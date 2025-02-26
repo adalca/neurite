@@ -114,10 +114,10 @@ def soft_quantize(
     >>> plt.imshow(softly_quantized_tensor[0, 0, 16])
     """
     # Initialize and draw realizations from samplers from input arguments
-    nb_bins = ne.samplers.Fixed.make(nb_bins)()
-    softness = ne.samplers.Fixed.make(softness)()
-    min_clip = ne.samplers.Fixed.make(min_clip)()
-    max_clip = ne.samplers.Fixed.make(max_clip)()
+    nb_bins = ne.make_sampler(ne.Fixed, nb_bins)()
+    softness = ne.make_sampler(ne.Fixed, softness)()
+    min_clip = ne.make_sampler(ne.Fixed, min_clip)()
+    max_clip = ne.make_sampler(ne.Fixed, max_clip)()
 
     # Invert softness
     softness = 1 / softness
@@ -216,8 +216,8 @@ def create_gaussian_kernel(
     torch.Size([1, 1, 3, 3, 3])
     """
     # Initialize and sample parameters
-    kernel_size = ne.samplers.Fixed.make(kernel_size)()
-    sigma = ne.samplers.Fixed.make(sigma)()
+    kernel_size = ne.make_sampler(ne.Fixed, kernel_size)()
+    sigma = ne.make_sampler(ne.Fixed, sigma)()
 
     # Create a coordinate grid centered at zero
     coords = torch.arange(kernel_size).float() - (kernel_size - 1) / 2
@@ -271,8 +271,8 @@ def gaussian_smoothing(
     >>> smoothed_tensor = gaussian_smoothing(input_tensor)
     """
     # Sampling parameters
-    kernel_size = ne.samplers.Fixed.make(kernel_size)()
-    sigma = ne.samplers.Fixed.make(sigma)()
+    kernel_size = ne.make_sampler(ne.Fixed, kernel_size)()
+    sigma = ne.make_sampler(ne.Fixed, sigma)()
 
     # Infer dimensionality in voxel/pixel space. Squeeze to remove batch and/or channel dims.
     ndim = input_tensor.dim() - 2
@@ -594,9 +594,9 @@ def subsample_tensor_random_dims(
     # If the stride is an int we'll set it to be a fixed sampler.
     # This prevents us from trying to stride 0 elements (not possible), and one element (no effect).
     if isinstance(stride, int | float):
-        stride_sampler = ne.samplers.Fixed(stride)
+        stride_sampler = ne.make_sampler(ne.Fixed, stride)
     else:
-        stride_sampler = ne.samplers.RandInt.make(stride)
+        stride_sampler = ne.make_sampler(ne.RandInt, stride)
 
     # Perform the subsampling.
     for dimension in dimensions_to_subsample:
@@ -860,7 +860,7 @@ def sample_image_from_labels(
         A tensor of sampled image intensities with the same shape as `label_tensor`.
     """
     # Make the variance
-    noise_variance = ne.samplers.Fixed.make(noise_variance)
+    noise_variance = ne.make_sampler(ne.Fixed, noise_variance)
     # Extract unique labels
     unique_labels = torch.unique(label_tensor)
 
