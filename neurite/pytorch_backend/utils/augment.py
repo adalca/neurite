@@ -101,6 +101,7 @@ def random_crop(
     >>> print(cropped_tensor.shape)
     torch.Size([2, 3, 64, 32])
     """
+
     # Initialize random seed if provided
     if seed is not None:
         torch.manual_seed(seed)
@@ -109,14 +110,14 @@ def random_crop(
     allowed_dims = [x for x in range(input_tensor.dim()) if x not in forbidden_dims]
 
     # If `crop_proportion` is float, interpret it as upper bound of uniform distribution.
-    crop_sampler = Uniform.make(utils.make_range(0, crop_proportion))
+    crop_sampler = ne.make_sampler(ne.Uniform, ne.utils.make_range(0, crop_proportion))
 
     # If prob is a sampler, sample from it
-    if isinstance(prob, Sampler):
+    if isinstance(prob, ne.Sampler):
         prob = prob()
 
     # Make prob into a Bernoulli distribution
-    prob = Bernoulli.make(prob)
+    prob = ne.make_sampler(ne.Bernoulli, prob)
 
     # Make empty list of slices which we will modufy
     slices = [slice(None)] * input_tensor.dim()
@@ -144,7 +145,7 @@ def random_crop(
             if translation_min != translation_max:
 
                 # Sample a valid translation (can't be out of bounds!)
-                translation = RandInt(translation_min, translation_max)()
+                translation = ne.RandInt(translation_min, translation_max)()
 
             else:
 
@@ -158,10 +159,10 @@ def random_crop(
 
 def random_clip(
     input_tensor: torch.Tensor,
-    clip_min: Union[float, int, Sampler] = 0,
-    clip_max: Union[float, int, Sampler] = 1,
-    clip_prob: Union[float, int, Sampler] = 0.5,
-    seed: Union[int, Sampler] = None,
+    clip_min: Union[float, int, ne.Sampler] = 0,
+    clip_max: Union[float, int, ne.Sampler] = 1,
+    clip_prob: Union[float, int, ne.Sampler] = 0.5,
+    seed: Union[int, ne.Sampler] = None,
 ) -> torch.Tensor:
     """
     Randomly clips the values in a tensor to a specified range with a given probability.
@@ -215,11 +216,11 @@ def random_clip(
     True
     """
     # If prob is a sampler, sample from it
-    if isinstance(clip_prob, Sampler):
+    if isinstance(clip_prob, ne.Sampler):
         clip_prob = clip_prob()
 
     # Make prob into a Bernoulli distribution
-    clip_prob = Bernoulli.make(clip_prob)
+    clip_prob = ne.make_sampler(ne.Bernoulli, clip_prob)
 
     # Sample Bernoulli trial to determine whether to clip
     if bool(clip_prob()):
@@ -227,12 +228,12 @@ def random_clip(
         # Initialize random seed if provided
         if seed is not None:
             torch.manual_seed(seed)
-    
+
         # If `clip_min` is float, interpret it as a fixed minimum for clipping (clipping floor).
-        clip_min = Fixed.make(clip_min)
+        clip_min = ne.make_sampler(ne.Fixed, clip_min)
 
         # If `clip_max` is float, interpret it as a fixed maximum for clipping (clipping ceiling).
-        clip_max = Fixed.make(clip_max)
+        clip_max = ne.make_sampler(ne.Fixed, clip_min)
 
         # Sample and apply clips
         return input_tensor.clip_(clip_min(), clip_max())
@@ -242,9 +243,9 @@ def random_clip(
 
 def random_gamma(
     input_tensor: torch.Tensor,
-    gamma: Union[Sampler, float] = 1.0,
-    prob: Union[Sampler, float] = 1.0,
-    seed: Union[Sampler, int] = None,
+    gamma: Union[ne.Sampler, float] = 1.0,
+    prob: Union[ne.Sampler, float] = 1.0,
+    seed: Union[ne.Sampler, int] = None,
 ) -> torch.Tensor:
     """
     Applies a randomized nonlinear gamma scaling to the input tensor with a specified probability.
@@ -307,17 +308,17 @@ def random_gamma(
         torch.manual_seed(seed)
 
     # If prob is a sampler, sample from it
-    if isinstance(prob, Sampler):
+    if isinstance(prob, ne.Sampler):
         prob = prob()
 
     # Make prob into a Bernoulli distribution
-    prob = Bernoulli.make(prob)
+    prob = ne.make_sampler(ne.Bernoulli, prob)
 
     # Sample Bernoulli trial to determine whether to apply gamma scaling operation
     if bool(prob()):
 
         # Sample gamma
-        gamma = Fixed.make(gamma)()
+        gamma = ne.make_sampler(ne.Fixed, gamma)()
 
         # Apply nonlinear gamma scaling operation
         return input_tensor.pow(gamma)
