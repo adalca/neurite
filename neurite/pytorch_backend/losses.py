@@ -74,7 +74,7 @@ class Dice(nn.Module):
 
 class SoftDice(nn.Module):
     """
-    Soft dice loss module for single and multi-class segmentation with adjustable slope.
+    Soft dice loss for single and multi-class segmentation with adjustable slope.
 
     Computes the soft dice loss for each class separately and returns the mean loss across classes
     and batches. An adjustable slope parameter scales the logits before applying the sigmoid
