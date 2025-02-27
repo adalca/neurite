@@ -13,7 +13,7 @@ __all__ = [
     "CrossConvBlock"
 ]
 
-from typing import Union, Type, Optional, Tuple
+from typing import Any, Union, Type, Optional, Tuple
 import einops
 import torch
 from torch import nn
@@ -863,28 +863,28 @@ class CrossConvBlock(ConvBlock):
     Examples
     --------
     ### 2D pairwise convolution on CPU
-    >>> # Create random 2D inputs: 10 slices (target) and 3 slices (support).
-    >>> target_image = torch.randn(2, 10, 4, 64, 64)
+    >>> # Create random 2D inputs: 10 slices (query) and 3 slices (context).
+    >>> query_image = torch.randn(2, 10, 4, 64, 64)
     >>> support_image = torch.randn(2, 3, 1, 64, 64)
     >>> cross_conv_block = CrossConvBlock(
     ...     ndim=2, in_channels=(4, 1), out_channels=16, kernel_size=3, padding=1
     ... )
-    >>> new_target_image, new_support_image = cross_conv_block(target_image, support_image)
+    >>> new_query_image, new_support_image = cross_conv_block(query_image, support_image)
     >>> # Expected output shapes: (2, 10, 16, 64, 64), (2, 3, 16, 64, 64)
-    >>> print(new_target_image.shape, new_support_image.shape)
+    >>> print(new_query_image.shape, new_support_image.shape)
     torch.Size([2, 10, 16, 64, 64]) torch.Size([2, 3, 16, 64, 64])
 
     ### 3D pairwise convolution on GPU (if available)
     >>> device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    >>> # Create random 3D inputs: 13 slices (target) and 6 slices (support).
-    >>> target_image = torch.randn(1, 13, 1, 64, 64, 64, device=device)
+    >>> # Create random 3D inputs: 13 slices (query) and 6 slices (context).
+    >>> query_image = torch.randn(1, 13, 1, 64, 64, 64, device=device)
     >>> support_image = torch.randn(1, 6, 1, 64, 64, 64, device=device)
     >>> cross_conv_block = CrossConvBlock(
     ...     ndim=3, in_channels=(1, 1), out_channels=16, kernel_size=3, padding=1
     ... )
-    >>> new_target_image, new_support_image = cross_conv_block(target_image, support_image)
+    >>> new_query_image, new_support_image = cross_conv_block(query_image, support_image)
     >>> # Expected output shapes: (1, 13, 16, 64, 64, 64), (1, 6, 16, 64, 64, 64)
-    >>> print(new_target_image.shape, new_support_image.shape)
+    >>> print(new_query_image.shape, new_support_image.shape)
     torch.Size([1, 13, 16, 64, 64, 64]) torch.Size([1, 6, 16, 64, 64, 64])
     """
 
@@ -957,7 +957,7 @@ class CrossConvBlock(ConvBlock):
         )
 
         # Separate ConvBlock to further process the aggregated features
-        self.target_conv_block = ConvBlock(
+        self.query_conv_block = ConvBlock(
             ndim=ndim, in_channels=out_channels, out_channels=out_channels, kernel_size=kernel_size,
             stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, norm=norm,
             activation=activation, order=order
@@ -972,45 +972,45 @@ class CrossConvBlock(ConvBlock):
 
     def forward(
         self,
-        target: torch.Tensor,
-        support: torch.Tensor,
-    ):
+        query: torch.Tensor,
+        context: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Compute the cross convolution between target and support inputs.
+        Compute the cross convolution between query and context inputs.
 
         This method computes the pairwise convolution between all slices of the
-        `target` and `support` tensors. The steps are as follows:
+        `query` and `context` tensors. The steps are as follows:
           1. Expand the inputs into all possible slice pairs using `utils.cross_expand`.
           2. Flatten the slice dimensions into the batch dimension and apply the inherited conv
             operation.
-          3. Rearrange the convolved output back into separate target and support slice dimensions
+          3. Rearrange the convolved output back into separate query and context slice dimensions
             using `einops.rearrange`.
           4. Aggregate the outputs by computing:
-            - The new target representation as the average over support slices.
-            - The new support representation as the average over target slices.
+            - The new query representation as the average over context slices.
+            - The new context representation as the average over query slices.
           5. Refine each branch by processing through their respective ConvBlock modules.
 
         Parameters
         ----------
-        target : torch.Tensor
-            Input tensor representing the target of shape (B, Sx1, Cx1, ...), where Sx1 is the
-            number of slices or subimages in the target.
-        support : torch.Tensor
-            Input tensor representing the support with shape (B, Sx2, Cx2, ...), where Sx2 is the
-            number of slices or subimages in the support.
+        query : torch.Tensor
+            Input tensor representing the query of shape (B, Sx1, Cx1, ...), where Sx1 is the
+            number of slices or subimages in the query.
+        context : torch.Tensor
+            Input tensor representing the context with shape (B, Sx2, Cx2, ...), where Sx2 is the
+            number of slices or subimages in the context.
 
         Returns
         -------
         tuple of torch.Tensor
             A tuple containing:
-              - new_target: Target features after cross convolution, average over support slices,
-                and further convolutions. Has shape (B, S_target, out_channels, ...).
-              - new_support: Support features after cross convolution, average over support slices,
+              - new_query: query features after cross convolution, average over context slices,
+                and further convolutions. Has shape (B, S_query, out_channels, ...).
+              - new_support: Support features after cross convolution, average over context slices,
                 and further convolutions. Has shape (B, S_support, out_channels, ...).
         """
 
         # Compute all pairs of slices and patch into batch dimension
-        batched_paired_tensors = ne.utils.utils.cross_expand(target, support)
+        batched_paired_tensors = ne.utils.utils.cross_expand(query, context)
 
         # perform the cross convolution
         batched_output = super().forward(batched_paired_tensors)
@@ -1018,24 +1018,24 @@ class CrossConvBlock(ConvBlock):
         cross_conv_output = einops.rearrange(
             batched_output,
             "(B Sx1 Sx2) C ... -> B Sx1 Sx2 C ...",
-            B=target.size(0),
-            Sx1=target.size(1),
-            Sx2=support.size(1)
+            B=query.size(0),
+            Sx1=query.size(1),
+            Sx2=context.size(1)
         )
 
-        # Average over the support slices/subimages to get the new target
-        new_target = cross_conv_output.mean(dim=2)  # New shape: (B, S_t, C, ...)
+        # Average over the context slices/subimages to get the new query
+        new_query = cross_conv_output.mean(dim=2)  # New shape: (B, S_t, C, ...)
 
-        # Average over the target slices/subimages to get the new support
+        # Average over the query slices/subimages to get the new context
         new_support = cross_conv_output.mean(dim=1)  # New shape: (B, S_s, C, ...)
 
         # Process each branch with more convs!
-        new_target = self.target_conv_block(
-            new_target.flatten(0, 1)
-        ).unflatten(0, new_target.shape[:2])
+        new_query = self.query_conv_block(
+            new_query.flatten(0, 1)
+        ).unflatten(0, new_query.shape[:2])
 
         new_support = self.support_conv_block(
             new_support.flatten(0, 1)
         ).unflatten(0, new_support.shape[:2])
 
-        return new_target, new_support
+        return new_query, new_support
