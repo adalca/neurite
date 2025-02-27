@@ -83,8 +83,8 @@ class SoftDice(nn.Module):
     Examples
     --------
     >>> loss_fn = SoftDiceLoss(slope=2.0)
-    >>> logits = ne.Normal(0, 1)(shape)
-    >>> targets = ne.RandInt(0, 1)(shape)
+    >>> logits = ne.samplers.Normal(0, 1)(shape)
+    >>> targets = ne.samplers.RandInt(0, 1)(shape)
     >>> loss = loss_fn(logits, targets)
     """
 
