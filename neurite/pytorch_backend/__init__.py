@@ -27,12 +27,3 @@ from . import models            # noqa: F401
 from . import modules           # noqa: F401
 from . import layers            # noqa: F401
 from . import losses            # noqa: F401
-
-# Allows us to import symbols within `models` for example, by doing `ne.BasicUNet` instead of
-# `ne.models.BasicUNet`
-from .samplers import *         # noqa: F401, F403
-from .utils import *            # noqa: F401, F403
-from .models import *           # noqa: F401, F403
-from .modules import *          # noqa: F401, F403
-from .layers import *           # noqa: F401, F403
-from .losses import *           # noqa: F401, F403
