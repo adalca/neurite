@@ -23,6 +23,7 @@ implied. See the License for the specific language governing permissions and lim
 the License.
 """
 __all__ = [
+    "scaled_sigmoid",
     "Dice",
     "SoftDice",
     "HardDice",
@@ -32,6 +33,26 @@ __all__ = [
 
 import torch
 from torch import nn
+
+
+def scaled_sigmoid(logits: torch.Tensor, slope: float = 1.0) -> torch.Tensor:
+    """
+    Computes the scaled sigmoid function.
+
+    Parameters
+    ----------
+    logits : torch.Tensor
+        Unnormalized output (score) of a segmentation model.
+    slope : float
+        Slope of the sigmoid function.
+
+    Returns
+    -------
+    torch.Tensor
+        Probabilities derived from logits according to the custom-slope sigmoid function
+    """
+
+    return 1 / (1 + torch.exp(-slope * logits))
 
 
 class Dice(nn.Module):
@@ -53,19 +74,77 @@ class Dice(nn.Module):
 
 class SoftDice(nn.Module):
     """
-    Compute the Soft Dice Coefficient between two tensors.
-    """
-    def __init__(self):
-        """
-        Initialize the `SoftDice` module.
-        """
-        super().__init__()
+    Soft dice loss module for single and multi-class segmentation with adjustable slope.
 
-    def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
+    Computes the soft dice loss for each class separately and returns the mean loss across classes
+    and batches. An adjustable slope parameter scales the logits before applying the sigmoid
+    function, effectively controlling the sharpness of the prediction probabilities.
+
+    Examples
+    --------
+    >>> loss_fn = SoftDiceLoss(slope=2.0)
+    >>> logits = ne.Normal(0, 1)(shape)
+    >>> targets = ne.RandInt(0, 1)(shape)
+    >>> loss = loss_fn(logits, targets)
+    """
+
+    def __init__(self, slope: float = 1.0, smooth: float = 1e-6) -> None:
         """
-        Performs the forward pass of the `SoftDice` module.
+        Instantiate `SoftDice`
+
+        Parameters
+        ----------
+        slope : float, optional
+            Scaling factor for the slope of the sigmoid function. A higher value makes the sigmoid
+            function steeper, by default 1.0.
+        smooth : float, optional
+            Smoothing constant to avoid division by zero, by default 1e-6.
         """
-        raise NotImplementedError("The `SoftDice` module isn't ready yet :(")
+
+        super().__init__()
+        self.slope = slope
+        self.smooth = smooth
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the soft dice loss for one or multiple classes.
+
+        Parameters
+        ----------
+        logits : torch.Tensor
+            Raw output logits/score from the network with shape (batch_size, channels, ...).
+            Expected to be unbounded.
+        targets : torch.Tensor
+            Ground truth labels with shape (batch_size, channels, ...). Must be binary or one-hot
+            encoded for each class.
+
+        Returns
+        -------
+        torch.Tensor
+            The mean soft dice loss computed across all classes and batches.
+        """
+
+        # Obtain probabilities by passing logits through custom-slope sigmoid
+        probs = scaled_sigmoid(logits, self.slope)
+
+        # Flatten spatial dimensions while preserving batch and channel dims
+        probs = probs.view(probs.size(0), probs.size(1), -1)
+        targets = targets.view(targets.size(0), targets.size(1), -1)
+
+        # Per-class intersection
+        intersection = (probs * targets).sum(dim=2)
+
+        # Per-class union
+        union = probs.sum(dim=2) + targets.sum(dim=2)
+
+        # Compute the dice score with intersection, smooth, & union
+        dice_score = (2 * intersection + self.smooth) / (union + self.smooth)
+
+        # Average loss over classes and batches.
+        # TODO: Optionally make this mean, max, min (but only useful for multiclass so maybe not)
+        loss = 1 - dice_score.mean()
+
+        return loss
 
 
 class HardDice(nn.Module):
