@@ -42,7 +42,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-import neurite.pytorch_backend as ne
+import neurite.pytorch as ne
 
 
 class RescaleValues(nn.Module):

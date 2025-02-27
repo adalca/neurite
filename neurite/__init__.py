@@ -78,7 +78,7 @@ def _load_backend_module(backend: str) -> None:
 
         try:
             import torch  # noqa: C0415
-            from . import pytorch_backend  # noqa: C0415
+            from . import pytorch  # noqa: C0415
 
         except ImportError as error:
             raise ImportError(
@@ -86,7 +86,7 @@ def _load_backend_module(backend: str) -> None:
             ) from error
 
         # The neurite module name for the pytorch backend is called `torch`.
-        backend_module_name = ".pytorch_backend"
+        backend_module_name = ".pytorch"
 
     elif backend == "tensorflow":
 
@@ -136,7 +136,7 @@ __all__ = [
 # From Etienne (2025-02-06): please do not remove. If removed, VS code's language server gets
 # confused and doesn't show function/class documentation. This can be ameliorated by removing the
 # dynamic backend, but we likely do not want to do that.
-if backend_module_name == ".pytorch_backend":
-    from .pytorch_backend import *
+if backend_module_name == ".pytorch":
+    from .pytorch import *
 else:
     from .tf import *

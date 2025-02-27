@@ -14,7 +14,7 @@ __all__ = [
 from typing import List, Union, Callable
 import torch
 from torch import nn
-import neurite.pytorch_backend as ne
+import neurite.pytorch as ne
 
 
 class BasicUNet(nn.Module):

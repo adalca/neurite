@@ -54,7 +54,7 @@ import einops
 import torch
 import torch.nn.functional as F
 from torch import nn
-import neurite.pytorch_backend as ne
+import neurite.pytorch as ne
 
 
 def identity(input_argument):
