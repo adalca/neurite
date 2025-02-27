@@ -1017,7 +1017,7 @@ class CrossConvBlock(ConvBlock):
 
         cross_conv_output = einops.rearrange(
             batched_output,
-            "(B Sx1 Sx2) C ... -> B Sx1 Sx2 C ...",
+            "(B Sq Sc) C ... -> B Sq Sc C ...",
             B=query.size(0),
             Sx1=query.size(1),
             Sx2=context.size(1)
