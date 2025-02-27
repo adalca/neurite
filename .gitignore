@@ -82,3 +82,16 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+events.out.tfevents*
+*.log
+*.ipynb
+*wandb*
+*pyc
+neurite_env/*
+neurite/pyvenv.cfg
+neurite/.gitignore
+sandbox/layers/unet.onnx
+.gitignore
+sandbox/flexible_unet_computational_graph
+sandbox/layers/report_dynamo_export.sarif
+sandbox/voxel_morph/traced_model.pt
