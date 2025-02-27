@@ -1426,6 +1426,10 @@ def cross_expand(
     torch.Size([1, 3, 7, 4, 5, 6]) torch.Size([1, 3, 7, 8, 9, 10])
     """
 
+    # Make some room for the slices! (Sx & Sy)
+    x1 = x1.unsqueeze(0)
+    x2 = x2.unsqueeze(0)
+
     # Unpack to get Sx1 and Sx2 slice dimensions
     Bx1, Sx1, Cx1, *x1_spatial = x1.shape  # Could've used x1.size(1), but I like it this way :)
     Bx2, Sx2, Cx2, *x2_spatial = x2.shape
