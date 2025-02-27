@@ -865,26 +865,26 @@ class CrossConvBlock(ConvBlock):
     ### 2D pairwise convolution on CPU
     >>> # Create random 2D inputs: 10 slices (query) and 3 slices (context).
     >>> query_image = torch.randn(2, 10, 4, 64, 64)
-    >>> support_image = torch.randn(2, 3, 1, 64, 64)
+    >>> context_image = torch.randn(2, 3, 1, 64, 64)
     >>> cross_conv_block = CrossConvBlock(
     ...     ndim=2, in_channels=(4, 1), out_channels=16, kernel_size=3, padding=1
     ... )
-    >>> new_query_image, new_support_image = cross_conv_block(query_image, support_image)
+    >>> new_query_image, new_context_image = cross_conv_block(query_image, context_image)
     >>> # Expected output shapes: (2, 10, 16, 64, 64), (2, 3, 16, 64, 64)
-    >>> print(new_query_image.shape, new_support_image.shape)
+    >>> print(new_query_image.shape, new_context_image.shape)
     torch.Size([2, 10, 16, 64, 64]) torch.Size([2, 3, 16, 64, 64])
 
     ### 3D pairwise convolution on GPU (if available)
     >>> device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     >>> # Create random 3D inputs: 13 slices (query) and 6 slices (context).
     >>> query_image = torch.randn(1, 13, 1, 64, 64, 64, device=device)
-    >>> support_image = torch.randn(1, 6, 1, 64, 64, 64, device=device)
+    >>> context_image = torch.randn(1, 6, 1, 64, 64, 64, device=device)
     >>> cross_conv_block = CrossConvBlock(
     ...     ndim=3, in_channels=(1, 1), out_channels=16, kernel_size=3, padding=1
     ... )
-    >>> new_query_image, new_support_image = cross_conv_block(query_image, support_image)
+    >>> new_query_image, new_context_image = cross_conv_block(query_image, context_image)
     >>> # Expected output shapes: (1, 13, 16, 64, 64, 64), (1, 6, 16, 64, 64, 64)
-    >>> print(new_query_image.shape, new_support_image.shape)
+    >>> print(new_query_image.shape, new_context_image.shape)
     torch.Size([1, 13, 16, 64, 64, 64]) torch.Size([1, 6, 16, 64, 64, 64])
     """
 
@@ -964,7 +964,7 @@ class CrossConvBlock(ConvBlock):
         )
 
         # Separate ConvBlock to further process the aggregated features
-        self.support_conv_block = ConvBlock(
+        self.context_conv_block = ConvBlock(
             ndim=ndim, in_channels=out_channels, out_channels=out_channels, kernel_size=kernel_size,
             stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, norm=norm,
             activation=activation, order=order
@@ -1004,9 +1004,9 @@ class CrossConvBlock(ConvBlock):
         tuple of torch.Tensor
             A tuple containing:
               - new_query: query features after cross convolution, average over context slices,
-                and further convolutions. Has shape (B, S_query, out_channels, ...).
-              - new_support: Support features after cross convolution, average over context slices,
-                and further convolutions. Has shape (B, S_support, out_channels, ...).
+                and further convolutions. Has shape (B, Sq, out_channels, ...).
+              - new_context: Support features after cross convolution, average over context slices,
+                and further convolutions. Has shape (B, Sc, out_channels, ...).
         """
 
         # Compute all pairs of slices and patch into batch dimension
@@ -1024,18 +1024,18 @@ class CrossConvBlock(ConvBlock):
         )
 
         # Average over the context slices/subimages to get the new query
-        new_query = cross_conv_output.mean(dim=2)  # New shape: (B, S_t, C, ...)
+        new_query = cross_conv_output.mean(dim=2)  # New shape: (B, Sq, C, ...)
 
         # Average over the query slices/subimages to get the new context
-        new_support = cross_conv_output.mean(dim=1)  # New shape: (B, S_s, C, ...)
+        new_context = cross_conv_output.mean(dim=1)  # New shape: (B, Sc, C, ...)
 
         # Process each branch with more convs!
         new_query = self.query_conv_block(
             new_query.flatten(0, 1)
         ).unflatten(0, new_query.shape[:2])
 
-        new_support = self.support_conv_block(
-            new_support.flatten(0, 1)
-        ).unflatten(0, new_support.shape[:2])
+        new_context = self.context_conv_block(
+            new_context.flatten(0, 1)
+        ).unflatten(0, new_context.shape[:2])
 
-        return new_query, new_support
+        return new_query, new_context
