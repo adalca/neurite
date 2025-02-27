@@ -993,7 +993,7 @@ class RandInt(Sampler):
         Sampler that generates uniformly distributed random integers within a specified range.
 
         This sampler produces samples from a uniform integer distribution over the interval
-        `[low, high)`, where `low` is inclusive and `high` is exclusive. It leverages PyTorch's
+        `[low, high)`, where `low` and `high` are inclusive. It leverages PyTorch's
         random number generation capabilities to create the samples.
 
         Parameters
@@ -1074,7 +1074,7 @@ class RandInt(Sampler):
         high = self.theta.get('high', 10)
 
         # Generate samples using torch.randint
-        samples = torch.randint(low=low, high=high, size=shape, **backend)
+        samples = torch.randint(low=low, high=high+1, size=shape, **backend)
 
         return samples
 
