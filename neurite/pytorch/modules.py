@@ -843,8 +843,8 @@ class UpsampleConvBlock(nn.Module):
 
 class CrossConvBlock(ConvBlock):
     """
-    nD Convolutional layer that performs cross convolutions between slice elements of two input
-    tensors.
+    nD Convolutional layer that performs cross convolutions to interact a query image with a context
+    set (examples) defining a task.
 
     Examples
     --------
