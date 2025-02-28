@@ -843,35 +843,48 @@ class UpsampleConvBlock(nn.Module):
 
 class CrossConvBlock(ConvBlock):
     """
-    nD Convolutional layer that performs pairwise convolutions between slice elements of two input
+    nD Convolutional layer that performs cross convolutions between slice elements of two input
     tensors.
 
     Examples
     --------
-    ### 2D pairwise convolution on CPU
-    >>> # Create random 2D inputs: 10 slices (query) and 3 slices (context).
-    >>> query_image = torch.randn(2, 10, 4, 64, 64)
-    >>> context_image = torch.randn(2, 3, 1, 64, 64)
+    ### 2D cross convolution on CPU
+    >>> # Create random 2D inputs: 3 sets of 2 query images and 6 context pairs.
+    >>> query_image = torch.randn(3, 2, 1, 64, 64)
+    >>> context_images = torch.randn(3, 6, 1, 64, 64)
+    >>> context_segmentations = ne.samplers.RandInt()((3, 6, 1, 64, 64))
+    >>> # Concat along the channel dimension
+    >>> context = torch.cat([context_images, context_segmentations], dim=1)
+    >>> # Define the number of query image channels and context set channels seperately:
+    >>> in_channels = (1, 2)
+    >>> # Define cross convolution block
     >>> cross_conv_block = CrossConvBlock(
-    ...     ndim=2, in_channels=(4, 1), out_channels=16, kernel_size=3, padding=1
+    ...     ndim=2, in_channels=in_channels, out_channels=16, kernel_size=3, padding=1
     ... )
+    >>> # Forward pass of cross convolutiom block, returning new query and context representations
     >>> new_query_image, new_context_image = cross_conv_block(query_image, context_image)
-    >>> # Expected output shapes: (2, 10, 16, 64, 64), (2, 3, 16, 64, 64)
+    >>> # Expected output shapes: (3, 2, 16, 64, 64), (3, 6, 16, 64, 64)
     >>> print(new_query_image.shape, new_context_image.shape)
-    torch.Size([2, 10, 16, 64, 64]) torch.Size([2, 3, 16, 64, 64])
+    torch.Size([3, 2, 16, 64, 64]) torch.Size([3, 6, 16, 64, 64])
 
-    ### 3D pairwise convolution on GPU (if available)
-    >>> device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    >>> # Create random 3D inputs: 13 slices (query) and 6 slices (context).
-    >>> query_image = torch.randn(1, 13, 1, 64, 64, 64, device=device)
-    >>> context_image = torch.randn(1, 6, 1, 64, 64, 64, device=device)
+    ### 3D cross convolution on GPU
+    >>> # Create random 3D inputs: 1 set of 1 query image and 9 context pairs.
+    >>> query_image = torch.randn(1, 1, 1, 128, 128, 128)
+    >>> context_images = torch.randn(1, 9, 1, 128, 128, 128)
+    >>> context_segmentations = ne.samplers.RandInt()((1, 9, 1, 128, 128, 128))
+    >>> # Concat along the channel dimension
+    >>> context = torch.cat([context_images, context_segmentations], dim=1)
+    >>> # Define the number of query image channels and context set channels seperately:
+    >>> in_channels = (1, 2)
+    >>> # Define cross convolution block
     >>> cross_conv_block = CrossConvBlock(
-    ...     ndim=3, in_channels=(1, 1), out_channels=16, kernel_size=3, padding=1
+    ...     ndim=3, in_channels=in_channels, out_channels=32, kernel_size=3, padding=1
     ... )
+    >>> # Forward pass of cross convolutiom block, returning new query and context representations
     >>> new_query_image, new_context_image = cross_conv_block(query_image, context_image)
-    >>> # Expected output shapes: (1, 13, 16, 64, 64, 64), (1, 6, 16, 64, 64, 64)
+    >>> # Expected output shapes: (1, 1, 32, 128, 128, 128), (1, 9, 32, 128, 128, 128)
     >>> print(new_query_image.shape, new_context_image.shape)
-    torch.Size([1, 13, 16, 64, 64, 64]) torch.Size([1, 6, 16, 64, 64, 64])
+    torch.Size([3, 1, 32, 128, 128, 128]) torch.Size([3, 9, 32, 128, 128, 128])
 
     Notes
     -----
@@ -976,28 +989,27 @@ class CrossConvBlock(ConvBlock):
         context: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Compute the cross convolution between query and context inputs.
+        Compute the cross convolution between the query image and the context set.
 
-        This method computes the cross convolution between all slices of the `query` and `context`
-        tensors. The steps are as follows:
+        This method computes the cross convolution between all slices of the `query` image and the
+        `context` set. The steps are as follows:
 
-          1. Expand the inputs into all possible slice pairs using `utils.cross_expand`.
-          2. Flatten the slice dimensions into the batch dimension and apply the inherited conv
-            operation.
-          3. Rearrange the convolved output back into separate query and context slice dimensions
-            using `einops.rearrange`.
+          1. Interact the inputs using `ne.utils.utils.cross_expand()`, gathering in the batch dim.
+          2. Perform the [cross] convolution operation.
+          3. Rearrange the output back into separate query and context slice dimensions, but with
+             `out_channels` channels.
           4. Aggregate the outputs by computing:
-            - The new query representation as the average over context slices.
-            - The new context representation as the average over query slices.
+             - The new query representation as the average over context representations.
+             - The new context representation as the average over query representations.
           5. Refine each branch by processing through their respective ConvBlock modules.
 
         Parameters
         ----------
         query : torch.Tensor
-            Input tensor representing the query image of shape (B, Sq, Cq, ...), where Sq always
-            equals 1, and Cq represents the number of features.
+            Input tensor representing a query image of shape (B, Sq, Cq, ...), where Sq always
+            equals 1, and Cq represents the number of image features.
         context : torch.Tensor
-            Tensor representing the context set with shape (B, Sc, Cc, ...), where Sc is the
+            Tensor representing the context set of shape (B, Sc, Cc, ...), where Sc is the
             number of members in the context set (usually 2 for image and label).
 
         Returns
@@ -1011,17 +1023,17 @@ class CrossConvBlock(ConvBlock):
         """
 
         # Compute all pairs of slices and patch into batch dimension
-        batched_paired_tensors = ne.utils.utils.cross_expand(   # (B*Sq*Sc, Cq+Cc, ...)
+        batched_paired_tensors = ne.utils.utils.cross_expand(       # (B*Sq*Sc, Cq+Cc, ...)
             query,
             context
         )
 
         # Perform cross conv taking advantage of batch dim
-        cross_conv_output = super().forward(                    # (B*Sq*Sc, out_channels, ...)
+        cross_conv_output = super().forward(                        # (B*Sq*Sc, out_channels, ...)
             batched_paired_tensors
-        )  
+        )
 
-        cross_conv_output = einops.rearrange(                   # (B, Sq, Sc, out_channels, ...)
+        cross_conv_output = einops.rearrange(                       # (B, Sq, Sc, out_channels, ...)
             cross_conv_output,
             "(B Sq Sc) C ... -> B Sq Sc C ...",
             B=query.size(0),
@@ -1030,17 +1042,17 @@ class CrossConvBlock(ConvBlock):
         )
 
         # Average over the context set to get the new query
-        new_query = cross_conv_output.mean(dim=2)               # (B, Sq, out_channels, ...)
+        new_query = cross_conv_output.mean(dim=2)                   # (B, Sq, out_channels, ...)
 
         # Average over the query slices/subimages to get the new context
-        new_context = cross_conv_output.mean(dim=1)             # (B, Sc, out_channels, ...)
+        new_context = cross_conv_output.mean(dim=1)                 # (B, Sc, out_channels, ...)
 
         # Process each branch with more convs!
-        new_query = self.query_conv_block(                      # (B, Sq, out_channels, ...)
+        new_query = self.query_conv_block(                          # (B, Sq, out_channels, ...)
             new_query.flatten(0, 1)
         ).unflatten(0, new_query.shape[:2])
 
-        new_context = self.context_conv_block(                  # (B, Sc, out_channels, ...)
+        new_context = self.context_conv_block(                      # (B, Sc, out_channels, ...)
             new_context.flatten(0, 1)
         ).unflatten(0, new_context.shape[:2])
 
