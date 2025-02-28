@@ -991,14 +991,14 @@ class CrossConvBlock(ConvBlock):
         """
         Compute the cross convolution between the query image and the context set.
 
-        This method computes the cross convolution between all slices of the `query` image and the
+        This method computes the cross convolution between the `query` image and the members of the
         `context` set. The steps are as follows:
 
           1. Interact the inputs using `ne.utils.utils.cross_expand()`, gathering in the batch dim.
           2. Perform the [cross] convolution operation.
-          3. Rearrange the output back into separate query and context slice dimensions, but with
-             `out_channels` channels.
-          4. Aggregate the outputs by computing:
+          3. Rearrange the output back into separate query features and context set features, but
+             with `out_channels` number of features.
+          4. Reduce the outputs such that:
              - The new query representation as the average over context representations.
              - The new context representation as the average over query representations.
           5. Refine each branch by processing through their respective ConvBlock modules.
@@ -1016,23 +1016,24 @@ class CrossConvBlock(ConvBlock):
         -------
         tuple of torch.Tensor
             A tuple containing:
-              - new_query: query features after cross convolution, average over context slices,
-                and further convolutions. Has shape (B, Cq, out_channels, ...).
-              - new_context: Support features after cross convolution, average over context slices,
-                and further convolutions. Has shape (B, Cc, out_channels, ...).
+              - `new_query`: query features after cross convolution and reducing over context dim,
+                followed by further convolutions. Has shape (B, Sq, Cq, out_channels, ...).
+              - `new_context`: Support features after cross convolution and reducing over query dim,
+                followed by further convolutions. Has shape (B, Sc, Cc, out_channels, ...).
         """
 
-        # Compute all pairs of slices and patch into batch dimension
+        # Prepare the features to be interacted by crossing them
         batched_paired_tensors = ne.utils.utils.cross_expand(       # (B*Sq*Sc, Cq+Cc, ...)
             query,
             context
         )
 
-        # Perform cross conv taking advantage of batch dim
+        # Interact the features by performing cross convolution and taking advantage of batch dim
         cross_conv_output = super().forward(                        # (B*Sq*Sc, out_channels, ...)
             batched_paired_tensors
         )
 
+        # Rearrange the response into separate query features and context set features
         cross_conv_output = einops.rearrange(                       # (B, Sq, Sc, out_channels, ...)
             cross_conv_output,
             "(B Sq Sc) C ... -> B Sq Sc C ...",
@@ -1041,10 +1042,10 @@ class CrossConvBlock(ConvBlock):
             Sc=context.size(1)
         )
 
-        # Average over the context set to get the new query
+        # Reduce output to obtain new query representation by averageing over the context set
         new_query = cross_conv_output.mean(dim=2)                   # (B, Sq, out_channels, ...)
 
-        # Average over the query slices/subimages to get the new context
+        # Reduce output to obtain new context representation by averageing over the query image(s)
         new_context = cross_conv_output.mean(dim=1)                 # (B, Sc, out_channels, ...)
 
         # Process each branch with more convs!
