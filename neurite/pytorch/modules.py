@@ -1043,6 +1043,5 @@ class CrossConvBlock(ConvBlock):
         new_context = self.context_conv_block(                  # (B, Sc, out_channels, ...)
             new_context.flatten(0, 1)
         ).unflatten(0, new_context.shape[:2])
-        print("new_context: ", new_context.shape)
 
         return new_query, new_context
