@@ -846,20 +846,6 @@ class CrossConvBlock(ConvBlock):
     nD Convolutional layer that performs pairwise convolutions between slice elements of two input
     tensors.
 
-    Notes
-    -----
-    Modified from the original description in https://github.com/JJGO/UniverSeg:
-    The pairwise convolution is computed by first forming a Cartesian product of the slices in `x1`
-    and `x2`. For example, if `x1` has Sx1 slices and `x2` has Sx2 slices, then the concatenated
-    tensor has shape (B, Sx1, Sx2, Cx1 + Cx2, ...). This tensor is reshaped to combine the first
-    three dimensions so that the standard nn.Conv*d can be applied. Finally, the output is reshaped
-    back to separate the batch and slice indices.
-
-    References
-    ----------
-    J. G. Ortiz et al., "UniverSeg: Universal Medical Image Segmentation,"
-    GitHub repository, 2023. Available: https://github.com/JJGO/UniverSeg
-
     Examples
     --------
     ### 2D pairwise convolution on CPU
@@ -886,6 +872,20 @@ class CrossConvBlock(ConvBlock):
     >>> # Expected output shapes: (1, 13, 16, 64, 64, 64), (1, 6, 16, 64, 64, 64)
     >>> print(new_query_image.shape, new_context_image.shape)
     torch.Size([1, 13, 16, 64, 64, 64]) torch.Size([1, 6, 16, 64, 64, 64])
+
+    Notes
+    -----
+    Modified from the original description in https://github.com/JJGO/UniverSeg:
+    The pairwise convolution is computed by first forming a Cartesian product of the slices in `x1`
+    and `x2`. For example, if `x1` has Sx1 slices and `x2` has Sx2 slices, then the concatenated
+    tensor has shape (B, Sx1, Sx2, Cx1 + Cx2, ...). This tensor is reshaped to combine the first
+    three dimensions so that the standard nn.Conv*d can be applied. Finally, the output is reshaped
+    back to separate the batch and slice indices.
+
+    References
+    ----------
+    J. G. Ortiz et al., "UniverSeg: Universal Medical Image Segmentation,"
+    GitHub repository, 2023. Available: https://github.com/JJGO/UniverSeg
     """
 
     def __init__(
