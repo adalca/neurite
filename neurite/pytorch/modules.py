@@ -841,7 +841,7 @@ class UpsampleConvBlock(nn.Module):
             return self.conv_block(self.upsample(input_tensor))
 
 
-class CrossConvBlock(ConvBlock):
+class CrossConvBlock(nn.Module):
     """
     nD Convolutional layer that performs cross convolutions to interact a query image with a context
     set (examples) defining a task.
@@ -962,8 +962,9 @@ class CrossConvBlock(ConvBlock):
             - `'n'`: Normalization
             - `'a'`: Activation
         """
+        super().__init__()
 
-        super().__init__(
+        self.cross_conv = ConvBlock(
             ndim=ndim, in_channels=sum(in_channels), out_channels=out_channels,
             kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
             groups=groups, bias=bias, norm=norm, activation=activation, order=order
@@ -1029,7 +1030,7 @@ class CrossConvBlock(ConvBlock):
         )
 
         # Interact the features by performing cross convolution and taking advantage of batch dim
-        cross_conv_output = super().forward(                        # (B*Sq*Sc, out_channels, ...)
+        cross_conv_output = self.cross_conv(                        # (B*Sq*Sc, out_channels, ...)
             batched_paired_tensors
         )
 
