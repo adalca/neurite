@@ -45,7 +45,8 @@ __all__ = [
     "make_sample_flow",
     "cross_expand",
     "filter_dim",
-    "crop_to_nearest_multiple"
+    "crop_to_nearest_multiple",
+    "logistic",
 ]
 
 from typing import Union, List, Tuple
@@ -1605,3 +1606,51 @@ def crop_to_nearest_multiple(tensor, multiple=128):
     cropped_tensor = tensor[tuple(slices)]
 
     return cropped_tensor
+
+
+def logistic(
+    logits: torch.Tensor,  # TODO: Should this be called `input_tensor` to make it more general?
+    slope: float = 1.0,
+    lower_asymptote: float = 0.0,
+    upper_asymptote: float = 1.0,  # TODO: Maybe call these `min_output` and `max_output`
+) -> torch.Tensor:
+
+    """
+    Apply a scaled and shifted logistic function to input logits.
+
+    This function computes a generalized logistic (sigmoid) function that maps input logits to a
+    range bounded by `lower_asymptote` and `upper_asymptote`. The `slope` parameter controls the
+    steepness of the transition between these asymptotic values.
+
+    Parameters
+    ----------
+    logits : torch.Tensor
+        Unnormalized output (score), such as the outputs of a segmentation model.
+    slope : float
+        The slope of the logistic function. A higher value results in a steeper transition between
+        the asymptotic bounds. Default is 1.0.
+    lower_asymptote : float, optional
+        The lower bound of output values (asymptote) as logits tend to infinity. Default is 0.0.
+    upper_asymptote : float, optional
+        The maximum bound output values (asymptote) as logits tend to negative infinity.
+        Default is 1.0.
+
+    Returns
+    -------
+    torch.Tensor
+        Result of the logistic function which can be interpreted as probabilities/normalized scores.
+    """
+
+    # Validate upper and lower bounds of logistic
+    assert upper_asymptote > lower_asymptote, (
+        "`upper_asymptote` must be greater than `lower_asymptote."
+    )
+
+    # Compute the numerator of logistic. By default, 1.0
+    numerator = upper_asymptote - lower_asymptote
+
+    # Compute denominator of logistic with the modulated slope
+    denominator = 1 + torch.exp(-slope * logits)
+
+    # Shift by the lower asymptote and return
+    return lower_asymptote + (numerator / denominator)

@@ -23,7 +23,6 @@ implied. See the License for the specific language governing permissions and lim
 the License.
 """
 __all__ = [
-    "scaled_sigmoid",
     "Dice",
     "SoftDice",
     "HardDice",
@@ -33,26 +32,7 @@ __all__ = [
 
 import torch
 from torch import nn
-
-
-def scaled_sigmoid(logits: torch.Tensor, slope: float = 1.0) -> torch.Tensor:
-    """
-    Computes the scaled sigmoid function.
-
-    Parameters
-    ----------
-    logits : torch.Tensor
-        Unnormalized output (score) of a segmentation model.
-    slope : float
-        Slope of the sigmoid function.
-
-    Returns
-    -------
-    torch.Tensor
-        Probabilities derived from logits according to the custom-slope sigmoid function
-    """
-
-    return 1 / (1 + torch.exp(-slope * logits))
+import neurite as ne
 
 
 class Dice(nn.Module):
@@ -125,7 +105,7 @@ class SoftDice(nn.Module):
         """
 
         # Obtain probabilities by passing logits through custom-slope sigmoid
-        probs = scaled_sigmoid(logits, self.slope)
+        probs = ne.logistic(logits, self.slope)
 
         # Flatten spatial dimensions while preserving batch and channel dims
         probs = probs.view(probs.size(0), probs.size(1), -1)
