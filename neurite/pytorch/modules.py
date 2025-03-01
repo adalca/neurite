@@ -260,14 +260,15 @@ class Activation(nn.Module):
 
 class ConvBlock(nn.Sequential):
     """
-    Convolutional Block comprising a convolutional layer, and optionally, an activation function and
+    Convolutional block comprising a convolutional layer, and optionally, an activation function and
     normalization.
 
     The default sequence of operations in this block is:
-        1. **Convolution**: Applies a 2D convolution over the input.
-        2. **Normalization**: Normalizes the output of the convolution to stabilize and accelerate
-        training.
-        3. **Activation Function**: Introduces non-linearity to the model.
+
+    1. **Convolution**: Apply an nD convolution over the input.
+    2. **Normalization**: Normalize the output of the convolution to stabilize and accelerate
+    training.
+    3. **Activation Function**: Introduce non-linearity to the model.
 
     Attributes
     ----------
