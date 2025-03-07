@@ -1659,24 +1659,20 @@ def logistic(
 
 
 def dice(
-    targets: torch.Tensor,
-    probs: torch.Tensor,
+    seg1: torch.Tensor,
+    seg2: torch.Tensor,
     smooth_numerator: float = 1e-12,
     smooth_denominator: float = 1e-12,
 ) -> torch.Tensor:
     """
-    Compute the Dice score between predicted probabilities and target masks.
-
-    The dice score is a metric of overlap between sets. In this case, probs represents the
-    probabilities of a prediction, and targets represent the true probabilities of each class as a
-    one-hot encoding.
+    Compute the Dice score between two segmentation tensors (e.g. ground truth, predictions, etc...)
 
     Parameters
     ----------
-    targets : torch.Tensor
-        Ground truth one-hot encoded targets with shape (B, C, *spatial_dims).
-    probs : torch.Tensor
-        Predicted probabilities with the same shape as `targets`
+    seg1 : torch.Tensor
+        First segmentation tensor of shape (B, C, *spatial_dims).
+    seg2 : torch.Tensor
+        Second segmentation tensor with the same shape as `seg1`
     smooth_numerator : float, optional
         Smoothing constant added to the numerator.
     smooth_denominator : float, optional
@@ -1689,37 +1685,37 @@ def dice(
 
     Examples
     --------
-    >>> # Make shape for `y_true` and `y_probs` with shape (B, C, *spatial_dims)
+    >>> # Make shape for example segmentations with shape (B, C, *spatial_dims)
     >>> shape = (1, 5, 64, 64)
-    >>> # Sample `y_true` and `y_probs` from neurite's uniform samplers
-    >>> y_true = ne.samplers.Uniform(0, 1)(shape)
-    >>> y_probs = ne.samplers.Uniform(0, 1)(shape)
-    >>> dice_score = ne.utils.dice(y_true, y_probs)
+    >>> # Sample `seg1` and `seg2` from neurite's uniform samplers
+    >>> seg1 = ne.samplers.Uniform(0, 1)(shape)
+    >>> seg2 = ne.samplers.Uniform(0, 1)(shape)
+    >>> dice_score = ne.utils.dice(seg1, seg2)
     >>> dice_score
     tensor([[0.5068, 0.4974, 0.5031, 0.4982, 0.4999]])
     """
 
-    # Ensure `targets` can be interpreted as valid probabilities
-    assert targets.min() >= 0 and targets.max() <= 1, (
-        f"`targets` must be between zero and one. Got protargetsbs.min()={targets.min()}, "
-        f"targets.max()={targets.max()}"
+    # Ensure `seg1` can be interpreted as valid probabilities
+    assert seg1.min() >= 0 and seg1.max() <= 1, (
+        f"`seg1` must be between zero and one. Got seg1.min()={seg1.min()}, "
+        f"seg1.max()={seg1.max()}"
     )
 
-    # Ensure `probs` can be interpreted as valid probabilities
-    assert probs.min() >= 0 and probs.max() <= 1, (
-        f"`probs` must be between zero and one. Got probs.min()={probs.min()}, "
-        f"probs.max()={probs.max()}"
+    # Ensure `seg2` can be interpreted as valid probabilities
+    assert seg2.min() >= 0 and seg2.max() <= 1, (
+        f"`seg2` must be between zero and one. Got seg2.min()={seg2.min()}, "
+        f"seg2.max()={seg2.max()}"
     )
 
     # Flatten spatial dimensions while preserving batch and channel dims
-    probs = probs.view(probs.size(0), probs.size(1), -1).contiguous()
-    targets = targets.view(targets.size(0), targets.size(1), -1).contiguous()
+    seg1 = seg1.view(seg1.size(0), seg1.size(1), -1).contiguous()
+    seg2 = seg2.view(seg2.size(0), seg2.size(1), -1).contiguous()
 
     # Per-class intersection
-    intersection = (probs * targets).sum(dim=2)
+    intersection = (seg2 * seg1).sum(dim=2)
 
     # Per-class union
-    union = probs.sum(dim=2) + targets.sum(dim=2)
+    union = seg2.sum(dim=2) + seg1.sum(dim=2)
 
     # Compute the dice score with intersection, smooth, & union
     dice_score = (2 * intersection + smooth_numerator) / (union + smooth_denominator)
