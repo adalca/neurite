@@ -156,14 +156,14 @@ def soft_quantize(
 
 def mse(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
     """
-    Calculates the mean squared error (MSE) between the predicted and target values.
+    Calculates the mean squared error (MSE) between the elements of `tensor1` and `tensor2`.
 
     Parameters
     ----------
     tensor1 : torch.Tensor
-        The tensor representing the model's prediction(s).
+        An input tensor.
     tensor2 : torch.Tensor
-        The target or ground truth values.
+        A tensor with the same shape as `tensor2`.
 
     Returns
     -------
@@ -173,9 +173,9 @@ def mse(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
     Examples
     --------
     >>> import torch
-    # Input tensor with zero mean, unit variance
+    # First tensor with zero mean, unit variance
     >>> tensor1 = torch.randn((1, 16, 16, 16))
-    # Target tensor with zero mean, unit variance
+    # Other tensor with zero mean, unit variance, and same shape as `tensor1`
     >>> tensor2 = torch.randn((1, 16, 16, 16))
     # Calculate loss
     >>> loss = mse(tensor1, tensor2)
@@ -1783,7 +1783,7 @@ def log_dice(
         device=seg1.device
     ).expand(seg1.size(0), seg1.size(1)).log()
 
-    # Map targets and probs into the log domain
+    # Map seg tensors into the log domain
     log_seg1 = torch.log(seg1)
     log_seg2 = torch.log(seg2)
 
