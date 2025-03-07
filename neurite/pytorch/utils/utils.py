@@ -47,6 +47,7 @@ __all__ = [
     "filter_dim",
     "crop_to_nearest_multiple",
     "logistic",
+    "dice"
 ]
 
 from typing import Union, List, Tuple
@@ -1654,3 +1655,72 @@ def logistic(
 
     # Shift by the lower asymptote and return
     return lower_asymptote + (numerator / denominator)
+
+
+def dice(
+    targets: torch.Tensor,
+    probs: torch.Tensor,
+    smooth_numerator: float = 1e-6,
+    smooth_denominator: float = 1e-6,
+) -> torch.Tensor:
+    """
+    Compute the Dice score between predicted probabilities and target masks.
+
+    The dice score is a metric of overlap between sets. In this case, probs represents the
+    probabilities of a prediction, and targets represent the true probabilities of each class as a
+    one-hot encoding.
+
+    Parameters
+    ----------
+    targets : torch.Tensor
+        Ground truth one-hot encoded targets with shape (B, C, *spatial_dims).
+    probs : torch.Tensor
+        Predicted probabilities with the same shape as `targets`
+    smooth_numerator : float, optional
+        Smoothing constant added to the numerator.
+    smooth_denominator : float, optional
+        Smoothing constant added to the denominator.
+
+    Returns
+    -------
+    torch.Tensor
+        Tensor of shape (B, C) whose entries represent the dice score for each batch and class.
+
+    Examples
+    --------
+    >>> # Make shape for `y_true` and `y_probs` with shape (B, C, *spatial_dims)
+    >>> shape = (1, 5, 64, 64)
+    >>> # Sample `y_true` and `y_probs` from neurite's uniform samplers
+    >>> y_true = ne.samplers.Uniform(0, 1)(shape)
+    >>> y_probs = ne.samplers.Uniform(0, 1)(shape)
+    >>> dice_score = ne.utils.dice(y_true, y_probs)
+    >>> dice_score
+    tensor([[0.5068, 0.4974, 0.5031, 0.4982, 0.4999]])
+    """
+
+    # Ensure `targets` can be interpreted as valid probabilities
+    assert targets.min() >= 0 and targets.max() <= 1, (
+        f"`targets` must be between zero and one. Got protargetsbs.min()={targets.min()}, "
+        f"targets.max()={targets.max()}"
+    )
+
+    # Ensure `probs` can be interpreted as valid probabilities
+    assert probs.min() >= 0 and probs.max() <= 1, (
+        f"`probs` must be between zero and one. Got probs.min()={probs.min()}, "
+        f"probs.max()={probs.max()}"
+    )
+
+    # Flatten spatial dimensions while preserving batch and channel dims
+    probs = probs.view(probs.size(0), probs.size(1), -1).contiguous()
+    targets = targets.view(targets.size(0), targets.size(1), -1).contiguous()
+
+    # Per-class intersection
+    intersection = (probs * targets).sum(dim=2)
+
+    # Per-class union
+    union = probs.sum(dim=2) + targets.sum(dim=2)
+
+    # Compute the dice score with intersection, smooth, & union
+    dice_score = (2 * intersection + smooth_numerator) / (union + smooth_denominator)
+
+    return dice_score
