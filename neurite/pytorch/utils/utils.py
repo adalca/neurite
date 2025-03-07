@@ -93,9 +93,9 @@ def soft_quantize(
         The softness factor for quantization. A higher value gives smoother quantization.
         By default 1.0
     min_clip : float, int, or Sampler, optional
-        Clip data lower than this value before calculating bin centers. By default -float('inf')
+        Clip data lower than this value before calculating bin centers. By default `-float('inf')`
     max_clip : float, int, or Sampler, optional
-        Clip data higher than this value before calculating bin centers. By default float('inf')
+        Clip data higher than this value before calculating bin centers. By default `float('inf')`
     return_log : bool, optional
         Optionally return the log of the softly quantized tensor. By default False
 
@@ -1728,23 +1728,21 @@ def dice(
 
 
 def log_dice(
-    targets: torch.Tensor,
-    probs: torch.Tensor,
+    seg1: torch.Tensor,
+    seg2: torch.Tensor,
     smooth_numerator: float = 1e-12,
     smooth_denominator: float = 1e-12,
 ) -> torch.Tensor:
     """
-    Compute the logarithm of the soft Dice coefficient between `targets` and `probs` in the log
+    Compute the logarithm of the soft Dice coefficient between `seg1` and `seg2` in the log
     domain using the logsumexp trick.
 
     Parameters
     ----------
-    targets : torch.Tensor
-        Ground truth tensor with values in [0, 1]. Expected shape is
-        (B, C, *spatial_dims)
-    probs : torch.Tensor
-        Predicted probabilities tensor with values in [0, 1]. Expected shape is
-        (B, C, *spatial_dims)
+    seg1 : torch.Tensor
+        Ground truth tensor with values in [0, 1]. Expected shape is (B, C, *spatial_dims)
+    seg2 : torch.Tensor
+        Logits/raw score. Expected shape is (B, C, *spatial_dims)
     smooth_numerator : float, optional
         Smoothing constant added to the numerator to avoid log(0), by default 1e-12.
     smooth_denominator : float, optional
@@ -1758,9 +1756,9 @@ def log_dice(
     Examples
     --------
     >>> # Computing log_dice of random tensors
-    >>> targets = ne.samplers.RandInt(0, 1)((1, 1, 32, 32))
-    >>> preds = ne.samplers.RandInt(0, 1)((1, 1, 32, 32))
-    >>> log_dice = ne.utils.log_dice(targets, preds)
+    >>> seg1 = ne.samplers.RandInt(0, 1)((1, 1, 32, 32))
+    >>> seg2 = ne.samplers.RandInt(0, 1)((1, 1, 32, 32))
+    >>> log_dice = ne.utils.log_dice(seg1, seg2)
     >>> # Expecting log(0.5) ~= -0.69314
     >>> log_dice
     tensor([[-0.6970]])
@@ -1769,40 +1767,28 @@ def log_dice(
     tensor([[0.4981]])
     """
 
-    # Ensure `targets` can be interpreted as valid probabilities
-    assert targets.min() >= 0 and targets.max() <= 1, (
-        f"`targets` must be between zero and one. Got protargetsbs.min()={targets.min()}, "
-        f"targets.max()={targets.max()}"
-    )
-
-    # Ensure `probs` can be interpreted as valid probabilities
-    assert probs.min() >= 0 and probs.max() <= 1, (
-        f"`probs` must be between zero and one. Got probs.min()={probs.min()}, "
-        f"probs.max()={probs.max()}"
-    )
-
     # Flatten all spatial dims into one axis
-    targets = targets.view(targets.size(0), targets.size(1), -1).contiguous()
-    probs = probs.view(probs.size(0), probs.size(1), -1).contiguous()
+    seg1 = seg1.view(seg1.size(0), seg1.size(1), -1).contiguous()
+    seg2 = seg2.view(seg2.size(0), seg2.size(1), -1).contiguous()
 
     # Reshape and convert numerator smoothing factor into log domain to play nicely w/ stacking
     log_smooth_numerator = torch.tensor(
         smooth_numerator,
-        device=targets.device
-    ).reshape(targets.size(0), targets.size(1)).log()
+        device=seg1.device
+    ).expand(seg1.size(0), seg1.size(1)).log()
 
     # Reshape and convert denominator smoothing factor into log domain to play nicely w/ stacking
     log_smooth_denominator = torch.tensor(
         smooth_denominator,
-        device=targets.device
-    ).reshape(targets.size(0), targets.size(1)).log()
+        device=seg1.device
+    ).expand(seg1.size(0), seg1.size(1)).log()
 
     # Map targets and probs into the log domain
-    log_targets = torch.log(targets)
-    log_probs = torch.log(probs)
+    log_seg1 = torch.log(seg1)
+    log_seg2 = torch.log(seg2)
 
     # Compute numerically stable intersection with logsumexp trick on the sum
-    log_intersection = torch.logsumexp(log_targets + log_probs, dim=2)
+    log_intersection = torch.logsumexp(log_seg1 + log_seg2, dim=2)
 
     # Add log of x2 factor and the log of the intersection, and stack with smoothing for logexpsum
     numerator_stack = torch.stack(
@@ -1816,15 +1802,15 @@ def log_dice(
     log_numerator = torch.logsumexp(numerator_stack, dim=0)
 
     # Calculate summed logs safely
-    log_sum_targets = torch.logsumexp(log_targets, dim=2)
-    log_sum_probs = torch.logsumexp(log_probs, dim=2)
+    log_sum_seg1 = torch.logsumexp(log_seg1, dim=2)
+    log_sum_seg2 = torch.logsumexp(log_seg2, dim=2)
 
     # We are going add the smoothing term `smooth_denominator` by stacking it alongside log_sum_*
     # Stack them
     stacked_logsums_with_smoothing = torch.stack(
         [
-            log_sum_targets,
-            log_sum_probs,
+            log_sum_seg1,
+            log_sum_seg2,
             log_smooth_denominator,
         ]
     )
