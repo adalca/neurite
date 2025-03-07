@@ -47,7 +47,8 @@ __all__ = [
     "filter_dim",
     "crop_to_nearest_multiple",
     "logistic",
-    "dice"
+    "dice",
+    "log_dice"
 ]
 
 from typing import Union, List, Tuple
@@ -1724,3 +1725,114 @@ def dice(
     dice_score = (2 * intersection + smooth_numerator) / (union + smooth_denominator)
 
     return dice_score
+
+
+def log_dice(
+    targets: torch.Tensor,
+    probs: torch.Tensor,
+    smooth_numerator: float = 1e-12,
+    smooth_denominator: float = 1e-12,
+) -> torch.Tensor:
+    """
+    Compute the logarithm of the soft Dice coefficient between `targets` and `probs` in the log
+    domain using the logsumexp trick.
+
+    Parameters
+    ----------
+    targets : torch.Tensor
+        Ground truth tensor with values in [0, 1]. Expected shape is
+        (B, C, *spatial_dims)
+    probs : torch.Tensor
+        Predicted probabilities tensor with values in [0, 1]. Expected shape is
+        (B, C, *spatial_dims)
+    smooth_numerator : float, optional
+        Smoothing constant added to the numerator to avoid log(0), by default 1e-12.
+    smooth_denominator : float, optional
+        Smoothing constant added to the denominator to avoid log(0), by default 1e-12.
+
+    Returns
+    -------
+    torch.Tensor
+        The log Dice coefficient computed per batch and channel.
+
+    Examples
+    --------
+    >>> # Computing log_dice of random tensors
+    >>> targets = ne.samplers.RandInt(0, 1)((1, 1, 32, 32))
+    >>> preds = ne.samplers.RandInt(0, 1)((1, 1, 32, 32))
+    >>> log_dice = ne.utils.log_dice(targets, preds)
+    >>> # Expecting log(0.5) ~= -0.69314
+    >>> log_dice
+    tensor([[-0.6970]])
+    >>> # Converting to linear domain, should be about 0.5
+    >>> torch.exp(log_dice)
+    tensor([[0.4981]])
+    """
+
+    # Ensure `targets` can be interpreted as valid probabilities
+    assert targets.min() >= 0 and targets.max() <= 1, (
+        f"`targets` must be between zero and one. Got protargetsbs.min()={targets.min()}, "
+        f"targets.max()={targets.max()}"
+    )
+
+    # Ensure `probs` can be interpreted as valid probabilities
+    assert probs.min() >= 0 and probs.max() <= 1, (
+        f"`probs` must be between zero and one. Got probs.min()={probs.min()}, "
+        f"probs.max()={probs.max()}"
+    )
+
+    # Flatten all spatial dims into one axis
+    targets = targets.view(targets.size(0), targets.size(1), -1).contiguous()
+    probs = probs.view(probs.size(0), probs.size(1), -1).contiguous()
+
+    # Reshape and convert numerator smoothing factor into log domain to play nicely w/ stacking
+    log_smooth_numerator = torch.tensor(
+        smooth_numerator,
+        device=targets.device
+    ).reshape(targets.size(0), targets.size(1)).log()
+
+    # Reshape and convert denominator smoothing factor into log domain to play nicely w/ stacking
+    log_smooth_denominator = torch.tensor(
+        smooth_denominator,
+        device=targets.device
+    ).reshape(targets.size(0), targets.size(1)).log()
+
+    # Map targets and probs into the log domain
+    log_targets = torch.log(targets)
+    log_probs = torch.log(probs)
+
+    # Compute numerically stable intersection with logsumexp trick on the sum
+    log_intersection = torch.logsumexp(log_targets + log_probs, dim=2)
+
+    # Add log of x2 factor and the log of the intersection, and stack with smoothing for logexpsum
+    numerator_stack = torch.stack(
+        [
+            torch.tensor(2).log() + log_intersection,
+            log_smooth_numerator,
+        ]
+    )
+
+    # Compute log numerator using logsumexp trick
+    log_numerator = torch.logsumexp(numerator_stack, dim=0)
+
+    # Calculate summed logs safely
+    log_sum_targets = torch.logsumexp(log_targets, dim=2)
+    log_sum_probs = torch.logsumexp(log_probs, dim=2)
+
+    # We are going add the smoothing term `smooth_denominator` by stacking it alongside log_sum_*
+    # Stack them
+    stacked_logsums_with_smoothing = torch.stack(
+        [
+            log_sum_targets,
+            log_sum_probs,
+            log_smooth_denominator,
+        ]
+    )
+
+    # Compute the log union using the logsumexp trick
+    log_union = torch.logsumexp(stacked_logsums_with_smoothing, dim=0)
+
+    # Compute the dice score by negating (dividing in linear domain)
+    log_dice = log_numerator - log_union
+
+    return log_dice
