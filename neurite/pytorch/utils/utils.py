@@ -154,36 +154,36 @@ def soft_quantize(
     return softly_quantized
 
 
-def mse(input_tensor: torch.Tensor, target_tensor: torch.Tensor) -> torch.Tensor:
+def mse(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
     """
     Calculates the mean squared error (MSE) between the predicted and target values.
 
     Parameters
     ----------
-    input_tensor : torch.Tensor
+    tensor1 : torch.Tensor
         The tensor representing the model's prediction(s).
-    target_tensor : torch.Tensor
+    tensor2 : torch.Tensor
         The target or ground truth values.
 
     Returns
     -------
     torch.Tensor
-        The mean squared error between `input_tensor` and `target_tensor`.
+        The mean squared error between `tensor1` and `tensor2`.
 
     Examples
     --------
     >>> import torch
     # Input tensor with zero mean, unit variance
-    >>> input_tensor = torch.randn((1, 16, 16, 16))
+    >>> tensor1 = torch.randn((1, 16, 16, 16))
     # Target tensor with zero mean, unit variance
-    >>> target_tensor = torch.randn((1, 16, 16, 16))
+    >>> tensor2 = torch.randn((1, 16, 16, 16))
     # Calculate loss
-    >>> loss = mse(input_tensor, target_tensor)
+    >>> loss = mse(tensor1, tensor2)
     # Print loss (should be approximately 2.0)
     >>> print(loss)
     """
 
-    return torch.mean((input_tensor - target_tensor) ** 2)
+    return torch.mean((tensor1 - tensor2) ** 2)
 
 
 def create_gaussian_kernel(
