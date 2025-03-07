@@ -1661,8 +1661,8 @@ def logistic(
 def dice(
     targets: torch.Tensor,
     probs: torch.Tensor,
-    smooth_numerator: float = 1e-6,
-    smooth_denominator: float = 1e-6,
+    smooth_numerator: float = 1e-12,
+    smooth_denominator: float = 1e-12,
 ) -> torch.Tensor:
     """
     Compute the Dice score between predicted probabilities and target masks.
