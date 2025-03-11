@@ -93,6 +93,7 @@ class BasicUNet(nn.Module):
         super().__init__()
 
         # Storing some attributes that might be useful later on
+        self.ndim = ndim
         self.in_channels = in_channels
         self.out_channels = out_channels
 
