@@ -13,7 +13,7 @@ __all__ = [
     "CrossConvBlock"
 ]
 
-from typing import Any, Union, Type, Optional, Tuple
+from typing import List, Union, Type, Optional, Tuple
 import einops
 import torch
 from torch import nn
@@ -310,7 +310,7 @@ class ConvBlock(nn.Sequential):
         groups: int = 1,
         bias: bool = True,
         norm: Union[str, nn.Module, None] = None,
-        activation: Union[str, nn.Module, None] = None,
+        activation: Union[List, str, nn.Module, None] = None,
         order: str = 'cna',
     ):
         """
@@ -346,6 +346,8 @@ class ConvBlock(nn.Sequential):
         activation : str, nn.Module, or None, optional
             Defines the activation layer. Can be one of:
             - A string: Supported options are 'relu', 'leaky_relu', or 'elu'.
+            - A list: A list containing any of these optinons. Must have the same number of elements
+                as the number of activations specified in `order`.
             - A `nn.Module`: Instantiated or uninstantiated activation module.
                 e.g. nn.Sigmoid(), nn.Sigmoid
             - `None`: No activation is applied. Default is `None`.
@@ -406,6 +408,20 @@ class ConvBlock(nn.Sequential):
         self.order = list(order)  # make string of letters into list of letters
         valid_operations = ['c', 'n', 'a']
 
+        # Get the number of activations to validate `activation` argument
+        n_activations = order.count('a')
+
+        # If `activation` is a single object, make it into a list with `n_activation` elements
+        if not isinstance(activation, (list, tuple)):
+            activation = [activation] * n_activations
+
+        else:
+            # Hmm. Not sure what the user passed!
+            assert len(activation) == n_activations, (
+                "The total number of activations passed to `activation` must be the same number ",
+                f"defined in `order`. Got activation={activation}, order={order}"
+            )
+
         # Validate the operations
         if not set(order).issubset(valid_operations):
             raise ValueError(f"Invalid order. Must be a subset of {valid_operations}.")
@@ -442,7 +458,7 @@ class ConvBlock(nn.Sequential):
 
             # Construct the activation and assign it to a named key in layers
             elif operation == 'a' and activation is not None:
-                layers[f'activation{act_id}'] = Activation(activation)
+                layers[f'activation{act_id}'] = Activation(activation[act_id])
                 act_id += 1
 
         # Add layers to `Sequential`
@@ -889,7 +905,7 @@ class CrossConvBlock(nn.Module):
 
     Notes
     -----
-    Modified from the original description in https://github.com/JJGO/UniverSeg:
+    Modified from the original description on [GitHub](https://github.com/JJGO/UniverSeg):
     The pairwise convolution is computed by first forming a Cartesian product of the slices in `x1`
     and `x2`. For example, if `x1` has Sx1 slices and `x2` has Sx2 slices, then the concatenated
     tensor has shape (B, Sx1, Sx2, Cx1 + Cx2, ...). This tensor is reshaped to combine the first
@@ -996,14 +1012,15 @@ class CrossConvBlock(nn.Module):
         This method computes the cross convolution between the `query` image and the members of the
         `context` set. The steps are as follows:
 
-          1. Interact the inputs using `ne.utils.utils.cross_expand()`, gathering in the batch dim.
-          2. Perform the [cross] convolution operation.
-          3. Rearrange the output back into separate query features and context set features, but
-             with `out_channels` number of features.
-          4. Reduce the outputs such that:
-             - The new query representation as the average over context representations.
-             - The new context representation as the average over query representations.
-          5. Refine each branch by processing through their respective ConvBlock modules.
+        1. Interact the inputs and gather in the batch dimension using
+        [`cross_expand`][neurite.pytorch.utils.utils.cross_expand]
+        2. Perform the [cross] convolution operation.
+        3. Rearrange the output back into separate query features and context set features, but
+            with `out_channels` number of features.
+        4. Reduce the outputs such that:
+            - The new query representation as the average over context representations.
+            - The new context representation as the average over query representations.
+        5. Refine each branch by processing through their respective ConvBlock modules.
 
         Parameters
         ----------
