@@ -34,8 +34,8 @@ class BasicUNet(nn.Module):
 
     Notes
     -----
-    - This UNet is based on the architecture of the UNet found in the paper by Olaf Ronneberger:
-    https://arxiv.org/pdf/1505.04597
+    This UNet is based on the architecture of the UNet found in the paper by
+    [Olaf Ronneberger](https://arxiv.org/pdf/1505.04597)
 
     Examples
     --------
@@ -91,6 +91,10 @@ class BasicUNet(nn.Module):
         """
 
         super().__init__()
+
+        # Storing some attributes that might be useful later on
+        self.in_channels = in_channels
+        self.out_channels = out_channels
 
         # Make `residual_connections` an attribute as we will need it later in forward pass
         self.residual_connections = residual_connections
