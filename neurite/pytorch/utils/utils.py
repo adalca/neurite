@@ -49,7 +49,7 @@ __all__ = [
     "logistic",
     "dice",
     "log_dice",
-    "reduce_tensor"
+    "reduce_tensor",
 ]
 
 from typing import Union, List, Tuple
