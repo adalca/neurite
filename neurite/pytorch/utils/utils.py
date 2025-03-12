@@ -1826,9 +1826,9 @@ def reduce_tensor(
     Apply any torch reduction on a tensor.
     
     This function applies a reduction (e.g., mean, sum, median) on the input tensor across one or
-    more dimensions. For reductions that operate on multiple dimensions, the `reduction_dim` can be
+    more dimensions. For reductions that operate on multiple dimensions, the `dim` can be
     a tuple of dimensions. For reductions that operate on a single dimension (e.g., argmin, argmax),
-    `reduction_dim` must be an integer.
+    `dim` must be an integer.
 
     Parameters
     ----------
@@ -1838,7 +1838,7 @@ def reduce_tensor(
         The type of reduction to apply. Supported values for multidimensional reductions are:
         'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'; for single-dimension
         reductions: 'argmin', 'argmax', and all multidimensionals. Default is 'mean'.
-    reduction_dim : int or tuple of ints, optional
+    dim : int or tuple of ints, optional
         Dimension(s) over which to apply the reduction. For multidimensional reductions, pass a
         tuple of dimensions; for single-dimension reductions, pass an integer. Default is (0, 1).
     keepdims : bool, optional
@@ -1853,7 +1853,7 @@ def reduce_tensor(
     ------
     AssertionError
         If a single-dimension reduction (e.g., 'argmin', 'argmax') is requested with a
-        `reduction_dim` that is not an integer.
+        `dim` that is not an integer.
 
     Examples
     --------
@@ -1883,7 +1883,7 @@ def reduce_tensor(
     # Single dimension reduction
     elif reduction in torch_singledim_reductions:
 
-        # Make sure `reduction_dim` is compatable
+        # Make sure `dim` is compatable
         assert isinstance(dim, int), (
             f"Reduction type {reduction} is only compatable with one reduction dimension. Got "
             f"{dim}"
