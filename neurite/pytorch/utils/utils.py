@@ -1730,24 +1730,31 @@ def log_dice(
     smooth_denominator: float = 1e-12,
 ) -> torch.Tensor:
     """
-    Compute the logarithm of the soft Dice coefficient between `seg1` and `seg2` in the log
-    domain using the logsumexp trick.
-
+    Compute the Dice coefficient in the log domain given two tensors representing log probabilities.
+    
     Parameters
     ----------
     seg1 : torch.Tensor
-        Ground truth tensor with values in [0, 1]. Expected shape is (B, C, *spatial_dims)
+        Log-probability of the first segmentation. Expected to have batch and channel dims.
     seg2 : torch.Tensor
-        Logits/raw score. Expected shape is (B, C, *spatial_dims)
+        Log-probability of the second tensor (e.g., ground truth). Shape must match seg1.
     smooth_numerator : float, optional
-        Smoothing constant added to the numerator to avoid log(0), by default 1e-12.
+        Smoothing constant added to the numerator to avoid log(0). By default, 1e-12.
     smooth_denominator : float, optional
-        Smoothing constant added to the denominator to avoid log(0), by default 1e-12.
+        Smoothing constant added to the denominator to avoid log(0). By default, 1e-12.
 
     Returns
     -------
     torch.Tensor
-        The log Dice coefficient computed per batch and channel.
+        The Dice coefficient in the log domain over batch and channel dimensions.
+
+    Notes
+    -----
+    The Dice coefficient for two probability maps is:
+        Dice(seg1, seg2) = 2 * seg1 * seg2 / (seg1^2 + seg2^2).
+
+    In log space, given L_1 = log(seg1) and L_2 = log(seg2):
+        LogDice(L_1, L_2) = log(2) + L_1 + L_2 - log(exp(2 * L_1) + exp(2 * L_2)).
 
     Examples
     --------
@@ -1767,54 +1774,36 @@ def log_dice(
     seg1 = seg1.view(seg1.size(0), seg1.size(1), -1).contiguous()
     seg2 = seg2.view(seg2.size(0), seg2.size(1), -1).contiguous()
 
-    # Reshape and convert numerator smoothing factor into log domain to play nicely w/ stacking
+    # Reshape and convert numerator smoothing factor into log domain for logsumexp
     log_smooth_numerator = torch.tensor(
         smooth_numerator,
         device=seg1.device
-    ).expand(seg1.size(0), seg1.size(1)).log()
+    ).expand(seg1.shape).log()
 
-    # Reshape and convert denominator smoothing factor into log domain to play nicely w/ stacking
+    # Reshape and convert denominator smoothing factor into log domain for logsumexp
     log_smooth_denominator = torch.tensor(
         smooth_denominator,
         device=seg1.device
-    ).expand(seg1.size(0), seg1.size(1)).log()
+    ).expand(seg1.shape).log()
 
-    # Map seg tensors into the log domain
-    log_seg1 = torch.log(seg1)
-    log_seg2 = torch.log(seg2)
+    # 2 * e^(L_1 + L_2) in log space is log(2) + L_1 + L_2
+    numerator = torch.log(torch.tensor(2.0, device=seg1.device)) + seg1 + seg2
 
-    # Compute numerically stable intersection with logsumexp trick on the sum
-    log_intersection = torch.logsumexp(log_seg1 + log_seg2, dim=2)
+    # Stack numerator and smoothing factor. Add with logsumexp trick
+    numerator = torch.logsumexp(torch.stack([numerator, log_smooth_numerator], dim=-1), dim=-1)
 
-    # Add log of x2 factor and the log of the intersection, and stack with smoothing for logexpsum
-    numerator_stack = torch.stack(
-        [
-            torch.tensor(2).log() + log_intersection,
-            log_smooth_numerator,
-        ]
+    # e^(2L_1) + e^(2L_2) in log space can be computed using logsumexp of [2 * seg1, 2 * seg2]
+    denominator = torch.logsumexp(
+        torch.stack(
+            [2.0 * seg1, 2.0 * seg2, log_smooth_denominator], dim=-1
+        ),
+        dim=-1
     )
-
-    # Compute log numerator using logsumexp trick
-    log_numerator = torch.logsumexp(numerator_stack, dim=0)
-
-    # Calculate summed logs safely
-    log_sum_seg1 = torch.logsumexp(log_seg1, dim=2)
-    log_sum_seg2 = torch.logsumexp(log_seg2, dim=2)
-
-    # We are going add the smoothing term `smooth_denominator` by stacking it alongside log_sum_*
-    # Stack them
-    stacked_logsums_with_smoothing = torch.stack(
-        [
-            log_sum_seg1,
-            log_sum_seg2,
-            log_smooth_denominator,
-        ]
-    )
-
-    # Compute the log union using the logsumexp trick
-    log_union = torch.logsumexp(stacked_logsums_with_smoothing, dim=0)
 
     # Compute the dice score by negating (dividing in linear domain)
-    log_dice = log_numerator - log_union
+    log_dice_vals = numerator - denominator
 
-    return log_dice
+    # Average the log dice over the spatial dimensions
+    log_dice_vals = log_dice_vals.mean(dim=2)
+
+    return log_dice_vals
