@@ -48,7 +48,8 @@ __all__ = [
     "crop_to_nearest_multiple",
     "logistic",
     "dice",
-    "log_dice"
+    "log_dice",
+    "reduce_tensor"
 ]
 
 from typing import Union, List, Tuple
@@ -1773,7 +1774,7 @@ def log_dice(
     # Ensure `seg1` and `seg2` represent log probabilities
     assert torch.all(seg1 <= 0).item() and torch.all(seg2 <= 0).item(), (
         "ne.utils.log_dice expects input tensors to represent log-probabilities (be entirely "
-        f"negative) but got max={seg1.max()} at entry 0 and max={seg2.max()} at entry 1"
+        f"negative) but got max={seg1.max()} at entry 0 and max={seg2.max()} at entry 1."
     )
 
     # Flatten all spatial dims into one axis
@@ -1813,3 +1814,87 @@ def log_dice(
     log_dice_vals = log_dice_vals.mean(dim=2)
 
     return log_dice_vals
+
+
+def reduce_tensor(
+    tensor: torch.Tensor,
+    reduction: str = 'mean',
+    dim: Union[Tuple[int, ...], int] = (0, 1),
+    keepdims: bool = False,
+) -> torch.Tensor:
+    """
+    Apply any torch reduction on a tensor.
+    
+    This function applies a reduction (e.g., mean, sum, median) on the input tensor across one or
+    more dimensions. For reductions that operate on multiple dimensions, the `reduction_dim` can be
+    a tuple of dimensions. For reductions that operate on a single dimension (e.g., argmin, argmax),
+    `reduction_dim` must be an integer.
+
+    Parameters
+    ----------
+    tensor : torch.Tensor
+        The input tensor to reduce.
+    reduction : str, optional
+        The type of reduction to apply. Supported values for multidimensional reductions are:
+        'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'; for single-dimension
+        reductions: 'argmin', 'argmax', and all multidimensionals. Default is 'mean'.
+    reduction_dim : int or tuple of ints, optional
+        Dimension(s) over which to apply the reduction. For multidimensional reductions, pass a
+        tuple of dimensions; for single-dimension reductions, pass an integer. Default is (0, 1).
+    keepdims : bool, optional
+        Whether to retain reduced dimensions as a singleton. Default is False.
+
+    Returns
+    -------
+    torch.Tensor
+        The reduced tensor.
+
+    Raises
+    ------
+    AssertionError
+        If a single-dimension reduction (e.g., 'argmin', 'argmax') is requested with a
+        `reduction_dim` that is not an integer.
+
+    Examples
+    --------
+    >>> # Make a random tensor
+    >>> input_tensor = torch.randn(3, 4, 128, 128)
+    >>> # Getting the means from each batch
+    >>> reduce_tensor(input_tensor, reduction='mean', dim=(1, 2, 3))
+    tensor([-0.0004, -0.0021, -0.0052])
+    >>> # Getting the largest value from each batch
+    >>> reduce_tensor(input_tensor, reduction='amax', dim=(1, 2, 3))
+    tensor([4.6618, 3.9218, 4.1831])
+    """
+
+    # The multidimensional reductions (which also work as single dimension reductions)
+    torch_multidim_reductions = [
+        'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'
+    ]
+
+    # The obligitory single dimension reductions
+    torch_singledim_reductions = ['argmin', 'argmax']
+
+    # Multi dimension reduction
+    if reduction in torch_multidim_reductions:
+        # Dynamically retreive and apply the reduction
+        return getattr(torch, reduction)(tensor, dim=dim, keepdims=keepdims)
+
+    # Single dimension reduction
+    elif reduction in torch_singledim_reductions:
+
+        # Make sure `reduction_dim` is compatable
+        assert isinstance(dim, int), (
+            f"Reduction type {reduction} is only compatable with one reduction dimension. Got "
+            f"{dim}"
+        )
+
+        # Dynamically retreive and apply the reduction
+        return getattr(torch, reduction)(tensor, dim=dim, keepdims=keepdims)
+
+    else:
+        raise ValueError(
+            f"ne.utils.reduce_tensor received an invaid `reduction`. Got {reduction}. Valid options"
+            " are {'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean', 'argmin', "
+            "'argmax'}"
+        )
