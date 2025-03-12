@@ -1770,6 +1770,12 @@ def log_dice(
     tensor([[0.4981]])
     """
 
+    # Ensure `seg1` and `seg2` represent log probabilities
+    assert torch.all(seg1 <= 0).item() and torch.all(seg2 <= 0).item(), (
+        "ne.utils.log_dice expects input tensors to represent log-probabilities (be entirely "
+        f"negative) but got max={seg1.max()} at entry 0 and max={seg2.max()} at entry 1"
+    )
+
     # Flatten all spatial dims into one axis
     seg1 = seg1.view(seg1.size(0), seg1.size(1), -1).contiguous()
     seg2 = seg2.view(seg2.size(0), seg2.size(1), -1).contiguous()
