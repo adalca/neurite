@@ -24,8 +24,6 @@ the License.
 """
 __all__ = [
     "Dice",
-    "SoftDice",
-    "HardDice",
     "CategoricalCrossentropy",
     "MeanSquaredErrorProb",
 ]
@@ -37,111 +35,108 @@ import neurite as ne
 
 class Dice(nn.Module):
     """
-    Compute the (hard or soft) Dice Coefficient between two tensors.
-    """
-    def __init__(self):
-        """
-        Initialize the `Dice` module.
-        """
-        super().__init__()
-
-    def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
-        """
-        Performs the forward pass of the `Dice` module.
-        """
-        raise NotImplementedError("The `Dice` module isn't ready yet :(")
-
-
-class SoftDice(nn.Module):
-    """
-    Soft dice loss for single and multi-class segmentation with adjustable slope.
-
-    Computes the soft dice loss for each class separately and returns the mean loss across classes
-    and batches. An adjustable slope parameter scales the logits before applying the sigmoid
-    function, effectively controlling the sharpness of the prediction probabilities.
+    Compute the Dice score between two segmentation tensors (e.g. ground truth, predictions, etc...)
 
     Examples
     --------
-    >>> loss_fn = SoftDiceLoss(slope=2.0)
-    >>> logits = ne.samplers.Normal(0, 1)(shape)
-    >>> targets = ne.samplers.RandInt(0, 1)(shape)
-    >>> loss = loss_fn(logits, targets)
+    # Example 1: Computing the hard dice score with binary seg maps
+    >>> # Instantiate the dice score module
+    >>> dice_module = ne.losses.Dice()
+    >>> # Randomly sample binary tensors with 3 batches and 4 channels
+    >>> seg1 = ne.samplers.RandInt(0, 1)((3, 4, 128, 128))
+    >>> seg2 = ne.samplers.RandInt(0, 1)((3, 4, 128, 128))
+    >>> # Compute the dice score and return
+    >>> dice_module(seg1, seg2)
+    tensor([[0.5003]])
+    
+    # Example 2: Computing the soft dice score with continuious seg maps and no reduction
+    >>> dice_module = Dice(reduction=None)
+    >>> # Randomly sample continuious "logits"
+    >>> seg1 = ne.samplers.Normal(0, 1)((3, 4, 128, 128))
+    >>> seg2 = ne.samplers.Normal(0, 1)((3, 4, 128, 128))
+    >>> # Activation functions
+    >>> seg1 = ne.pytorch.utils.logistic(seg1)
+    >>> seg2 = ne.pytorch.utils.logistic(seg2)
+    >>> # Compute the dice score and return
+    >>> dice_module(seg1, seg2)
+    tensor([[0.4982, 0.5022, 0.4984, 0.5024],
+            [0.5016, 0.5035, 0.5021, 0.5001],
+            [0.5001, 0.4998, 0.4990, 0.4996]])
     """
 
-    def __init__(self, slope: float = 1.0, smooth: float = 1e-6) -> None:
+    def __init__(
+        self,
+        smooth_numerator: float = 1e-12,
+        smooth_denominator: float = 1e-12,
+        reduction: str = 'mean',
+        reduction_dim: int = (0, 1),
+        keepdims: bool = True,
+    ) -> None:
+
         """
-        Instantiate `SoftDice`
+        Initialize the `Dice` module.
 
         Parameters
         ----------
-        slope : float, optional
-            Scaling factor for the slope of the sigmoid function. A higher value makes the sigmoid
-            function steeper, by default 1.0.
-        smooth : float, optional
-            Smoothing constant to avoid division by zero, by default 1e-6.
+        smooth_numerator : float, optional
+            Smoothing constant added to the numerator.
+        smooth_denominator : float, optional
+            Smoothing constant added to the denominator.
+        reduction : str, optional
+            The type of reduction to apply. Supported values for multidimensional reductions are:
+            'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'; for single-dimension
+            reductions: 'argmin', 'argmax', and all multidimensionals. Default is 'mean'.
+        dim : int or tuple of ints, optional
+            Dimension(s) over which to apply the reduction. For multidimensional reductions, pass a
+            tuple of dimensions; for single-dimension reductions, pass an integer. Default is (0, 1)
+        keepdims : bool, optional
+            Whether to retain reduced dimensions as a singleton. Default is False.
         """
-
         super().__init__()
-        self.slope = slope
-        self.smooth = smooth
 
-    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        # Store attributes
+        self.smooth_numerator = smooth_numerator
+        self.smooth_denominator = smooth_denominator
+        self.reduction = reduction
+        self.reduction_dim = reduction_dim
+        self.keepdims = keepdims
+
+    def forward(self, seg1: torch.Tensor, seg2: torch.Tensor) -> torch.Tensor:
         """
-        Compute the soft dice loss for one or multiple classes.
+        Compute the Dice coefficient between two segmentation tensors.
 
         Parameters
         ----------
-        logits : torch.Tensor
-            Raw output logits/score from the network with shape (batch_size, channels, ...).
-            Expected to be unbounded.
-        targets : torch.Tensor
-            Ground truth labels with shape (batch_size, channels, ...). Must be binary or one-hot
-            encoded for each class.
+        seg1 : torch.Tensor
+            First segmentation tensor of shape (B, C, *spatial_dims).
+        seg2 : torch.Tensor
+            Second segmentation tensor with the same shape as `seg1`
 
         Returns
         -------
         torch.Tensor
-            The mean soft dice loss computed across all classes and batches.
+            The computed Dice coefficient, potentially reduced according to the arguments passed at
+            point of object instantiation.
         """
 
-        # Obtain probabilities by passing logits through custom-slope sigmoid
-        probs = ne.logistic(logits, self.slope)
+        # Compute the dice score
+        dice_score = ne.utils.dice(
+            seg1=seg1,
+            seg2=seg2,
+            smooth_numerator=self.smooth_numerator,
+            smooth_denominator=self.smooth_denominator
+        )
 
-        # Flatten spatial dimensions while preserving batch and channel dims
-        probs = probs.view(probs.size(0), probs.size(1), -1)
-        targets = targets.view(targets.size(0), targets.size(1), -1)
-
-        # Per-class intersection
-        intersection = (probs * targets).sum(dim=2)
-
-        # Per-class union
-        union = probs.sum(dim=2) + targets.sum(dim=2)
-
-        # Compute the dice score with intersection, smooth, & union
-        dice_score = (2 * intersection + self.smooth) / (union + self.smooth)
-
-        # Average loss over classes and batches.
-        # TODO: Optionally make this mean, max, min (but only useful for multiclass so maybe not)
-        loss = 1 - dice_score.mean()
-
-        return loss
-
-
-class HardDice(nn.Module):
-    """
-    Compute the Hard Dice Coefficient between two tensors.
-    """
-    def __init__(self):
-        """
-        Initialize the `HardDice` module.
-        """
-        super().__init__()
-
-    def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
-        """
-        Performs the forward pass of the `HardDice` module.
-        """
-        raise NotImplementedError("The `HardDice` module isn't ready yet :(")
+        # Reduce the score if necessary and return
+        if self.reduction is None:
+            return dice_score
+        else:
+            return ne.pytorch.utils.reduce_tensor(
+                tensor=dice_score,
+                reduction=self.reduction,
+                dim=self.reduction_dim,
+                keepdims=self.keepdims
+            )
 
 
 class CategoricalCrossentropy(nn.Module):
