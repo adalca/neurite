@@ -30,7 +30,7 @@ __all__ = [
 
 import torch
 from torch import nn
-import neurite as ne
+import neurite.pytorch as ne
 
 
 class Dice(nn.Module):

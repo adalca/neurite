@@ -115,7 +115,7 @@ class Norm(nn.Module):
         super().__init__()
 
         # Norm object has been instantiated with parameters
-        if ne.utils.utils.is_instantiated_normalization(norm_type):
+        if ne.utils.is_instantiated_normalization(norm_type):
             self.norm = norm_type
             return
 
@@ -1042,7 +1042,7 @@ class CrossConvBlock(nn.Module):
         """
 
         # Prepare the features to be interacted by crossing them
-        batched_paired_tensors = ne.utils.utils.cross_expand(       # (B*Sq*Sc, Cq+Cc, ...)
+        batched_paired_tensors = ne.utils.cross_expand(       # (B*Sq*Sc, Cq+Cc, ...)
             query,
             context
         )

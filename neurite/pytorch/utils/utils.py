@@ -1820,7 +1820,7 @@ def reduce_tensor(
     tensor: torch.Tensor,
     reduction: str = 'mean',
     dim: Union[Tuple[int, ...], int] = (0, 1),
-    keepdims: bool = False,
+    keepdims: bool = True,
 ) -> torch.Tensor:
     """
     Apply any torch reduction on a tensor.

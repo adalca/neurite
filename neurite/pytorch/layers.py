@@ -261,7 +261,7 @@ class SoftQuantize(nn.Module):
             Softly quantized tensor with the same dimensions as `input_tensor`.
         """
 
-        return ne.utils.utils.soft_quantize(
+        return ne.utils.soft_quantize(
             input_tensor=input_tensor,
             nb_bins=self.nb_bins,
             softness=self.softness,
@@ -299,7 +299,7 @@ class MSE(nn.Module):
             The mean squared error between `input_tensor` and `target_tensor`.
         """
 
-        return ne.utils.utils.mse(input_tensor=input_tensor, target_tensor=target_tensor)
+        return ne.utils.mse(input_tensor=input_tensor, target_tensor=target_tensor)
 
 
 class GaussianBlur(nn.Module):
@@ -341,7 +341,7 @@ class GaussianBlur(nn.Module):
             The smoothed tensor.
         """
 
-        return ne.utils.utils.gaussian_smoothing(
+        return ne.utils.gaussian_smoothing(
             input_tensor=input_tensor,
             kernel_size=self.kernel_size,
             sigma=self.sigma
@@ -438,7 +438,7 @@ class Resample(nn.Module):
         original_spatial_shape = input_tensor.shape[2:]
 
         # Start by subsampling the input tensor
-        resampled_tensor = ne.utils.utils.subsample_tensor_random_dims(
+        resampled_tensor = ne.utils.subsample_tensor_random_dims(
             input_tensor=resampled_tensor,
             stride=self.theta.get('stride'),
             forbidden_dims=self.theta.get('forbidden_dims'),
@@ -449,7 +449,7 @@ class Resample(nn.Module):
         # Optionally upsample the resuling subsampled tensor
         if self.upsample:
             # Apply upsampling
-            resampled_tensor = ne.utils.utils.upsample_tensor(
+            resampled_tensor = ne.utils.upsample_tensor(
                 resampled_tensor,
                 original_spatial_shape
             )
@@ -798,7 +798,7 @@ class RandomClearLabel(nn.Module):
             cleared, the original `input_tensor` is returned unchanged.
         """
 
-        return ne.utils.utils.random_clear_label(
+        return ne.utils.random_clear_label(
             input_tensor=input_tensor,
             label_tensor=label_tensor,
             prob=self.prob,
@@ -861,7 +861,7 @@ class SampleImageFromLabels(nn.Module):
             A tensor of sampled image intensities with the same shape as `label_tensor`.
         """
 
-        return ne.utils.utils.sample_image_from_labels(
+        return ne.utils.sample_image_from_labels(
             label_tensor,
             self.mean_sampler,
             self.noise_sampler,
