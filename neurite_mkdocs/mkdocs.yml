@@ -1,0 +1,81 @@
+site_name: neurite
+
+nav:
+  - Home: index.md
+  - Quick Start: quickstart.md
+  - API:
+      - neurite: api/neurite.md
+      - neurite.layers: api/layers.md
+      - neurite.losses: api/losses.md
+      - neurite.models: api/models.md
+      - neurite.modules: api/modules.md
+      - neurite.samplers: api/samplers.md
+      - neurite.utils.utils: api/utils/utils.md
+
+
+# theme: readthedocs
+theme:
+  # logo: assets/logo.png
+  # favicon: images/favicon.png
+  name: material
+  palette:
+
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+
+# theme: material
+extra_css:
+  - stylesheets/extra.css
+
+plugins:
+  - search
+  - autorefs
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.]
+          options:
+            docstring_style: numpy
+            docstring_section_style: spacy
+            merge_init_into_class: true
+            separate_signature: true
+            members_order: alphabetical
+            show_source: true
+            show_root_heading: true
+            filters:
+              - "!^forward$"
+### Markdown stuff
+markdown_extensions:
+  - admonition
+  - toc:
+      toc_depth: 3
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
