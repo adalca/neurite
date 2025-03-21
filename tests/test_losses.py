@@ -1,9 +1,22 @@
 """
-Module for testing the losses of `neurite`. To be ran with `pytest`
+Module for testing the losses of `neurite`. To be ran with `pytest`.
 """
 import pytest
 import torch
 import neurite as ne
+
+@pytest.fixture
+def log_probabilities():
+    # Initialize the logits from a normal dist
+    logits = torch.randn(1, 1, 128, 128)
+
+    # Convert logits to valid probabilities
+    probabilities = torch.nn.functional.sigmoid(logits)
+
+    # Turn into log probabilities
+    log_probabilities = probabilities.log()
+
+    return log_probabilities
 
 
 def test_dice_shapes():
@@ -89,4 +102,24 @@ def test_dice_nonidentical():
     # Allow for a small tolderance because of smoothing and stochasticity
     assert torch.allclose(result, expected, atol=1e-2), (
         "Dice for uniformly distributed binary tensors should be close to 0.5"
+    )
+
+def test_log_dice():
+    """
+    Test the log-dice score with log-probabilities
+    """
+
+    log_probs = log_probabilities
+
+    # Compute dice on log between the same tensor
+    log_dice_score = ne.pytorch.utils.log_dice(
+        seg1=log_probs,
+        seg2=log_probs,
+    )
+
+    # The expected log dice (still in the log domain) should be zero
+    expected = torch.tensor(0.0)
+
+    assert torch.allclose(log_dice_score, expected, atol=1e-6), (
+        f"Log dice for identical tensors should be close to 1. Got {log_dice_score}"
     )
