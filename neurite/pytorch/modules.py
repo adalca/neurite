@@ -10,7 +10,7 @@ __all__ = [
     "Pool",
     "DownsampleConvBlock",
     "UpsampleConvBlock",
-    "CrossConvBlock"
+    "ContextCrossConv"
 ]
 
 from typing import List, Union, Type, Optional, Tuple
@@ -68,6 +68,8 @@ class Norm(nn.Module):
         norm_type : str or nn.Module
             Type of normalization. Must be one of 'batch', 'instance', 'layer',
             'group', or a custom `nn.Module` class.
+                - `batch` performs normalization per channel. The mean and variance are calculated
+                across the B, and *spatial dimensions for each channel C.
         ndim : int, optional
             Dimensionality for batch/instance normalization:
             - 1 -> *Norm1d
@@ -858,7 +860,7 @@ class UpsampleConvBlock(nn.Module):
             return self.conv_block(self.upsample(input_tensor))
 
 
-class CrossConvBlock(nn.Module):
+class ContextCrossConv(nn.Module):
     """
     nD Convolutional layer that performs cross convolutions to interact a query image with a context
     set (examples) defining a task.
@@ -875,7 +877,7 @@ class CrossConvBlock(nn.Module):
     >>> # Define the number of query image channels and context set channels seperately:
     >>> in_channels = (1, 2)
     >>> # Define cross convolution block
-    >>> cross_conv_block = CrossConvBlock(
+    >>> cross_conv_block = ContextCrossConv(
     ...     ndim=2, in_channels=in_channels, out_channels=16, kernel_size=3, padding=1
     ... )
     >>> # Forward pass of cross convolutiom block, returning new query and context representations
@@ -894,7 +896,7 @@ class CrossConvBlock(nn.Module):
     >>> # Define the number of query image channels and context set channels seperately:
     >>> in_channels = (1, 2)
     >>> # Define cross convolution block
-    >>> cross_conv_block = CrossConvBlock(
+    >>> cross_conv_block = ContextCrossConv(
     ...     ndim=3, in_channels=in_channels, out_channels=32, kernel_size=3, padding=1
     ... )
     >>> # Forward pass of cross convolutiom block, returning new query and context representations
@@ -934,7 +936,7 @@ class CrossConvBlock(nn.Module):
         order: str = 'cna',
     ):
         """
-        Initialize the `CrossConvBlock` module.
+        Initialize the `ContextCrossConv` module.
 
         Parameters
         ----------
