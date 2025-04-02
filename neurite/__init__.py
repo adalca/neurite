@@ -33,6 +33,9 @@ import pystrum
 
 # Local imports
 from . import py
+from .py import utils
+from .py import plot
+from .py import dataproc
 
 # Set the minimum allowable pystrum version
 _MIN_PYSTRUM_VERSION = "0.2"
