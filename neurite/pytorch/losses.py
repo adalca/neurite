@@ -30,7 +30,7 @@ __all__ = [
 
 import torch
 from torch import nn
-import neurite.pytorch as ne
+import neurite as ne
 
 
 class Dice(nn.Module):
@@ -55,8 +55,8 @@ class Dice(nn.Module):
     >>> seg1 = ne.samplers.Normal(0, 1)((3, 4, 128, 128))
     >>> seg2 = ne.samplers.Normal(0, 1)((3, 4, 128, 128))
     >>> # Activation functions
-    >>> seg1 = ne.pytorch.utils.logistic(seg1)
-    >>> seg2 = ne.pytorch.utils.logistic(seg2)
+    >>> seg1 = ne.utils.logistic(seg1)
+    >>> seg2 = ne.utils.logistic(seg2)
     >>> # Compute the dice score and return
     >>> dice_module(seg1, seg2)
     tensor([[0.4982, 0.5022, 0.4984, 0.5024],
@@ -131,7 +131,7 @@ class Dice(nn.Module):
         if self.reduction is None:
             return dice_score
         else:
-            return ne.pytorch.utils.reduce_tensor(
+            return ne.utils.reduce_tensor(
                 tensor=dice_score,
                 reduction=self.reduction,
                 dim=self.reduction_dim,
