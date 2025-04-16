@@ -1729,6 +1729,7 @@ def log_dice(
     seg2: torch.Tensor,
     smooth_numerator: float = 1e-12,
     smooth_denominator: float = 1e-12,
+    enforce_valid_probabilities: bool = False,
 ) -> torch.Tensor:
     """
     Compute the Dice coefficient in the log domain given two tensors representing log probabilities.
@@ -1743,6 +1744,9 @@ def log_dice(
         Smoothing constant added to the numerator to avoid log(0). By default, 1e-12.
     smooth_denominator : float, optional
         Smoothing constant added to the denominator to avoid log(0). By default, 1e-12.
+    enforce_valid_probabilities : bool, optional
+        Ensure input segmentations represent valid probabilities by checking that ensuring
+        exp(seg1) and exp(seg2) sum to 1.
 
     Returns
     -------
@@ -1776,6 +1780,11 @@ def log_dice(
         "ne.utils.log_dice expects input tensors to represent log-probabilities (be entirely "
         f"negative) but got max={seg1.max()} at entry 0 and max={seg2.max()} at entry 1."
     )
+
+    # Ensure input segmentations represent valid probabilities
+    if enforce_valid_probabilities:
+        assert sum(seg1.exp()) == 1.0, ("seg1 is not a valid probability distribution")
+        assert sum(seg2.exp()) == 1.0, ("seg2 is not a valid probability distribution")
 
     # Flatten all spatial dims into one axis
     seg1 = seg1.view(seg1.size(0), seg1.size(1), -1).contiguous()
