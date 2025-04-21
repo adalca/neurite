@@ -423,6 +423,11 @@ class ConvBlock(nn.Sequential):
 
         super().__init__()
 
+        # Assign required instance attributes
+        self.ndim = ndim
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
         layers = nn.ModuleDict()
         self.order = list(order)  # make string of letters into list of letters
         valid_operations = ['c', 'n', 'a']
