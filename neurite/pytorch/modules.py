@@ -17,6 +17,7 @@ from typing import List, Union, Type, Optional, Tuple
 import einops
 import torch
 from torch import nn
+from torch.nn.modules import activation
 import neurite as ne
 
 
@@ -218,6 +219,13 @@ class Activation(nn.Module):
         super(Activation, self).__init__()
         if activation_type is None:
             self.activation = None
+
+        elif activation_type == "None":
+            self.activation = None
+
+        elif 'torch.nn' in activation_type:
+            activation_class = activation_type.split('.')[-1]
+            self.activation = getattr(torch.nn, activation_class)
 
         elif isinstance(activation_type, torch.nn.Module):
             self.activation = activation_type
