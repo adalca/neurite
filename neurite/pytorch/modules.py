@@ -223,9 +223,8 @@ class Activation(nn.Module):
         elif activation_type == "None":
             self.activation = None
 
-        elif 'torch.nn' in activation_type:
-            activation_class = activation_type.split('.')[-1]
-            self.activation = getattr(torch.nn, activation_class)
+        elif 'torch.nn' in str(activation_type):
+            self.activation = activation_type
 
         elif isinstance(activation_type, torch.nn.Module):
             self.activation = activation_type
