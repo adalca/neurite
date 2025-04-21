@@ -14,6 +14,7 @@ __all__ = [
 ]
 
 from typing import List, Union, Type, Optional, Tuple
+import importlib
 import einops
 import torch
 from torch import nn
@@ -199,7 +200,7 @@ class Activation(nn.Module):
         inplace: bool = True,
         negative_slope: float = 0.01,
         alpha: float = 1.0
-    ):
+    ) -> nn.Module:
         """
         Initialize the `Activation` module.
 
@@ -216,16 +217,14 @@ class Activation(nn.Module):
         alpha : float, optional
             Alpha value for 'elu'. Default is 1.0.
         """
+
         super(Activation, self).__init__()
+
         if activation_type is None:
-            self.activation = None
+            self.activation = nn.Identity()
 
         elif activation_type == "None":
-            self.activation = None
-
-        elif 'torch.nn' in activation_type:
-            activation_class = activation_type.split('.')[-1]
-            self.activation = getattr(torch.nn, activation_class)
+            self.activation = nn.Identity()
 
         elif isinstance(activation_type, torch.nn.Module):
             self.activation = activation_type
@@ -242,11 +241,21 @@ class Activation(nn.Module):
         elif activation_type == "elu":
             self.activation = nn.ELU(alpha=alpha, inplace=inplace)
 
+        elif "." in activation_type:
+            module_name, _, cls_name = activation_type.rpartition(".")
+            module = importlib.import_module(module_name)
+            cls = getattr(module, cls_name)
+            if issubclass(cls, nn.Module):
+                self.activation = cls()
+            else:
+                self.activation = nn.Identity()
+
         else:
             raise ValueError(
                 f"Unsupported activation_type '{activation_type}'. "
                 f"Supported types: 'relu', 'leaky_relu', 'elu'."
             )
+
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
