@@ -1050,7 +1050,7 @@ class RandInt(Sampler):
         if not isinstance(high, int):
             raise TypeError(f"`high` must be an int, got {type(high).__name__}")
 
-        if high <= low:
+        if high < low:
             raise ValueError("`high` must be greater than `low`.")
 
     def _sample(self, shape: list, **backend) -> torch.Tensor:
