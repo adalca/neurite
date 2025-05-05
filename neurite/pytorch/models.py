@@ -61,6 +61,7 @@ class BasicUNet(nn.Module):
         order: str = 'caca',
         final_activation: Union[str, nn.Module, None] = nn.Sigmoid(),
         residual_connections: bool = True,
+        padding_mode: str = 'zeros',
     ):
 
         """
@@ -130,6 +131,7 @@ class BasicUNet(nn.Module):
             in_channels=self.nb_features[-1],
             out_channels=self.nb_features[-1],
             order=order,
+            padding_mode=padding_mode,
         )
 
         # Upsampling convolutional blocks
@@ -153,6 +155,7 @@ class BasicUNet(nn.Module):
             kernel_size=1,
             padding=0,
             activation=final_activation,
+            padding_mode=padding_mode,
         )
 
     def forward(self, feature_tensor: torch.Tensor):
@@ -237,6 +240,7 @@ class BasicAutoencoder(nn.Module):
         activations: Union[List[Union[Callable, str]], Callable, str, None] = nn.ReLU,
         order: str = 'caca',
         final_activation: Union[str, nn.Module, None] = nn.Sigmoid(),
+        padding_mode: str = 'zeros',
     ):
         """
         Instantiate `BasicAutoencoder`.
@@ -294,6 +298,7 @@ class BasicAutoencoder(nn.Module):
             padding=0,
             activation=activations if callable(activations) else nn.ReLU(),
             order=order,
+            padding_mode=padding_mode,
         )
 
         # Add bottleneck to downsampling_conv_blocks so users can easily predict the latent space.
@@ -318,6 +323,7 @@ class BasicAutoencoder(nn.Module):
             padding=0,
             activation=final_activation,
             order=order,
+            padding_mode=padding_mode,
         )
 
     def forward(self, feature_tensor: torch.Tensor) -> torch.Tensor:

@@ -325,6 +325,7 @@ class ConvBlock(nn.Sequential):
         kernel_size: int = 3,
         stride: int = 1,
         padding: int = 1,
+        padding_mode: str = 'zeros',
         dilation: int = 1,
         groups: int = 1,
         bias: bool = True,
@@ -469,7 +470,7 @@ class ConvBlock(nn.Sequential):
                 # Init the conv with appropriate params
                 layers[f"conv{conv_id}"] = conv_cls(
                     in_channels, out_channels, kernel_size, stride,
-                    padding, dilation, groups, bias
+                    padding, dilation, groups, bias, padding_mode=padding_mode
                 )
 
                 in_channels = out_channels  # All future convs and stuff will have this many in
@@ -682,6 +683,7 @@ class DownsampleConvBlock(nn.Module):
         kernel_size: int = 3,
         stride: int = 1,
         padding: int = 1,
+        padding_mode: str = 'zeros',
         norm: Union[str, nn.Module, None] = None,
         activation: Union[str, nn.Module, None] = "relu",
         pool_mode: str = "max",
@@ -737,6 +739,7 @@ class DownsampleConvBlock(nn.Module):
             norm=norm,
             activation=activation,
             order=order,
+            padding_mode=padding_mode,
         )
 
         self.pool = Pool(ndim=ndim, pool_mode=pool_mode, kernel_size=pool_kernel_size)
@@ -784,6 +787,7 @@ class UpsampleConvBlock(nn.Module):
         kernel_size: int = 3,
         stride: int = 1,
         padding: int = 1,
+        padding_mode: str = 'zeros',
         upsample_kernel_size: int = 4,
         upsample_stride: int = 2,
         upsample_padding: int = 1,
@@ -855,7 +859,8 @@ class UpsampleConvBlock(nn.Module):
             padding=padding,
             norm=norm,
             activation=activation,
-            order=order
+            order=order,
+            padding_mode=padding_mode,
         )
 
     def forward(self, input_tensor: torch.Tensor, residual: torch.Tensor = None) -> torch.Tensor:
@@ -950,6 +955,7 @@ class ContextCrossConv(nn.Module):
         kernel_size: int = 3,
         stride: int = 1,
         padding: int = 1,
+        padding_mode: str = 'zeros',
         dilation: int = 1,
         groups: int = 1,
         bias: bool = True,
@@ -1008,21 +1014,22 @@ class ContextCrossConv(nn.Module):
         self.cross_conv = ConvBlock(
             ndim=ndim, in_channels=sum(in_channels), out_channels=out_channels,
             kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
-            groups=groups, bias=bias, norm=norm, activation=activation, order=order
+            groups=groups, bias=bias, norm=norm, activation=activation, order=order,
+            padding_mode=padding_mode,
         )
 
         # Separate ConvBlock to further process the aggregated features
         self.query_conv_block = ConvBlock(
             ndim=ndim, in_channels=out_channels, out_channels=out_channels, kernel_size=kernel_size,
             stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, norm=norm,
-            activation=activation, order=order
+            activation=activation, order=order, padding_mode=padding_mode,
         )
 
         # Separate ConvBlock to further process the aggregated features
         self.context_conv_block = ConvBlock(
             ndim=ndim, in_channels=out_channels, out_channels=out_channels, kernel_size=kernel_size,
             stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, norm=norm,
-            activation=activation, order=order
+            activation=activation, order=order, padding_mode=padding_mode,
         )
 
     def forward(
