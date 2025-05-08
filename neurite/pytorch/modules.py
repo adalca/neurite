@@ -13,7 +13,7 @@ __all__ = [
     "ContextCrossConv"
 ]
 
-from typing import List, Union, Type, Optional, Tuple
+from typing import List, Union, Type, Optional, Tuple, Literal
 import importlib
 import einops
 import torch
@@ -325,7 +325,7 @@ class ConvBlock(nn.Sequential):
         kernel_size: int = 3,
         stride: int = 1,
         padding: int = 1,
-        padding_mode: str = 'zeros',
+        padding_mode: Literal['zeros', 'replicate', 'reflect'] = 'zeros',
         dilation: int = 1,
         groups: int = 1,
         bias: bool = True,
@@ -683,7 +683,7 @@ class DownsampleConvBlock(nn.Module):
         kernel_size: int = 3,
         stride: int = 1,
         padding: int = 1,
-        padding_mode: str = 'zeros',
+        padding_mode: Literal['zeros', 'replicate', 'reflect'] = 'zeros',
         norm: Union[str, nn.Module, None] = None,
         activation: Union[str, nn.Module, None] = "relu",
         pool_mode: str = "max",
@@ -787,8 +787,8 @@ class UpsampleConvBlock(nn.Module):
         kernel_size: int = 3,
         stride: int = 1,
         padding: int = 1,
-        padding_mode: str = 'zeros',
-        upsample_mode: str = 'linear',
+        padding_mode: Literal['zeros', 'replicate', 'reflect'] = 'zeros',
+        upsample_mode: Literal['linear', 'transposed', 'nearest'] = 'linear',
         upsample_kernel_size: int = 4,
         upsample_stride: int = 2,
         upsample_padding: int = 1,
@@ -978,7 +978,7 @@ class ContextCrossConv(nn.Module):
         kernel_size: int = 3,
         stride: int = 1,
         padding: int = 1,
-        padding_mode: str = 'zeros',
+        padding_mode: Literal['zeros', 'replicate', 'reflect'] = 'zeros',
         dilation: int = 1,
         groups: int = 1,
         bias: bool = True,

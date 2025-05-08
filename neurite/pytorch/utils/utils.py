@@ -52,7 +52,7 @@ __all__ = [
     "reduce_tensor",
 ]
 
-from typing import Union, List, Tuple
+from typing import Union, List, Tuple, Literal
 import inspect
 import einops
 import torch
@@ -915,7 +915,7 @@ def make_downsampling_conv_blocks(
     kernel_size: int = 3,
     stride: int = 1,
     padding: int = 1,
-    padding_mode: str = 'zeros',
+    padding_mode: Literal['zeros', 'replicate', 'reflect'] = 'zeros',
     norms: Union[str, nn.Module, None] = None,
     activations: Union[str, nn.Module, None] = "relu",
     pool_mode: str = "max",
@@ -1015,8 +1015,8 @@ def make_upsampling_conv_blocks(
     kernel_size: int = 3,
     stride: int = 1,
     padding: int = 1,
-    padding_mode: str = 'zeros',
-    upsample_mode: str = 'linear',
+    padding_mode: Literal['zeros', 'replicate', 'reflect'] = 'zeros',
+    upsample_mode: Literal['linear', 'transposed', 'nearest'] = 'linear',
     upsample_kernel_size: int = 4,
     upsample_stride: int = 2,
     upsample_padding: int = 1,

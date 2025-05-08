@@ -56,7 +56,7 @@ class BasicUNet(nn.Module):
         in_channels: int,
         out_channels: int,
         padding_mode: Literal['zeros', 'replicate', 'reflect'] = 'zeros',
-        upsample_mode: Literal['linear', 'transpose', 'nearest'] = 'linear',
+        upsample_mode: Literal['linear', 'transposed', 'nearest'] = 'linear',
         nb_features: List[int] = (16, 16, 16, 16, 16),
         norms: Union[List[Union[Callable, str]], Callable, str, None] = None,
         activations: Union[List[Union[Callable, str]], Callable, str, None] = nn.ReLU,
