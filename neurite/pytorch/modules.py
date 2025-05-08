@@ -788,9 +788,11 @@ class UpsampleConvBlock(nn.Module):
         stride: int = 1,
         padding: int = 1,
         padding_mode: str = 'zeros',
+        upsample_mode: str = 'linear',
         upsample_kernel_size: int = 4,
         upsample_stride: int = 2,
         upsample_padding: int = 1,
+        scale_factor: int = 2,
         norm: Union[str, nn.Module, None] = None,
         activation: Union[str, nn.Module, None] = "relu",
         order: str = 'nca',
@@ -838,15 +840,36 @@ class UpsampleConvBlock(nn.Module):
 
         super().__init__()
 
-        self.upsample = TransposedConv(
-            ndim=ndim,
-            in_channels=in_channels,
-            out_channels=in_channels,
-            kernel_size=upsample_kernel_size,
-            stride=upsample_stride,
-            padding=upsample_padding,
-        )
+        # Choose upsampling strategy
+        if upsample_mode == 'transposed':
+            self.upsample = TransposedConv(
+                ndim=ndim,
+                in_channels=in_channels,
+                out_channels=in_channels,
+                kernel_size=upsample_kernel_size,
+                stride=upsample_stride,
+                padding=upsample_padding
+            )
 
+        else:
+            # Construct a mapping for ndim to the upsampling mode
+            linear_upsampling_modes = {
+                1: 'linear', 2: 'bilinear', 3: 'trilinear'
+            }
+
+            # Only compute linear mode if not nearest
+            if upsample_mode != 'nearest':
+                upsample_mode = linear_upsampling_modes[ndim]
+
+            # align_corners only applies to non-nearest modes
+            align = None if upsample_mode == 'nearest' else True
+            self.upsample = nn.Upsample(
+                scale_factor=scale_factor,
+                mode=upsample_mode,
+                align_corners=align
+            )
+
+        # Double channels if there's a residual connection
         if accepts_residuals:
             in_channels += in_channels
 

@@ -11,7 +11,7 @@ __all__ = [
     "BasicAutoencoder",
 ]
 
-from typing import List, Union, Callable
+from typing import List, Union, Callable, Literal
 import torch
 from torch import nn
 import neurite.pytorch as ne
@@ -55,13 +55,14 @@ class BasicUNet(nn.Module):
         ndim: int,
         in_channels: int,
         out_channels: int,
+        padding_mode: Literal['zeros', 'replicate', 'reflect'] = 'zeros',
+        upsample_mode: Literal['linear', 'transpose', 'nearest'] = 'linear',
         nb_features: List[int] = (16, 16, 16, 16, 16),
         norms: Union[List[Union[Callable, str]], Callable, str, None] = None,
         activations: Union[List[Union[Callable, str]], Callable, str, None] = nn.ReLU,
         order: str = 'caca',
         final_activation: Union[str, nn.Module, None] = nn.Sigmoid(),
         residual_connections: bool = True,
-        padding_mode: str = 'zeros',
     ):
 
         """
@@ -123,6 +124,7 @@ class BasicUNet(nn.Module):
             activations=self.activations,
             order=order,
             return_residual=residual_connections,
+            padding_mode=padding_mode,
         )
 
         # Convolutional block between downsampling and upsampling arms (lowest resolution)
@@ -145,6 +147,8 @@ class BasicUNet(nn.Module):
             upsample_stride=2,
             upsample_padding=0,
             accepts_residuals=residual_connections,
+            padding_mode=padding_mode,
+            upsample_mode=upsample_mode
         )
 
         # Final convolutional block
