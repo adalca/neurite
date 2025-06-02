@@ -36,7 +36,6 @@ keywords = [
   "segmentation",
   "medical-image-computing",
   "nibabel",
-  "tqdm",
 ]
 
 [project.urls]
