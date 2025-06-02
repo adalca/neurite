@@ -34,7 +34,8 @@ keywords = [
   "pytorch",
   "medical-imaging",
   "segmentation",
-  "medical-image-computing"
+  "medical-image-computing",
+  "nibabel",
 ]
 
 [project.urls]
