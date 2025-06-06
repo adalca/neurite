@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "neurite"
 version = "0.2"
 description = "Neural networks toolbox focused on medical image analysis."
-requires-python = ">=3.6"
+requires-python = ">=3.9"
 readme = "README.md"
 license = { text = "MIT" }
 classifiers = [
