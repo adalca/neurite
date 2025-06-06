@@ -37,14 +37,15 @@ __all__ = [
 from typing import Union, Tuple, List
 import torch
 import neurite as ne
+from neurite.samplers import Sampler
 
 
 def random_crop(
     input_tensor: torch.Tensor,
-    crop_proportion: Union[ne.samplers.Sampler, float] = 0.5,
-    prob: Union[ne.samplers.Sampler, float] = 1,
+    crop_proportion: Union[Sampler, float] = 0.5,
+    prob: Union[Sampler, float] = 1,
     forbidden_dims: Union[Tuple, List] = (0, 1),
-    seed: Union[ne.samplers.Sampler, int] = None,
+    seed: Union[Sampler, int] = None,
 ):
     """
     Randomly crops the input tensor along specified dimensions based on a given proportion and
@@ -116,7 +117,7 @@ def random_crop(
     )
 
     # If prob is a sampler, sample from it
-    if isinstance(prob, ne.samplers.Sampler):
+    if isinstance(prob, Sampler):
         prob = prob()
 
     # Make prob into a Bernoulli distribution
@@ -162,10 +163,10 @@ def random_crop(
 
 def random_clip(
     input_tensor: torch.Tensor,
-    clip_min: Union[float, int, ne.samplers.Sampler] = 0,
-    clip_max: Union[float, int, ne.samplers.Sampler] = 1,
-    clip_prob: Union[float, int, ne.samplers.Sampler] = 0.5,
-    seed: Union[int, ne.samplers.Sampler] = None,
+    clip_min: Union[float, int, Sampler] = 0,
+    clip_max: Union[float, int, Sampler] = 1,
+    clip_prob: Union[float, int, Sampler] = 0.5,
+    seed: Union[int, Sampler] = None,
 ) -> torch.Tensor:
     """
     Randomly clips the values in a tensor to a specified range with a given probability.
@@ -219,7 +220,7 @@ def random_clip(
     True
     """
     # If prob is a sampler, sample from it
-    if isinstance(clip_prob, ne.samplers.Sampler):
+    if isinstance(clip_prob, Sampler):
         clip_prob = clip_prob()
 
     # Make prob into a Bernoulli distribution
@@ -246,9 +247,9 @@ def random_clip(
 
 def random_gamma(
     input_tensor: torch.Tensor,
-    gamma: Union[ne.samplers.Sampler, float] = 1.0,
-    prob: Union[ne.samplers.Sampler, float] = 1.0,
-    seed: Union[ne.samplers.Sampler, int] = None,
+    gamma: Union[Sampler, float] = 1.0,
+    prob: Union[Sampler, float] = 1.0,
+    seed: Union[Sampler, int] = None,
 ) -> torch.Tensor:
     """
     Applies a randomized nonlinear gamma scaling to the input tensor with a specified probability.
@@ -311,7 +312,7 @@ def random_gamma(
         torch.manual_seed(seed)
 
     # If prob is a sampler, sample from it
-    if isinstance(prob, ne.samplers.Sampler):
+    if isinstance(prob, Sampler):
         prob = prob()
 
     # Make prob into a Bernoulli distribution

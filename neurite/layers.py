@@ -42,15 +42,15 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-import neurite.pytorch as ne
-
+import neurite as ne
+from neurite.samplers import Sampler
 
 class RescaleValues(nn.Module):
     """
     Scale each element of the input tensor by a multiplicative factor.
     """
 
-    def __init__(self, scale_factor: Union[float, int, ne.samplers.Sampler]):
+    def __init__(self, scale_factor: Union[float, int, Sampler]):
         """
         Initialize the `RescaleValues` module.
 
@@ -199,10 +199,10 @@ class SoftQuantize(nn.Module):
 
     def __init__(
         self,
-        nb_bins: Union[int, ne.samplers.Sampler] = 16,
-        softness: Union[float, int, ne.samplers.Sampler] = 1.0,
-        min_clip: Union[float, int, ne.samplers.Sampler] = -float('inf'),
-        max_clip: Union[float, int, ne.samplers.Sampler] = float('inf'),
+        nb_bins: Union[int, Sampler] = 16,
+        softness: Union[float, int, Sampler] = 1.0,
+        min_clip: Union[float, int, Sampler] = -float('inf'),
+        max_clip: Union[float, int, Sampler] = float('inf'),
         return_log: bool = False,
     ):
         """
@@ -470,10 +470,10 @@ class RandomCrop(nn.Module):
 
     def __init__(
         self,
-        crop_proportion: Union[ne.samplers.Sampler, float] = 0.5,
-        prob: Union[ne.samplers.Sampler, float] = 1,
+        crop_proportion: Union[Sampler, float] = 0.5,
+        prob: Union[Sampler, float] = 1,
         forbidden_dims: ne.samplers.Union[Tuple, List] = (0, 1),
-        seed: Union[int, ne.samplers.Sampler] = None,
+        seed: Union[int, Sampler] = None,
     ):
         """
         Initialize the `RandomCrop` module.
@@ -537,10 +537,10 @@ class RandomClip(nn.Module):
 
     def __init__(
         self,
-        clip_min: Union[float, int, ne.samplers.Sampler] = 0,
-        clip_max: Union[float, int, ne.samplers.Sampler] = 1,
-        clip_prob: Union[float, int, ne.samplers.Sampler] = 0.5,
-        seed: Union[int, ne.samplers.Sampler] = None,
+        clip_min: Union[float, int, Sampler] = 0,
+        clip_max: Union[float, int, Sampler] = 1,
+        clip_prob: Union[float, int, Sampler] = 0.5,
+        seed: Union[int, Sampler] = None,
     ):
         """
         Initialize `RandomClip` with specified clipping bounds and sampling probability.
@@ -617,9 +617,9 @@ class RandomGamma(nn.Module):
 
     def __init__(
         self,
-        gamma: Union[float, int, ne.samplers.Sampler] = 1.0,
-        prob: Union[float, int, ne.samplers.Sampler] = 1.0,
-        seed: Union[int, ne.samplers.Sampler] = None,
+        gamma: Union[float, int, Sampler] = 1.0,
+        prob: Union[float, int, Sampler] = 1.0,
+        seed: Union[int, Sampler] = None,
     ):
         """
         Initialize the `RandomGamma` module.
@@ -752,7 +752,7 @@ class RandomClearLabel(nn.Module):
 
     def __init__(
         self,
-        prob: Union[float, int, ne.samplers.Sampler] = 0.5,
+        prob: Union[float, int, Sampler] = 0.5,
         exclude_zero: bool = True,
         seed: int = None,
     ):
@@ -820,9 +820,9 @@ class SampleImageFromLabels(nn.Module):
 
     def __init__(
         self,
-        mean_sampler: ne.samplers.Sampler = ne.samplers.Uniform(0, 1),
-        noise_sampler: ne.samplers.Sampler = ne.samplers.Normal,
-        noise_variance: Union[float, int, ne.samplers.Sampler] = 0.25,
+        mean_sampler: Sampler = ne.samplers.Uniform(0, 1),
+        noise_sampler: Sampler = ne.samplers.Normal,
+        noise_variance: Union[float, int, Sampler] = 0.25,
     ):
         """
         Initialize the `SampleImageFromLabels` module.

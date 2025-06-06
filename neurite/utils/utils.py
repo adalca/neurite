@@ -58,7 +58,8 @@ import einops
 import torch
 import torch.nn.functional as F
 from torch import nn
-import neurite.pytorch as ne
+import neurite as ne
+from neurite.samplers import Sampler
 
 
 def identity(input_argument):
@@ -68,10 +69,10 @@ def identity(input_argument):
 
 def soft_quantize(
     input_tensor: torch.Tensor,
-    nb_bins: Union[int, ne.samplers.Sampler] = 16,
-    softness: Union[float, int, ne.samplers.Sampler] = 1.0,
-    min_clip: Union[float, int, ne.samplers.Sampler] = -float('inf'),
-    max_clip: Union[float, int, ne.samplers.Sampler] = float('inf'),
+    nb_bins: Union[int, Sampler] = 16,
+    softness: Union[float, int, Sampler] = 1.0,
+    min_clip: Union[float, int, Sampler] = -float('inf'),
+    max_clip: Union[float, int, Sampler] = float('inf'),
     return_log: bool = False
 ) -> torch.Tensor:
     """
@@ -188,8 +189,8 @@ def mse(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
 
 
 def create_gaussian_kernel(
-    kernel_size: Union[int, ne.samplers.Sampler] = 3,
-    sigma: Union[float, int, ne.samplers.Sampler] = 1,
+    kernel_size: Union[int, Sampler] = 3,
+    sigma: Union[float, int, Sampler] = 1,
     ndim: int = 3,
     nchannels: int = 1
 ) -> torch.Tensor:
@@ -245,8 +246,8 @@ def create_gaussian_kernel(
 
 def gaussian_smoothing(
     input_tensor: torch.Tensor,
-    kernel_size: Union[int, ne.samplers.Sampler] = 3,
-    sigma: Union[float, int, ne.samplers.Sampler] = 1,
+    kernel_size: Union[int, Sampler] = 3,
+    sigma: Union[float, int, Sampler] = 1,
 ) -> torch.Tensor:
     """
     Applies Gaussian smoothing to the {1D, 2D, 3D} input tensor based on the given kernel size and
@@ -704,14 +705,14 @@ def make_range(*args, **kwargs) -> tuple:
     """
     # Return arguments of type {Sampler, list, tuple} as-is
     for arg in args:
-        if isinstance(arg, ne.samplers.Sampler):
+        if isinstance(arg, Sampler):
             return arg
         elif isinstance(arg, (list, tuple)):
             return arg
 
     # Return keyword arguments of type {Sampler, list, tuple} as-is
     for arg in kwargs.values():
-        if isinstance(arg, ne.samplers.Sampler):
+        if isinstance(arg, Sampler):
             return arg
         elif isinstance(arg, (list, tuple)):
             return arg
@@ -746,7 +747,7 @@ def make_range(*args, **kwargs) -> tuple:
 def random_clear_label(
     input_tensor: torch.Tensor,
     label_tensor: torch.Tensor,
-    prob: Union[float, int, ne.samplers.Sampler] = 0.5,
+    prob: Union[float, int, Sampler] = 0.5,
     exclude_zero: bool = True,
     seed: int = None
 ) -> torch.Tensor:
@@ -807,7 +808,7 @@ def random_clear_label(
     """
     # Initialize random seed if provided
     if seed is not None:
-        if isinstance(seed, ne.samplers.Sampler):
+        if isinstance(seed, Sampler):
             seed = seed()
         torch.manual_seed(seed)
 
@@ -829,9 +830,9 @@ def random_clear_label(
 
 def sample_image_from_labels(
     label_tensor: torch.Tensor,
-    mean_sampler: ne.samplers.Sampler = ne.samplers.Uniform(0, 1),
-    noise_sampler: ne.samplers.Sampler = ne.samplers.Normal,
-    noise_variance: Union[float, int, ne.samplers.Sampler] = 0.25
+    mean_sampler: Sampler = ne.samplers.Uniform(0, 1),
+    noise_sampler: Sampler = ne.samplers.Normal,
+    noise_variance: Union[float, int, Sampler] = 0.25
 ) -> torch.Tensor:
     """
     Sample textures/intensities from an integer label map.
