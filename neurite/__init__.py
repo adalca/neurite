@@ -17,6 +17,27 @@ Configuration
 -------------
 The backend is determined by the environment variable `NEURITE_BACKEND`. The default backend is
 TensorFlow unless `NEURITE_BACKEND` is set to 'pytorch'.
+
+`neurite/torch` is the package of neurite that handles its PyTorch implementation.
+
+Modules
+-------
+layers
+    Operations and augmentations for model training.
+losses
+    Loss functions for various learning objectives.
+random
+    Utilities for random sampling, distributions, and random number generation for augmentations and
+    model training.
+utils
+    Helper functions and utilities for common PyTorch operations, including tensor manipulation.
+modules
+    Foundational, trainable layers for constructing neural networks, including normalization
+    layers and convolutional blocks.
+models
+    Prebuilt yet flexible neural network architectures designed for specific tasks, such as image
+    segmentation, registration, or classification. models leverage layers and modules from
+    other components of the neurite for streamlined object construction.
 """
 
 # Define the version of neurite
