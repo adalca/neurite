@@ -13,27 +13,6 @@ import matplotlib
 # local (our) imports
 
 
-def get_backend():
-    """
-    Returns the currently used backend. Default is tensorflow unless the
-    NEURITE_BACKEND environment variable is set to 'pytorch'.
-    """
-    return 'tensorflow' if os.environ.get('NEURITE_BACKEND') == 'tensorflow' else 'pytorch'
-    backend = os.environ.get('NEURITE_BACKEND')
-    # Determine if backend has been defined
-    if backend not in {'tensorflow', 'pytorch'}:
-        # If not, set backend to the current default (TensorFlow)
-        backend = 'tensorflow'
-        # Issue warning about the default change to pytorch in the future
-        warnings.warn(
-            "The default backend will soon be changing to 'pytorch'. If you prefer to use "
-            "TensorFlow, please set the NEURITE_BACKEND environment variable to 'tensorflow'.",
-            FutureWarning,
-            stacklevel=2
-        )
-    return backend
-
-
 def softmax(x, axis):
     """
     softmax of a numpy array along a given dimension
