@@ -19,7 +19,7 @@ def test_norm_instance(ndim: int):
     x = torch.randn(8, 4, *spatial) * 5 + 10
 
     # Initialize the normalization layer
-    norm_layer = ne.pytorch.modules.Norm(
+    norm_layer = ne.modules.Norm(
         norm_type='instance',
         ndim=ndim,
         num_features=4,
@@ -65,7 +65,7 @@ def test_norm_batch(ndim: int):
     x = torch.randn(4, 8, *spatial) * 5 + 10
 
     # Initialize the normalization layer
-    norm_layer = ne.pytorch.modules.Norm(
+    norm_layer = ne.modules.Norm(
         norm_type='batch',
         ndim=ndim,
         num_features=8,

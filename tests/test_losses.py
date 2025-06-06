@@ -27,7 +27,7 @@ def test_dice_shapes():
     """
 
     # Dice is able to handle multiple dimensions on the fly
-    dice = ne.pytorch.losses.Dice(reduction=None)
+    dice = ne.losses.Dice(reduction=None)
 
     # Init tensors with batch and channel dims: (B, C, *spatial)
     tensor_1D = torch.ones(1, 1, 8)
@@ -65,7 +65,7 @@ def test_dice_identical():
     seg = torch.ones((1, 1, 8, 8))
 
     # Initialize the loss
-    dice = ne.pytorch.losses.Dice(reduction=None)
+    dice = ne.losses.Dice(reduction=None)
 
     # Calculate the dice score
     result = dice(seg, seg)
@@ -91,7 +91,7 @@ def test_dice_nonidentical():
     seg2 = torch.randint(2, (1, 1, 128, 128)).float()
 
     # Initialize the dice score
-    dice = ne.pytorch.losses.Dice(reduction=None)
+    dice = ne.losses.Dice(reduction=None)
 
     # Compute the dice score
     result = dice(seg1, seg2)
@@ -112,7 +112,7 @@ def test_log_dice():
     log_probs = log_probabilities
 
     # Compute dice on log between the same tensor
-    log_dice_score = ne.pytorch.utils.log_dice(
+    log_dice_score = ne.utils.log_dice(
         seg1=log_probs,
         seg2=log_probs,
     )

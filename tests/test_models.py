@@ -4,10 +4,7 @@ pytest suite for BasicUNet.
 
 import pytest
 import torch
-
-# Replace `your_module` with the actual module path
-# where BasicUNet is defined.
-from neurite.pytorch.models import BasicUNet
+import neurite as ne
 
 
 @pytest.mark.parametrize(
@@ -38,7 +35,7 @@ def test_basicunet_forward_shapes(ndim, spatial_size):
     out_ch = 5
 
     # Instantiate model with a small feature map
-    model = BasicUNet(
+    model = ne.models.BasicUNet(
         ndim=ndim,
         in_channels=in_ch,
         out_channels=out_ch,
@@ -79,7 +76,7 @@ def test_basicunet_residual_option(residual):
     out_ch = 1
     size = (16, 16)
 
-    model = BasicUNet(
+    model = ne.models.BasicUNet(
         ndim=ndim,
         in_channels=in_ch,
         out_channels=out_ch,
@@ -114,7 +111,7 @@ def test_basicunet_upsample_modes(mode):
     in_ch = 1
     out_ch = 1
 
-    model = BasicUNet(
+    model = ne.models.BasicUNet(
         ndim=ndim,
         in_channels=in_ch,
         out_channels=out_ch,
@@ -145,7 +142,7 @@ def test_basicunet_forward_cuda():
     out_ch = 1
 
     # Move model and data to GPU
-    model = BasicUNet(
+    model = ne.models.BasicUNet(
         ndim=ndim,
         in_channels=in_ch,
         out_channels=out_ch,
