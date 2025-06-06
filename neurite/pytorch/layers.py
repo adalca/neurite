@@ -149,7 +149,7 @@ class Resize(nn.Module):
             scale_factor = 1
 
         elif scale_factor is not None:
-            # Make a fixed if passed a single number. Maks sampler if passed sampler.
+            # Make a fixed if passed a single number. Makes sampler if passed sampler.
             scale_factor = ne.samplers.make_sampler(ne.samplers.Fixed, scale_factor)
 
         self.size = size
