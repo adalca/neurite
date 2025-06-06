@@ -26,22 +26,75 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from matplotlib.colors import Normalize
 from mpl_toolkits.axes_grid1 import make_axes_locatable  # plotting
+from typing import Union, List, Any
 
 
-def slices(slices_in,           # the 2D slices
-           titles=None,         # list of titles
-           cmaps=None,          # list of colormaps
-           norms=None,          # list of normalizations
-           do_colorbars=False,  # option to show colorbars on each slice
-           grid=False,          # option to plot the images in a grid or a single row
-           width=15,            # width in in
-           show=True,           # option to actually show the plot (plt.show())
-           axes_off=True,
-           plot_block=True,     # option to plt.show()
-           facecolor=None,
-           imshow_args=None):
+def slices(
+    slices_in: Any,           # the 2D slices
+    titles: Union[str, List[str]] = None,         # list of titles
+    cmaps=None,          # list of colormaps
+    norms=None,          # list of normalizations
+    do_colorbars=False,  # option to show colorbars on each slice
+    grid=False,          # option to plot the images in a grid or a single row
+    width=15,            # width in in
+    show=True,           # option to actually show the plot (plt.show())
+    axes_off=True,
+    plot_block=True,     # option to plt.show()
+    facecolor=None,
+    imshow_args=None
+    ):
     '''
-    plot a grid of slices (2d images)
+    Plot a grid of 2D image slices.
+
+    Parameters
+    ----------
+    slices_in : array_like or list of array_like
+        A 2D image or list of 2D images to plot. Each element must be
+        either a 2D array or an RGB image (shape HxWx3).
+    titles : str or list of str, optional
+        Title or list of titles for each subplot. A single string is
+        applied to all plots.
+    cmaps : str or list of str, optional
+        Colormap name or list of names for each image. Defaults to 'gray'.
+    norms : Normalize instance or list of Normalize, optional
+        Normalization(s) for color scaling. If None, default norm used.
+    do_colorbars : bool, optional
+        If True, add a colorbar to each subplot. Default is False.
+    grid : bool or tuple of int, optional
+        If True, arrange subplots in a square grid. If tuple
+        (rows, cols) is given, use that layout. Default is single row.
+    width : float, optional
+        Figure width in inches. Default is 15.
+    show : bool, optional
+        If True, call plt.show() after plotting. Default is True.
+    axes_off : bool, optional
+        If True, hide axis ticks and labels. Default is True.
+    plot_block : bool, optional
+        If True, block execution when showing. Passed to
+        plt.show(block=plot_block). Default is True.
+    facecolor : color spec, optional
+        Figure face color. If None, uses default.
+    imshow_args : dict or list of dict, optional
+        Additional kwargs for ax.imshow. A single dict applies to all.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The Figure object containing the subplots.
+    axs : array_like of Axes
+        Array of Axes objects for each subplot.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> slice1 = np.random.rand(64, 64)
+    >>> slice2 = np.random.rand(64, 64)
+    >>> fig, axs = slices(
+    ...     [slice1, slice2],
+    ...     titles=['First', 'Second'],
+    ...     do_colorbars=True,
+    ...     grid=(1, 2),
+    ... )
     '''
 
     # input processing
