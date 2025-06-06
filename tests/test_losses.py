@@ -104,7 +104,7 @@ def test_dice_nonidentical():
         "Dice for uniformly distributed binary tensors should be close to 0.5"
     )
 
-def test_log_dice():
+def test_log_dice(log_probabilities):
     """
     Test the log-dice score with log-probabilities
     """
