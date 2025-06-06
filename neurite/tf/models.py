@@ -923,12 +923,6 @@ def labels_to_image_old(
     return tf.keras.Model(labels_input, outputs, name=f'synth_{id}')
 
 
-def labels_to_image_new(*args, **kwargs):
-    warnings.warn('model `labels_to_image_new` has been renamed to `labels_to_image` and will be '
-                  'removed in the future')
-    return labels_to_image(*args, **kwargs)
-
-
 def labels_to_image(
     labels_in,
     labels_out=None,
@@ -950,7 +944,6 @@ def labels_to_image(
     warp_max=2,
     warp_blur_min=(8, 8),
     warp_blur_max=(32, 32),
-    warp_zero_mean=False,
     crop_min=0,
     crop_max=0.2,
     crop_prob=0,
@@ -969,8 +962,8 @@ def labels_to_image(
     bias_blur_min=32,
     bias_blur_max=64,
     bias_func=tf.exp,
-    slice_stride_min=1,
-    slice_stride_max=8,
+    slice_min=1,
+    slice_max=8,
     slice_prob=0,
     slice_axes=None,
     slice_labels=False,
@@ -991,6 +984,7 @@ def labels_to_image(
     return_mean=False,
     return_bias=False,
     id=0,
+    **kwargs,
 ):
     """Build model that augments label maps and synthesizes images from them.
 
@@ -1024,7 +1018,6 @@ def labels_to_image(
             be used with lateralized labels. Requires an isotropic output shape.
         warp_min: Lower bound on the SDs used when drawing the SVF.
         warp_max: Upper bound on the SDs used when drawing the SVF.
-        warp_zero_mean: Ensure that the SVF components have zero mean.
         crop_min: Lower bound on the proportion of the FOV to crop.
         crop_max: Upper bound on the proportion of the FOV to crop.
         crop_prob: Probability that we crop the FOV along an axis.
@@ -1043,8 +1036,8 @@ def labels_to_image(
         bias_blur_min: Lower bound on the bias smoothing FWHM.
         bias_blur_max: Upper bound on the bias smoothing FWHM.
         bias_func: Function applied voxel-wise to condition the bias field.
-        slice_stride_min: Lower bound on slice thickness in original voxel units.
-        slice_stride_max: Upper bound on slice thickness in original voxel units.
+        slice_min: Lower bound on slice thickness in original voxel units.
+        slice_max: Upper bound on slice thickness in original voxel units.
         slice_prob: Probability that we subsample to create thick slices.
         slice_axes: Axes from which to draw slice normal direction. None means all spatial axes.
         slice_labels: Subsample both the image and the output label map.
@@ -1082,6 +1075,32 @@ def labels_to_image(
         https://doi.org/10.1117/12.2653251
     """
     import voxelmorph as vxm
+
+    # Deprecation.
+    slice_new = kwargs.pop('slice_new', False)
+    if not slice_new:
+        warnings.warn('model `labels_to_image` will switch from `ne.layers.Subsample` to '
+                      '`vxm.layers.DownUpSample` soon. Enable the new behavior by setting '
+                      '`slice_new=True`.')
+
+    warp_zero_mean = kwargs.pop('warp_zero_mean', False)
+    if not warp_zero_mean:
+        warnings.warn('argument `warp_zero_mean` to `labels_to_image` is deprecated and will be '
+                      'removed in the future, as the SVF components will always have zero mean. '
+                      'Enable the new behavior by setting `warp_zero_mean=True`.')
+
+    if 'slice_stride_min' in kwargs:
+        slice_min = kwargs.pop('slice_stride_min')
+        warnings.warn('argument `slice_stride_min` to `labels_to_image` is deprecated and will be '
+                      'removed in the future. Please use `slice_min` instead.')
+
+    if 'slice_stride_max' in kwargs:
+        slice_max = kwargs.pop('slice_stride_max')
+        warnings.warn('argument `slice_stride_max` to `labels_to_image` is deprecated and will be '
+                      'removed in the future. Please use `slice_max` instead.')
+
+    if kwargs:
+        raise ValueError(f'unknown argument {kwargs}')
 
     # Compute type.
     compute_type = tf.keras.mixed_precision.global_policy().compute_dtype
@@ -1265,14 +1284,19 @@ def labels_to_image(
     # Create thick slices.
     prop = dict(
         prob=slice_prob,
-        stride_min=max(1, slice_stride_min / (2 if half_res else 1)),
-        stride_max=max(1, slice_stride_max / (2 if half_res else 1)),
+        stride_min=max(1, slice_min / (2 if half_res else 1)),
+        stride_max=max(1, slice_max / (2 if half_res else 1)),
         axes=slice_axes,
         seed=seeds.pop('slice', 1234 if slice_labels else None),
     )
-    image = layers.Subsample(**prop)(image)
-    if slice_labels:
-        labels = layers.Subsample(**prop)(labels)
+    if slice_new:
+        image = vxm.layers.DownUpSample(**prop)(image)
+        if slice_labels:
+            labels = vxm.layers.DownUpSample(interp_method='nearest', **prop)(labels)
+    else:
+        image = layers.Subsample(**prop)(image)
+        if slice_labels:
+            labels = layers.Subsample(**prop)(labels)
 
     # Intensity manipulations.
     image = layers.RandomClip(
