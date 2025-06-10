@@ -48,7 +48,7 @@ class Dice(nn.Module):
     >>> # Compute the dice score and return
     >>> dice_module(seg1, seg2)
     tensor([[0.5003]])
-    
+
     # Example 2: Computing the soft dice score with continuious seg maps and no reduction
     >>> dice_module = Dice(reduction=None)
     >>> # Randomly sample continuious "logits"
@@ -74,7 +74,7 @@ class Dice(nn.Module):
     ) -> None:
 
         """
-        Initialize the `Dice` module.
+        Initialize `Dice`.
 
         Parameters
         ----------
@@ -115,8 +115,7 @@ class Dice(nn.Module):
         Returns
         -------
         torch.Tensor
-            The computed Dice coefficient, potentially reduced according to the arguments passed at
-            point of object instantiation.
+            The computed Dice coefficient, optionally reduced according to object initialization.
         """
 
         # Compute the dice score
@@ -145,7 +144,7 @@ class CategoricalCrossentropy(nn.Module):
     """
     def __init__(self):
         """
-        Initialize the `CategoricalCrossentropy` module.
+        Initialize `CategoricalCrossentropy`.
         """
         super().__init__()
 
@@ -162,7 +161,7 @@ class MeanSquaredErrorProb(nn.Module):
     """
     def __init__(self):
         """
-        Initialize the `CLASSNAME` module.
+        Initialize `MeanSquaredErrorProb`.
         """
         super().__init__()
 
