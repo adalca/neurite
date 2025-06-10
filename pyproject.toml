@@ -27,7 +27,8 @@ maintainers = [
 dependencies = [
   "torch",
   "einops",
-  "pystrum"
+  "pystrum",
+  "tensorflow",
 ]
 keywords = [
   "python",

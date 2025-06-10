@@ -39,5 +39,6 @@ setuptools.setup(
         'scikit-learn',
         'nibabel',
         'pystrum>=0.2',
+        'tensorflow',
     ]
 )
