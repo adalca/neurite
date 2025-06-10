@@ -45,6 +45,7 @@ import torch.nn.functional as F
 import neurite as ne
 from neurite.samplers import Sampler
 
+
 class RescaleValues(nn.Module):
     """
     Scale each element of the input tensor by a multiplicative factor.
@@ -114,22 +115,22 @@ class Resize(nn.Module):
 
         Examples
         --------
-        >>> # Define a tensor we'll use for resizing examples
+        >>> # Get a random tensor ~N(0, 1)
         >>> input_tensor = torch.randn(1, 1, 32, 32, 32)
 
-        ### Resizing with fixed `scale_factor`
+        ### Resize with fixed `scale_factor`
         >>> resize_module = Resize(scale_factor=2)
         >>> resized_tensor = resize_module(input_tensor)
         >>> print(resized_tensor.shape)
         torch.Size([1, 1, 64, 64, 64])
 
-        ### Resizing with a sampled `scale_factor`
+        ### Resize with a sampled `scale_factor`
         >>> resize_module = Resize(scale_factor=Uniform(0.5, 4))
         >>> resized_tensor = resize_module(input_tensor)
         >>> print(resized_tensor)
         torch.Size([1, 1, 74, 74, 74])
 
-        ### Resizing to a specific size
+        ### Resize to a specific shape
         >>> resize_module = Resize(size=(96, 96, 96))
         >>> resized_tensor = resize_module(input_tensor)
         >>> print(resized_tensor)
@@ -190,7 +191,7 @@ class SoftQuantize(nn.Module):
     """
     Map continuous values to discrete bins.
 
-    This module maps continuous values to discrete bins while retaining some smoothness/continuous
+    Map continuous values to discrete bins while retaining some smoothness/continuity
     which is parametrized by a softening parameter. It is especially useful in the context of
     machine learning, where it is desirable to have a differentiable version of a quantized
     quantity, allowing for backprop. Hard quantization is non-differentiable and creates gradients
@@ -206,7 +207,7 @@ class SoftQuantize(nn.Module):
         return_log: bool = False,
     ):
         """
-        Initialize the `SoftQuantize` module.
+        Initialize `SoftQuantize`.
 
         Parameters
         ----------
@@ -224,17 +225,16 @@ class SoftQuantize(nn.Module):
 
         Examples
         --------
-        >>> # Make a random 3D tensor with zero mean and unit variance.
+        >>> # Make 3D tensor ~N(0, 1).
         >>> input_tensor = torch.randn(1, 1, 32, 32, 32)
-        >>> # Initialize the SoftQuantize instance.
+        >>> # Initialize & apply the SoftQuantize instance.
         >>> soft_quantizer = SoftQuantize(nb_bins=4, softness=0.5)
-        >>> # Apply the SoftQuantize instance to the input tensor
         >>> softly_quantized_tensor = soft_quantizer(input_tensor)
         >>> # Visualize the softly quantized tensor.
         >>> plt.imshow(softly_quantized_tensor[0, 0, 16])
 
-        ### Softly quantizing with randomly sampled `nb_bins` and `softness` parameters
-        >>> # Define `nb_bins` to sample a uniform int distribution, and `softness` a float dist
+        ### Softly quantize with random `nb_bins` and `softness` parameters
+        >>> # Get `nb_bins` ~U(3, 32), and `softness` ~U(0.001, 10)
         >>> soft_quantizer = SoftQuantize(nb_bins=RandInt(3, 32), softness=Uniform(0.001, 10))
         >>> softly_quantized_tensor = soft_quantizer(input_tensor)
         >>> plt.imshow(softly_quantized_tensor[0, 0, 16])
@@ -248,7 +248,7 @@ class SoftQuantize(nn.Module):
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
-        Performs the forward pass of the `SoftQuantize` module.
+        Perform the forward pass of `SoftQuantize`.
 
         Parameters
         ----------
@@ -273,18 +273,18 @@ class SoftQuantize(nn.Module):
 
 class MSE(nn.Module):
     """
-    Calculate the mean squared error.
+    Calculate the mean squared error (MSE).
     """
 
     def __init__(self):
         """
-        Initialize the `MSE` module.
+        Initialize `MSE`.
         """
         super().__init__()
 
     def forward(self, input_tensor: torch.Tensor, target_tensor: torch.Tensor) -> torch.Tensor:
         """
-        Performs the forward pass of the `MSE` module.
+        Compute MSE between two tensors.
 
         Parameters
         ----------
@@ -313,7 +313,7 @@ class GaussianBlur(nn.Module):
         sigma: float = 1,
     ):
         """
-        Initialize the `GaussianBlur` module.
+        Initialize `GaussianBlur`.
 
         Parameters
         ----------
@@ -328,12 +328,12 @@ class GaussianBlur(nn.Module):
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
-        Performs the forward pass of the `GaussianBlur` module.
+        Perform the forward pass of `GaussianBlur`.
 
         Parameters
         ----------
         input_tensor : torch.Tensor
-            The input tensor, assumed to be 1D, 2D, or 3D.
+            The input tensor, assumed to have 1, 2, or 3 spatial dimensions.
 
         Returns
         -------
@@ -350,10 +350,10 @@ class GaussianBlur(nn.Module):
 
 class Resample(nn.Module):
     """
-    Spatially resample {subsample, resample} the input tensor.
+    Spatially {subsample, resample} the input tensor.
 
-    This module resamples the input tensor by a factor of `stride` along the
-    specified dimension by interleaving dropouts along it (keeping every `stride`th element).
+    This module resamples the input tensor by a factor of `stride` along the specified spatial
+    dimension by interleaving dropouts along it (keeping every `stride`'th element).
     Optionally upsample the tensor after downsampling it to restore it to its original dimensions.
     """
 
@@ -367,7 +367,7 @@ class Resample(nn.Module):
         mode: str = 'nearest',
     ):
         """
-        Initialize the `Resample` module.
+        Initialize `Resample`.
 
         Parameters
         ----------
@@ -402,16 +402,16 @@ class Resample(nn.Module):
 
         Examples
         --------
-        ### Custom stride and only subsampling
-        >>> # Initialize a random 3D tensor with batch and channel dims
+        ### Subsample with custom stride
+        >>> # Make a 3D tensor ~N(0, 1) with batch and channel dims
         >>> input_tensor = torch.randn(1, 1, 128, 128, 128)
-        >>> # Resample the tensor with random strides on the (inclusive) interval (2, 5)
+        >>> # Resample with random strides on the inclusive interval (2, 5)
         >>> resampled_tensor = Resample(upsample=False, stride=(2, 5))(input_tensor)
-        >>> # Spatial dimensions be different
+        >>> # Ensure spatial dimensions are different
         >>> print(resampled_tensor.shape)
         torch.Size([1, 1, 64, 128, 32])
 
-        ### Custom stride with upsampling and trilinear interpolation
+        ### Upsample with custom stride and trilinear interpolation
         >>> # Initialize a random 3D tensor with batch and channel dims
         >>> input_tensor = torch.randn(1, 1, 128, 128, 128)
         >>> # Resample the tensor with a stride upper bound of 6, trilinear interpolation, and with
@@ -431,7 +431,7 @@ class Resample(nn.Module):
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
-        Performs the forward pass of the `Resample` module.
+        Perform the forward pass of the `Resample`.
         """
         # Store original spatial shape to restore dimensions in upsampling
         resampled_tensor = input_tensor
@@ -459,7 +459,7 @@ class Resample(nn.Module):
 
 class RandomCrop(nn.Module):
     """
-    Randomly crop the input tensor to a particular field of view.
+    Randomly crop the input tensor along allowed dimensions.
 
     This module randomly selects a subset of the allowed dimensions (excluding `forbidden_dims`)
     and crops each independently by a proportion that is randomly drawn from a distribution. The
@@ -560,13 +560,13 @@ class RandomClip(nn.Module):
 
         Examples
         --------
-        ### Initialize the `RandomClip` module and apply it to a tensor:
+        ### Initialize `RandomClip` and apply it deterministically to a tensor:
         >>> random_clip = RandomClip(clip_min=0.1, clip_max=0.9, clip_prob=0.5)
         >>> input_tensor = torch.randn(3, 3)
         >>> output_tensor = random_clip(input_tensor)
         >>> print(output_tensor)
 
-        ### Use a sampler for dynamic clipping bounds:
+        ### Clip by sampling min/max bounds from a custom distribution:
         >>> from my_samplers import UniformSampler
         >>> random_clip = RandomClip(
                 clip_min=UniformSampler(0, 0.5),
@@ -583,12 +583,12 @@ class RandomClip(nn.Module):
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
-        Performs the forward pass of the `RandomClip` module.
+        Forward pass of `RandomClip`.
 
         Parameters
         ----------
         input_tensor : torch.Tensor
-            The input tensor to be clipped.
+            The tensor to be clipped.
 
         Returns
         -------
@@ -607,12 +607,10 @@ class RandomClip(nn.Module):
 
 class RandomGamma(nn.Module):
     """
-    Random nonlinear gamma scaling operation.
+    Apply a randomized or deterministic nonlinear gamma scaling operation.
 
-    The gamma scaling operation adjusts the contrast of the input tensor by applying a non-linear
-    operation. Specifically, each element in the tensor is raised to the power of `gamma`. This can
-    enhance or diminish the contrast of the input data, making it a valuable augmentation tool for
-    various deep learning tasks.
+    Adjust the contrast of the input tensor by applying a non-linear operation. Each element in the
+    tensor is raised to the power of `gamma`.
     """
 
     def __init__(
@@ -622,7 +620,7 @@ class RandomGamma(nn.Module):
         seed: Union[int, Sampler] = None,
     ):
         """
-        Initialize the `RandomGamma` module.
+        Initialize `RandomGamma`.
 
         Parameters
         ----------
@@ -651,8 +649,8 @@ class RandomGamma(nn.Module):
         >>> print(gamma_tensor)
         tensor([0.0625, 0.2500, 0.5625])
 
-        ### Randomized gamma scaling with a range of gamma values
-        >>> gamma_sampler = Uniform(0.5, 1.5)
+        ### Scaling with gamma ~LogNormal(0, 1)
+        >>> gamma_sampler = LogNormal(0.5, 1.5)
         >>> gamma_module = RandomGamma(gamma=gamma_sampler, prob=0.8)
         >>> tensor = torch.tensor([0.25, 0.5, 0.75])
         >>> gamma_tensor = gamma_module(tensor)
@@ -675,7 +673,7 @@ class RandomGamma(nn.Module):
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
-        Performs the forward pass of the `RandomGamma` module.
+        Forward pass of `RandomGamma`.
 
         Parameters
         ----------
@@ -721,13 +719,10 @@ class RandomIntensityLookup(nn.Module):
 
 class RandomClearLabel(nn.Module):
     """
-    Randomly clear/erase regions from an image corresponding to randomly
-    selected entities/continuious regions in a label map.
+    Erase regions of an image from randomly selected regions in a label map.
 
-    Identifies unique labels within the `label_tensor` and, based on a specified
-    probability, designates regions of the `input_tensor` to be cleared (set to zero) corresponding
-    to randomly selected labels. This can be used for tasks such as data augmentation, where certain
-    labels are randomly omitted to simulate occlusions or missing annotations.
+    Identify unique labels within the `label_tensor` and, based on a specified probability,
+    designate regions of the `input_tensor` to be erased (set to zero).
 
     Examples
     --------
@@ -757,7 +752,7 @@ class RandomClearLabel(nn.Module):
         seed: int = None,
     ):
         """
-        Initialize the `RandomClearLabel` module.
+        Initialize `RandomClearLabel`.
 
         Parameters
         ----------
@@ -782,7 +777,7 @@ class RandomClearLabel(nn.Module):
         label_tensor: torch.Tensor
     ) -> torch.Tensor:
         """
-        Performs the forward pass of the `RandomClearLabel` module.
+        Forward pass of `RandomClearLabel`.
 
         Parameters
         ----------
@@ -809,13 +804,12 @@ class RandomClearLabel(nn.Module):
 
 class SampleImageFromLabels(nn.Module):
     """
-    Generate an image from a label map by uniformly sampling a random intensity for each label.
+    Generate an image from a label map by sampling a random intensity for each label.
 
-    `SampleImageFromLabels` identifies all unique integer labels in the `label_tensor`, and assigns
-    each a mean intensity to the labeled region in the corresponding output image (`sampled_image`).
-    The mean intensity serves as the mean for a noise distribution modeled by `noise_sampler`. The
-    variance of the noise model may be a fixed quantity or sampled from another distribution defined
-    by `noise_variance`.
+    Identify all unique integer labels in `label_tensor` and assigns each a mean intensity in the
+    corresponding output image (`sampled_image`). The mean intensity serves as the mean for a noise
+    distribution modeled by `noise_sampler`. The variance of the noise model may be a fixed quantity
+    or sampled from another distribution defined by `noise_variance`.
     """
 
     def __init__(
@@ -825,7 +819,7 @@ class SampleImageFromLabels(nn.Module):
         noise_variance: Union[float, int, Sampler] = 0.25,
     ):
         """
-        Initialize the `SampleImageFromLabels` module.
+        Initialize `SampleImageFromLabels`.
 
         Parameters
         ----------
@@ -847,7 +841,7 @@ class SampleImageFromLabels(nn.Module):
 
     def forward(self, label_tensor: torch.Tensor) -> torch.Tensor:
         """
-        Perform the sampling operation.
+        Forward pass of `SampleImageFromLabels`.
 
         Parameters
         ----------
