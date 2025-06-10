@@ -22,21 +22,9 @@ TensorFlow unless `NEURITE_BACKEND` is set to 'pytorch'.
 # Define the version of neurite
 __version__ = '0.2'
 
-# Standard library imports
-import os
-import importlib
-from importlib import import_module
-from typing import TYPE_CHECKING, List, Optional
-
 # Third-party imports
 from packaging import version
 import pystrum
-
-# Local imports
-from . import py
-from .py import utils
-from .py import plot
-from .py import dataproc
 
 # Set the minimum allowable pystrum version
 _MIN_PYSTRUM_VERSION = "0.2"
@@ -65,3 +53,4 @@ from . import utils
 from . import layers
 from . import regularizers
 from . import data
+from . import py
