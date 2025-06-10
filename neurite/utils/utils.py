@@ -917,7 +917,7 @@ def make_downsampling_conv_blocks(
     stride: int = 1,
     padding: int = 1,
     padding_mode: Literal['zeros', 'replicate', 'reflect'] = 'zeros',
-    norms: Union[str, nn.Module, None] = None,
+    normalizations: Union[str, nn.Module, None] = None,
     activations: Union[str, nn.Module, None] = "relu",
     pool_mode: str = "max",
     pool_kernel_size: int = 2,
@@ -939,7 +939,7 @@ def make_downsampling_conv_blocks(
         Stride of the convolution. Default is 1.
     padding : int, optional
         Padding added to all sides of the input. Default is 1.
-    norms : list, str, nn.Module, or None, optional
+    normalizations : list, str, nn.Module, or None, optional
         Normalization layers for each downsampling conv block.
     activations : list, str, nn.Module, or None, optional
         Activation function for each downsampling conv block.
@@ -968,7 +968,7 @@ def make_downsampling_conv_blocks(
     ...     ndim=2,
     ...     nb_features=[3, 16, 32],
     ...     kernel_size=3,
-    ...     norms=["batch", "instance", "batch"],
+    ...     normalizations=["batch", "instance", "batch"],
     ...     activations="relu"
     ... )
     >>> print(downsampling_conv_blocks)
@@ -976,8 +976,8 @@ def make_downsampling_conv_blocks(
     """
 
     # Normalization layers
-    if not isinstance(norms, list):
-        norms = [norms] * len(nb_features)
+    if not isinstance(normalizations, list):
+        normalizations = [normalizations] * len(nb_features)
 
     # Activation layers
     if not isinstance(activations, list):
@@ -997,7 +997,7 @@ def make_downsampling_conv_blocks(
             stride=stride,
             padding=padding,
             padding_mode=padding_mode,
-            norm=norms[i],
+            normalization=normalizations[i],
             activation=activations[i],
             pool_mode=pool_mode,
             pool_kernel_size=pool_kernel_size,
@@ -1021,7 +1021,7 @@ def make_upsampling_conv_blocks(
     upsample_kernel_size: int = 4,
     upsample_stride: int = 2,
     upsample_padding: int = 1,
-    norms: List[Union[str, nn.Module, None]] = None,
+    normalizations: List[Union[str, nn.Module, None]] = None,
     activations: List[Union[str, nn.Module, None]] = None,
     order: str = 'nca',
     accepts_residuals: bool = True,
@@ -1048,7 +1048,7 @@ def make_upsampling_conv_blocks(
         Stride for the transposed convolution at each upsampling conv block. Default is 2.
     upsample_padding : int, optional
         Padding for the transposed convolution at each level. Default is 1.
-    norms : list, str, nn.Module, or None, optional
+    normalizations : list, str, nn.Module, or None, optional
         Normalization layers for each upsampling conv block at each level. If a list, must have the
         same length as nb_features.
     activations : list, str, nn.Module, or None, optional
@@ -1073,7 +1073,7 @@ def make_upsampling_conv_blocks(
 
     Notes
     -----
-    - If `norms` or `activations` are a list, they must be the same length as the nb_features.
+    - If `normalizations` or `activations` are a list, they must be the same length as the nb_features.
 
     Examples
     --------
@@ -1081,7 +1081,7 @@ def make_upsampling_conv_blocks(
     ...     ndim=2,
     ...     nb_features=[32, 16, 4],
     ...     upsample_kernel_size=4,
-    ...     norms=["batch", "instance", "batch"],
+    ...     normalizations=["batch", "instance", "batch"],
     ...     activations="relu"
     ... )
     >>> print(upsampling_conv_blocks)
@@ -1089,8 +1089,8 @@ def make_upsampling_conv_blocks(
     """
 
     # Normalization layers
-    if not isinstance(norms, list):
-        norms = [norms] * len(nb_features)
+    if not isinstance(normalizations, list):
+        normalizations = [normalizations] * len(nb_features)
 
     # Activation layers
     if not isinstance(activations, list):
@@ -1117,7 +1117,7 @@ def make_upsampling_conv_blocks(
             upsample_kernel_size=upsample_kernel_size,
             upsample_stride=upsample_stride,
             upsample_padding=upsample_padding,
-            norm=norms[-i],
+            normalization=normalizations[-i],
             activation=activations[-i],
             order=order,
             accepts_residuals=accepts_residuals,

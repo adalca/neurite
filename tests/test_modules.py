@@ -19,8 +19,8 @@ def test_norm_instance(ndim: int):
     x = torch.randn(8, 4, *spatial) * 5 + 10
 
     # Initialize the normalization layer
-    norm_layer = ne.modules.Norm(
-        norm_type='instance',
+    norm_layer = ne.modules.Normalization(
+        normalization_type='instance',
         ndim=ndim,
         num_features=4,
         affine=False
@@ -43,13 +43,13 @@ def test_norm_instance(ndim: int):
     # Ensure means are close to zero
     if not torch.allclose(y_mean, torch.zeros_like(y_mean), atol=tol):
         pytest.fail(
-            f"Some means of instance norm are not within +/- {tol} of zero. Got\n{y_mean}"
+            f"Some means of instance normalization are not within +/- {tol} of zero. Got\n{y_mean}"
     )
 
     # Ensure variances are close to one
     if not torch.allclose(y_var, torch.ones_like(y_var), atol=tol):
         pytest.fail(
-            f"Some variances of instance norm are not within +/- {tol} of one. Got {y_var}"
+            f"Some variances of instance normalization are not within +/- {tol} of one. Got {y_var}"
         )
 
 
@@ -65,8 +65,8 @@ def test_norm_batch(ndim: int):
     x = torch.randn(4, 8, *spatial) * 5 + 10
 
     # Initialize the normalization layer
-    norm_layer = ne.modules.Norm(
-        norm_type='batch',
+    norm_layer = ne.modules.Normalization(
+        normalization_type='batch',
         ndim=ndim,
         num_features=8,
         affine=False
@@ -89,11 +89,11 @@ def test_norm_batch(ndim: int):
     # Ensure means are close to zero
     if not torch.allclose(y_mean, torch.zeros_like(y_mean), atol=tol):
         pytest.fail(
-            f"Some means of batch norm are not within +/- {tol} of zero. Got\n{y_mean}"
+            f"Some means of batch normalization are not within +/- {tol} of zero. Got\n{y_mean}"
     )
 
     # Ensure variances are close to one
     if not torch.allclose(y_var, torch.ones_like(y_var), atol=tol):
         pytest.fail(
-            f"Some variances of batch norm are not within +/- {tol} of one. Got {y_var}"
+            f"Some variances of batch normalization are not within +/- {tol} of one. Got {y_var}"
         )

@@ -40,7 +40,7 @@ def test_basicunet_forward_shapes(ndim, spatial_size):
         in_channels=in_ch,
         out_channels=out_ch,
         nb_features=[8, 16],
-        norms=None,
+        normalizations=None,
         activations="relu",
     )
     model.eval()

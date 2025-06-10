@@ -3,7 +3,7 @@ Modules are simple operations containing learnable parameters. The `modules` mod
 nD building blocks for neural networks.
 """
 __all__ = [
-    "Norm",
+    "Normalization",
     "Activation",
     "ConvBlock",
     "TransposedConv",
@@ -22,9 +22,9 @@ from torch.nn.modules import activation
 import neurite as ne
 
 
-class Norm(nn.Module):
+class Normalization(nn.Module):
     """
-    Dynamically constructs a normalization layer based on `norm_type` and `ndim`.
+    Dynamically constructs a normalization layer based on `normalization_type` and `ndim`.
 
     Supports
     --------
@@ -33,7 +33,7 @@ class Norm(nn.Module):
     - 'layer': LayerNorm (does not use `ndim`)
     - 'group': GroupNorm (requires `num_groups`)
 
-    The user can also provide a custom `nn.Module` class in `norm_type`.
+    The user can also provide a custom `nn.Module` class in `normalization_type`.
     """
 
     # Map normalization types and dimensions for their corresponding PyTorch classes
@@ -54,7 +54,7 @@ class Norm(nn.Module):
 
     def __init__(
         self,
-        norm_type: Union[str, Type[nn.Module], None],
+        normalization_type: Union[str, Type[nn.Module], None],
         ndim: Optional[int] = None,
         num_features: Optional[int] = None,
         num_groups: Optional[int] = None,
@@ -63,11 +63,11 @@ class Norm(nn.Module):
         **kwargs
     ):
         """
-        Initialize the `Norm` module.
+        Initialize the `Normalization` module.
 
         Parameters
         ----------
-        norm_type : str or nn.Module
+        normalization_type : str or nn.Module
             Type of normalization. Must be one of 'batch', 'instance', 'layer',
             'group', or a custom `nn.Module` class.
                 - `batch` performs normalization per channel. The mean and variance are calculated
@@ -77,12 +77,12 @@ class Norm(nn.Module):
             - 1 -> *Norm1d
             - 2 -> *Norm2d
             - 3 -> *Norm3d
-            Required for 'batch' or 'instance' norms.
+            Required for 'batch' or 'instance' normalizations.
 
         num_features : int, optional
             Number of input features or channels. Required for 'batch', 'instance',
-            'layer', and 'group' normals. For layer norm, this is the size of the
-            normalized dimension. For batch and instance norms, this is typically the
+            'layer', and 'group' normals. For layer normalization, this is the size of the
+            normalized dimension. For batch and instance normalizations, this is typically the
             number of channels/features.
         num_groups : int, optional
             Number of groups for GroupNorm. Required for 'group' normalization.
@@ -101,73 +101,73 @@ class Norm(nn.Module):
 
         ### Using a custom, pre-instantiated normalization layer
         >>> norm_a = nn.InstanceNorm2d(16)
-        >>> norm_A = Norm(norm_a)
+        >>> norm_A = Normalization(norm_a)
         >>> norm_A(x)
         ...
 
         ### Using a custom normalization layer that has not been instantiated
         >>> norm_b = nn.InstanceNorm2d
-        >>> norm_B = Norm(norm_b, num_features=16)
+        >>> norm_B = Normalization(norm_b, num_features=16)
         >>> norm_B(x)
         ...
 
         ### Using the wrapper to define a normalization layer
-        >>> norm_C = Norm(norm_type='instance', ndim=2, num_features=16)
+        >>> norm_C = Normalization(normalization_type='instance', ndim=2, num_features=16)
         >>> norm_C(x)
         ...
         """
         super().__init__()
 
-        # Norm object has been instantiated with parameters
-        if ne.utils.is_instantiated_normalization(norm_type):
-            self.norm = norm_type
+        # Normalization object has been instantiated with parameters
+        if ne.utils.is_instantiated_normalization(normalization_type):
+            self.normalization = normalization_type
             return
 
-        # Norm object has been provided but not instantiated
-        if isinstance(norm_type, type) and issubclass(norm_type, nn.Module):
+        # Normalization object has been provided but not instantiated
+        if isinstance(normalization_type, type) and issubclass(normalization_type, nn.Module):
             # Assume user provided a custom normalization class directly
             if num_features is None:
-                raise ValueError("`num_features` must be specified for custom norms.")
-            self.norm = norm_type(num_features=num_features, eps=eps, affine=affine, **kwargs)
+                raise ValueError("`num_features` must be specified for custom normalizations.")
+            self.normalization = normalization_type(num_features=num_features, eps=eps, affine=affine, **kwargs)
             return
 
         # Handle known norm_types
-        if norm_type not in self.NORMALIZATION_MAP:
+        if normalization_type not in self.NORMALIZATION_MAP:
             raise ValueError(
-                f"Invalid norm_type '{norm_type}'. Must be one of "
+                f"Invalid normalization_type '{normalization_type}'. Must be one of "
                 f"{list(self.NORMALIZATION_MAP.keys())} or a custom nn.Module subclass."
             )
 
-        # Batch and instance norm require an input dimensionality
-        if norm_type in ("batch", "instance"):
+        # Batch and instance normalization require an input dimensionality
+        if normalization_type in ("batch", "instance"):
             if ndim not in (1, 2, 3):
                 raise ValueError(
                     "For 'batch' or 'instance' normalization, ndim must be 1, 2, or 3."
                 )
             # They also require the number of features
             if num_features is None:
-                raise ValueError("`num_features` must be specified for 'batch' or 'instance' norm.")
+                raise ValueError("`num_features` must be specified for 'batch' or 'instance' normalization.")
 
-            norm_class = self.NORMALIZATION_MAP[norm_type][ndim]
-            self.norm = norm_class(
+            normalization_class = self.NORMALIZATION_MAP[normalization_type][ndim]
+            self.normalization = normalization_class(
                 num_features=num_features, eps=eps, affine=affine, **kwargs
             )
 
-        elif norm_type == "layer":
+        elif normalization_type == "layer":
             if num_features is None:
                 raise ValueError(
-                    "`num_features` (normalized shape) must be specified for 'layer' norm."
+                    "`num_features` (normalized shape) must be specified for 'layer' normalization."
                 )
-            self.norm = nn.LayerNorm(
+            self.normalization = nn.LayerNorm(
                 num_features, eps=eps, elementwise_affine=affine, **kwargs
             )
 
-        elif norm_type == "group":
+        elif normalization_type == "group":
             if num_groups is None:
                 raise ValueError("For 'group' normalization, `num_groups` must be specified.")
             if num_features is None:
-                raise ValueError("`num_features` must be specified for 'group' norm.")
-            self.norm = nn.GroupNorm(num_groups, num_features, eps=eps, affine=affine, **kwargs)
+                raise ValueError("`num_features` must be specified for 'group' normalization.")
+            self.normalization = nn.GroupNorm(num_groups, num_features, eps=eps, affine=affine, **kwargs)
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
@@ -177,17 +177,17 @@ class Norm(nn.Module):
         ----------
         input_tensor : torch.Tensor
             Input tensor to be normalized. The shape depends on the normalization type:
-            - For 1D norms: (N, C, L)
-            - For 2D norms: (N, C, H, W)
-            - For 3D norms: (N, C, D, H, W)
-            - For layer/group norms: shape can vary, but typically (N, *)
+            - For 1D normalizations: (N, C, L)
+            - For 2D normalizations: (N, C, H, W)
+            - For 3D normalizations: (N, C, D, H, W)
+            - For layer/group normalizations: shape can vary, but typically (N, *)
 
         Returns
         -------
         torch.Tensor
             Normalized output tensor.
         """
-        return self.norm(input_tensor)
+        return self.normalization(input_tensor)
 
 
 class Activation(nn.Module):
@@ -329,7 +329,7 @@ class ConvBlock(nn.Sequential):
         dilation: int = 1,
         groups: int = 1,
         bias: bool = True,
-        norm: Union[str, nn.Module, None] = None,
+        normalization: Union[str, nn.Module, None] = None,
         activation: Union[List, str, nn.Module, None] = None,
         order: str = 'cna',
     ):
@@ -356,10 +356,10 @@ class ConvBlock(nn.Sequential):
             Number of blocked connections from input to output channels. Default is 1.
         bias : bool, optional
             If True, a learnable bias is added to the output. Default is True.
-        norm : str, nn.Module, or None, optional
+        normalization : str, nn.Module, or None, optional
             Defines the normalization layer. Can be one of:
             - A string: Supported options are 'batch', 'instance', 'layer', or 'group'.
-            - A `Norm` module: Instantiated or uninstantiated `Norm` layer.
+            - A `Normalization` module: Instantiated or uninstantiated `Normalization` layer.
                 e.g. nn.InstanceNorm3d(16) or nn.InstanceNorm3d
             - `None`: No normalization is applied. Default is `None`.
 
@@ -387,7 +387,7 @@ class ConvBlock(nn.Sequential):
                 ndim=2,
                 in_channels=16,
                 out_channels=32,
-                norm="batch",
+                normalization="batch",
                 activation="relu"
             )
         >>> input_tensor = torch.randn(1, 16, 64, 64)
@@ -395,14 +395,14 @@ class ConvBlock(nn.Sequential):
         >>> print(output_tensor.shape)
         torch.Size([1, 32, 64, 64])
 
-        ### Using a pre-instantiated `Norm` and `Activation` module:
+        ### Using a pre-instantiated `Normalization` and `Activation` module:
         >>> norm_layer = nn.BatchNorm2d(32)
         >>> activation_layer = nn.ReLU()
         >>> conv_block = ConvBlock(
                 ndim=2,
                 in_channels=16,
                 out_channels=32,
-                norm=norm_layer,
+                normalization=norm_layer,
                 activation=activation_layer
             )
         >>> output_tensor = conv_block(input_tensor)
@@ -414,7 +414,7 @@ class ConvBlock(nn.Sequential):
             ndim=2,
             in_channels=16,
             out_channels=32,
-            norm=None,
+            normalization=None,
             activation=None
         )
         >>> output_tensor = conv_block(input_tensor)
@@ -477,8 +477,8 @@ class ConvBlock(nn.Sequential):
                 conv_id += 1  # Increment conv id for easy tracking/accessing
 
             # Dynamically construct the normalization and assign it to a named key in layers
-            elif operation == 'n' and norm is not None:
-                layers[f'norm{norm_id}'] = Norm(norm, ndim, in_channels)
+            elif operation == 'n' and normalization is not None:
+                layers[f'normalization{norm_id}'] = Normalization(normalization, ndim, in_channels)
                 norm_id += 1
 
             # Construct the activation and assign it to a named key in layers
@@ -684,7 +684,7 @@ class DownsampleConvBlock(nn.Module):
         stride: int = 1,
         padding: int = 1,
         padding_mode: Literal['zeros', 'replicate', 'reflect'] = 'zeros',
-        norm: Union[str, nn.Module, None] = None,
+        normalization: Union[str, nn.Module, None] = None,
         activation: Union[str, nn.Module, None] = "relu",
         pool_mode: str = "max",
         pool_kernel_size: int = 2,
@@ -708,7 +708,7 @@ class DownsampleConvBlock(nn.Module):
             Stride of the convolution. Default is 1.
         padding : int, optional
             Padding added to all sides of the input. Default is 1.
-        norm : str, nn.Module, or None, optional
+        normalization : str, nn.Module, or None, optional
             Normalization type. Default is 'batch'.
         activation : str, nn.Module, or None, optional
             Activation type. Default is 'relu'.
@@ -736,7 +736,7 @@ class DownsampleConvBlock(nn.Module):
             kernel_size=kernel_size,
             stride=stride,
             padding=padding,
-            norm=norm,
+            normalization=normalization,
             activation=activation,
             order=order,
             padding_mode=padding_mode,
@@ -793,7 +793,7 @@ class UpsampleConvBlock(nn.Module):
         upsample_stride: int = 2,
         upsample_padding: int = 1,
         scale_factor: int = 2,
-        norm: Union[str, nn.Module, None] = None,
+        normalization: Union[str, nn.Module, None] = None,
         activation: Union[str, nn.Module, None] = "relu",
         order: str = 'nca',
         accepts_residuals: bool = True,
@@ -821,7 +821,7 @@ class UpsampleConvBlock(nn.Module):
             Stride for the transposed convolution. Default is 2.
         upsample_padding : int, optional
             Padding for the transposed convolution. Default is 1.
-        norm : str, nn.Module, or None, optional
+        normalization : str, nn.Module, or None, optional
             Normalization type. Default is 'batch'.
         activation : str, nn.Module, or None, optional
             Activation type. Default is 'relu'.
@@ -880,7 +880,7 @@ class UpsampleConvBlock(nn.Module):
             kernel_size=kernel_size,
             stride=stride,
             padding=padding,
-            norm=norm,
+            normalization=normalization,
             activation=activation,
             order=order,
             padding_mode=padding_mode,
@@ -982,7 +982,7 @@ class ContextCrossConv(nn.Module):
         dilation: int = 1,
         groups: int = 1,
         bias: bool = True,
-        norm: Union[str, nn.Module, None] = None,
+        normalization: Union[str, nn.Module, None] = None,
         activation: Union[str, nn.Module, None] = None,
         order: str = 'cna',
     ):
@@ -1010,10 +1010,10 @@ class ContextCrossConv(nn.Module):
         bias : bool, optional
             If True, a learnable bias is added to the output. Default is True.
 
-        norm : str, nn.Module, or None, optional
+        normalization : str, nn.Module, or None, optional
             Defines the normalization layer. Can be one of:
             - A string: Supported options are 'batch', 'instance', 'layer', or 'group'.
-            - A `Norm` module: Instantiated or uninstantiated `Norm` layer.
+            - A `Normalization` module: Instantiated or uninstantiated `Normalization` layer.
                 e.g. nn.InstanceNorm3d(16) or nn.InstanceNorm3d
             - `None`: No normalization is applied. Default is `None`.
 
@@ -1037,21 +1037,21 @@ class ContextCrossConv(nn.Module):
         self.cross_conv = ConvBlock(
             ndim=ndim, in_channels=sum(in_channels), out_channels=out_channels,
             kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
-            groups=groups, bias=bias, norm=norm, activation=activation, order=order,
+            groups=groups, bias=bias, normalization=normalization, activation=activation, order=order,
             padding_mode=padding_mode,
         )
 
         # Separate ConvBlock to further process the aggregated features
         self.query_conv_block = ConvBlock(
             ndim=ndim, in_channels=out_channels, out_channels=out_channels, kernel_size=kernel_size,
-            stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, norm=norm,
+            stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, normalization=normalization,
             activation=activation, order=order, padding_mode=padding_mode,
         )
 
         # Separate ConvBlock to further process the aggregated features
         self.context_conv_block = ConvBlock(
             ndim=ndim, in_channels=out_channels, out_channels=out_channels, kernel_size=kernel_size,
-            stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, norm=norm,
+            stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, normalization=normalization,
             activation=activation, order=order, padding_mode=padding_mode,
         )
 

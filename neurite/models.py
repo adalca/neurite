@@ -42,7 +42,7 @@ class BasicUNet(nn.Module):
     >>> model = BasicUNet(
     ...     ndim=2, in_channels=1, out_channels=1,
     ...     nb_features=[16, 32, 64],
-    ...     norms='instance', activations=nn.ReLU
+    ...     normalizations='instance', activations=nn.ReLU
     ... )
     >>> input_tensor = torch.randn(1, 1, 128, 128)
     >>> output = model(input_tensor)
@@ -58,7 +58,7 @@ class BasicUNet(nn.Module):
         padding_mode: Literal['zeros', 'replicate', 'reflect'] = 'zeros',
         upsample_mode: Literal['linear', 'transposed', 'nearest'] = 'linear',
         nb_features: List[int] = (16, 16, 16, 16, 16),
-        norms: Union[List[Union[Callable, str]], Callable, str, None] = None,
+        normalizations: Union[List[Union[Callable, str]], Callable, str, None] = None,
         activations: Union[List[Union[Callable, str]], Callable, str, None] = nn.ReLU,
         order: str = 'caca',
         final_activation: Union[str, nn.Module, None] = nn.Sigmoid(),
@@ -79,9 +79,9 @@ class BasicUNet(nn.Module):
         nb_features : List[int]
             Number of features at each level of the unet. Must be a list of
             positive integers.
-        norms : Union[List[str], str, None], optional
+        normalizations : Union[List[str], str, None], optional
             Normalization layers to use in each block. Can be a string or a list
-            of strings specifying norms for each layer, or `None` for no norm.
+            of strings specifying normalizations for each layer, or `None` for no normalization.
         activations : Union[List[str], str, Callable], optional
             Activation functions to use in each block. Can be a callable,
             a string, or a list of strings/callables.
@@ -103,8 +103,8 @@ class BasicUNet(nn.Module):
         self.residual_connections = residual_connections
 
         # Normalization layers
-        if not isinstance(norms, list):
-            self.norms = [norms] * len(nb_features)
+        if not isinstance(normalizations, list):
+            self.normalizations = [normalizations] * len(nb_features)
 
         # Activation layers
         if not isinstance(activations, list):
@@ -120,7 +120,7 @@ class BasicUNet(nn.Module):
         self.downsampling_conv_blocks = ne.utils.make_downsampling_conv_blocks(
             ndim=ndim,
             nb_features=self.nb_features,
-            norms=self.norms,
+            normalizations=self.normalizations,
             activations=self.activations,
             order=order,
             return_residual=residual_connections,
@@ -140,7 +140,7 @@ class BasicUNet(nn.Module):
         self.upsampling_conv_blocks = ne.utils.make_upsampling_conv_blocks(
             ndim=ndim,
             nb_features=self.reversed_features,
-            norms=self.norms,
+            normalizations=self.normalizations,
             activations=self.activations,
             order=order,
             upsample_kernel_size=2,
@@ -240,7 +240,7 @@ class BasicAutoencoder(nn.Module):
         latent_features: int,
         out_channels: int,
         nb_features: List[int] = [16, 16, 16, 16, 16],
-        norms: Union[List[Union[Callable, str]], Callable, str, None] = None,
+        normalizations: Union[List[Union[Callable, str]], Callable, str, None] = None,
         activations: Union[List[Union[Callable, str]], Callable, str, None] = nn.ReLU,
         order: str = 'caca',
         final_activation: Union[str, nn.Module, None] = nn.Sigmoid(),
@@ -261,9 +261,9 @@ class BasicAutoencoder(nn.Module):
             Number of output channels.
         nb_features : List[int]
             Number of features at each level of the unet. Must be a list of positive integers.
-        norms : Union[List[str], str, None], optional
+        normalizations : Union[List[str], str, None], optional
             Normalization layers to use in each block. Can be a string or a list
-            of strings specifying norms for each layer, or `None` for no norm.
+            of strings specifying normalizations for each layer, or `None` for no normalization.
         activations : Union[List[str], str, Callable], optional
             Activation functions to use in each block. Can be a callable,
             a string, or a list of strings/callables.
@@ -276,8 +276,8 @@ class BasicAutoencoder(nn.Module):
         super().__init__()
 
         # Normalization layers
-        if not isinstance(norms, list):
-            self.norms = [norms] * len(nb_features)
+        if not isinstance(normalizations, list):
+            self.normalizations = [normalizations] * len(nb_features)
 
         # Activation layers
         if not isinstance(activations, list):
@@ -287,7 +287,7 @@ class BasicAutoencoder(nn.Module):
         self.downsampling_conv_blocks = ne.utils.make_downsampling_conv_blocks(
             ndim=ndim,
             nb_features=[in_channels, *nb_features],
-            norms=self.norms,
+            normalizations=self.normalizations,
             activations=self.activations,
             order=order,
             return_residual=False,
@@ -312,7 +312,7 @@ class BasicAutoencoder(nn.Module):
         self.upsampling_conv_blocks = ne.utils.make_upsampling_conv_blocks(
             ndim=ndim,
             nb_features=[latent_features, *reversed(nb_features[1:])],
-            norms=self.norms,
+            normalizations=self.normalizations,
             activations=self.activations,
             accepts_residuals=False,
             order=order,
