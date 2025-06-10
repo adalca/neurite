@@ -27,7 +27,8 @@ maintainers = [
 dependencies = [
   "torch",
   "einops",
-  "pystrum"
+  "pystrum",
+  "torch",
 ]
 keywords = [
   "python",
@@ -36,7 +37,6 @@ keywords = [
   "segmentation",
   "medical-image-computing",
   "nibabel",
-  "torch",
 ]
 
 [project.urls]
