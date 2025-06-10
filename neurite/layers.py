@@ -609,8 +609,9 @@ class RandomGamma(nn.Module):
     """
     Apply a randomized or deterministic nonlinear gamma scaling operation.
 
-    Adjust the contrast of the input tensor by applying a non-linear operation. Each element in the
-    tensor is raised to the power of `gamma`.
+    Adjust the contrast of the input tensor by applying a non-linear scaling operation.
+    Each element in the tensor is raised to the power of `gamma`, which is a quantity sampled from
+    a distribution.
     """
 
     def __init__(
