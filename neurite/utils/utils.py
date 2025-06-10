@@ -76,14 +76,11 @@ def soft_quantize(
     return_log: bool = False
 ) -> torch.Tensor:
     """
-    This function softly maps continuous values to discrete bins while retaining smoothness,
-    controlled by the `softness` parameter.
+    Quantize continuous values into discrete bins.
 
-    This function is used to discretize continuous values into bins while preserving some continuity
-    or smoothness in the data. It is especially useful in the context of machine learning, where it
-    is desirable to have a differentiable version of a quantized quantity, allowing for backprop.
-    Hard quantization is non-differentiable and creates gradients of zero, making gradient-based
-    optimization impossible.
+    Instead of assigning each value to a single bin, use a soft assignment based on the distance
+    between each value and the bin centers. Particularly useful for taking gradients during
+    quantization.
 
     Parameters
     ----------
@@ -179,10 +176,10 @@ def mse(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
     >>> tensor1 = torch.randn((1, 16, 16, 16))
     # Other tensor with zero mean, unit variance, and same shape as `tensor1`
     >>> tensor2 = torch.randn((1, 16, 16, 16))
-    # Calculate loss
-    >>> loss = mse(tensor1, tensor2)
-    # Print loss (should be approximately 2.0)
-    >>> print(loss)
+    # Calculate mse
+    >>> mse_value = mse(tensor1, tensor2)
+    # Print `mse_value` (should be approximately 2.0)
+    >>> print(mse_value)
     """
 
     return torch.mean((tensor1 - tensor2) ** 2)
@@ -250,8 +247,7 @@ def gaussian_smoothing(
     sigma: Union[float, int, Sampler] = 1,
 ) -> torch.Tensor:
     """
-    Applies Gaussian smoothing to the {1D, 2D, 3D} input tensor based on the given kernel size and
-    sigma. Assumes tensor has a batch and channel dimension.
+    Apply Gaussian smoothing to the {1D, 2D, 3D} input tensor.
 
     Parameters
     ----------
@@ -270,7 +266,7 @@ def gaussian_smoothing(
     Examples
     --------
     >>> import torch
-    # Make a random input tensor
+    # Make an input tensor ~N(1, 0)
     >>> input_tensor = torch.rand(1, 1, 16, 16, 16)
     # Smooth it
     >>> smoothed_tensor = gaussian_smoothing(input_tensor)
@@ -320,8 +316,8 @@ def bernoulli(p: float = 0.5, shape: tuple = (1,)) -> torch.Tensor:
     Parameters
     ----------
     p : float, optional
-        Probability of realizing a success (i.e., the probability of a 1) from the Bernoulli
-        distribution. By default, 0.5. Must be in the range [0, 1].
+        Probability of realizing a successful trial (i.e., the probability of a 1) from the
+        Bernoulli distribution. By default, 0.5. Must be in the range [0, 1].
     shape : tuple, optional
         Shape of the output tensor, specifying the number of independent Bernoulli trials. Each
         entry represents the dimensions of the resulting tensor. By default, (1).
@@ -354,8 +350,8 @@ def apply_bernoulli_mask(input_tensor, p: float = 0.5, returns: str = None) -> t
     """
     Apply a Bernoulli mask to a tensor.
 
-    This function samples a Bernoulli mask with the parameter `p`, representing the probability of
-    success (e.g. realizing a 1) and applies it to `input_tensor` by element-wise multiplcation. The
+    Sample a Bernoulli mask with the parameter `p`, representing the probability of
+    success (e.g. realizing a 1) and apply it to `input_tensor` via element-wise multiplcation. The
     The elements of `input_tensor` corresponding to successes in the mask are preserved, while
     failures (e.g. zeros) are set to zero.
 
@@ -433,11 +429,9 @@ def subsample_tensor(
     """
     Subsamples `input_tensor` by a factor `stride` along the specified dimension.
 
-    The `subsample_tensor()` function provides a convenient way to downsample a specified dimension
-    of a PyTorch tensor by a given stride. This type of downsampling is achieved by interleaving
-    dropouts, meaning that every `stride`-th element along the selected dimension is kept, while the
-    others are discarded. This operation can be applied to tensors of any dimensionality, making it
-    versatile for a variety of tensor structures.
+    Downsample a specified dimension of a PyTorch tensor by a given stride. This is achieved by
+    interleaving dropouts, meaning that every `stride`-th element along the selected dimension is
+    kept, while the others are discarded.
 
     Parameters
     ----------
@@ -456,7 +450,7 @@ def subsample_tensor(
     Examples
     --------
     >>> import torch
-    # Defining two dimensional input tensor of shape (5, 5)
+    # Define 2D tensor of shape (5, 5)
     >>> input_tensor = torch.arange(25).view(5, 5)
     # Visualize the tensor
     >>> print(input_tensor)
@@ -465,7 +459,7 @@ def subsample_tensor(
             [10, 11, 12, 13, 14],
             [15, 16, 17, 18, 19],
             [20, 21, 22, 23, 24]])
-    # Lets subsample along the first dimension (the columns)
+    # Subsample along the first dimension (the columns)
     >>> subsampled_tensor = subsample_tensor(input_tensor, subsampling_dimension=1)
     # With the default stride (of 2), every other column should have been dropped out.
     >>> print(subsampled_tensor)
@@ -501,9 +495,10 @@ def subsample_tensor_random_dims(
     max_concurrent_subsamplings: int = None
 ) -> torch.Tensor:
     """
-    Subsamples the input tensor along randomly selected dimensions, with constraints
-    on which dimensions to subsample (`forbidden_dims`), the stride, and the probability of
-    subsampling.
+    Subsample the input tensor along randomly selected dimensions
+
+    This extends neurite.utils.subsample_tensor() by applying constraints on which dimensions to
+    subsample (`forbidden_dims`), the stride, and the probability of subsampling.
 
     Parameters
     ----------
@@ -537,7 +532,7 @@ def subsample_tensor_random_dims(
     Examples
     --------
     >>> import torch
-    >>> # Defining input tensor with batch and channel dimensions, and spatial dims=(5, 5)
+    >>> # Define input tensor with batch and channel dimensions, and spatial dims=(5, 5)
     >>> input_tensor = torch.arange(25).view(1, 1, 5, 5)
     >>> # Visualize the tensor
     >>> print(input_tensor)
@@ -589,7 +584,7 @@ def subsample_tensor_random_dims(
         dimensions_to_subsample = dimensions_to_subsample[~mask]
 
     # We might not want to subsample the same number of dimensions every time as defined by
-    # `max_concurrent_subsamplings`, so we'll mask some out with iid Bernoulli trials. 
+    # `max_concurrent_subsamplings`, so we'll mask some out with iid Bernoulli trials.
     dimensions_to_subsample = apply_bernoulli_mask(
         input_tensor=dimensions_to_subsample,
         p=p,
@@ -671,10 +666,10 @@ def make_range(*args, **kwargs) -> tuple:
     """
     Creates a tuple specigying the bounds for a range of numbers `(min, max)`.
 
-    This function generates a tuple containing the min and max values for a range. The range can be
-    flexibly defined through positional and/or keyword arguments. If only one positional argument is
-    provided, it is interpreted as `max` with `min` defaulting to 0. Keyword arguments can be used
-    to explicitly set `min` and/or `max`, overriding positional arguments.
+    Generate a tuple containing the min and max values for a range. The range can be defined through
+    positional and/or keyword arguments. If only one positional argument is provided, it is
+    interpreted as `max` with `min` defaulting to 0. Keyword arguments can be used to explicitly set
+    `min` and/or `max`, overriding positional arguments.
 
     Parameters
     ----------
@@ -752,13 +747,10 @@ def random_clear_label(
     seed: int = None
 ) -> torch.Tensor:
     """
-    Randomly clears/erases regions from an image corresponding to randomly selected regions in a
-    label map.
+    Erase regions of an image from randomly selected regions in a label map.
 
-    This function identifies unique labels within the `label_tensor` and, based on a specified
-    probability, clears (sets to zero) the corresponding regions in the `input_tensor`. This can be
-    used for tasks such as data augmentation, where certain labels are randomly omitted to
-    simulate occlusions or missing annotations.
+    Identify unique labels within the `label_tensor` and, based on a specified probability,
+    designate regions of the `input_tensor` to be erased (set to zero).
 
     Parameters
     ----------
@@ -835,13 +827,12 @@ def sample_image_from_labels(
     noise_variance: Union[float, int, Sampler] = 0.25
 ) -> torch.Tensor:
     """
-    Sample textures/intensities from an integer label map.
+    Generate an image from a label map by sampling a random intensity for each label.
 
-    This function identifies all unique integer labels in the `label_tensor`, and assigns each a
-    mean intensity to the labeled region in the corresponding output image (`sampled_image`). The
-    mean intensity serves as the mean for a noise distribution modeled by `noise_sampler`. The
-    variance of the noise model may be a fixed quantity or sampled from another distribution defined
-    by `noise_variance`.
+    Identify all unique integer labels in `label_tensor` and assigns each a mean intensity in the
+    corresponding output image (`sampled_image`). The mean intensity serves as the mean for a noise
+    distribution modeled by `noise_sampler`. The variance of the noise model may be a fixed quantity
+    or sampled from another distribution defined by `noise_variance`.
 
     Parameters
     ----------
@@ -1169,8 +1160,8 @@ def derive_dense_displcement_field_from_affines(
     >>> aff_b_2d = aff_a_2d * 2
     >>> grid_size_2d = (128, 128)
     >>> displacement_field = derive_dense_displacement_field_from_affines(
-                                aff_a_2d, aff_b_2d, grid_size_2d
-                            )
+    ...     aff_a_2d, aff_b_2d, grid_size_2d
+    ... )
     """
 
     # Input validation (ensuring F.affine_grid() will be happy)
@@ -1211,12 +1202,12 @@ def make_grid(
     """
     Generate a grid of spatial coordinates.
 
-    This function defines the coordinate axes by generating vectors for each spatial dimension
-    represented by the elements of `shape`. It then creates a grid representing all spatial coords.
+    Define the coordinate axes by generating vectors for each spatial dimension represented by the
+    elements of `shape`, then creates a grid representing all spatial coords.
 
     Parameters
     ----------
-    size : Tuple[int] 
+    size : Tuple[int]
         Size of the spatial dimensions of the input tensor. e.g. (H, W) or (D, W, H)
     device : Union[str, torch.device], optional
         The device on which the grid will reside. By default "cpu"
@@ -1479,7 +1470,7 @@ def filter_dim(
     verbose: bool = False
 ) -> torch.Tensor:
     """
-    Filters dimensions of a tensor that contain NaNs, infinite values, or are entirely zero.
+    Filters slices of a tensor that contain NaNs, infinite values, or are entirely zero.
 
     Parameters:
     ----------
@@ -1491,7 +1482,7 @@ def filter_dim(
     Returns:
     -------
     torch.Tensor
-        The filtered tensor containing only dim elements without NaNs, infinite values, and not
+        The filtered tensor containing only slice elements without NaNs, infinite values, and not
         entirely zeros.
     """
 
@@ -1550,7 +1541,7 @@ def filter_dim(
 
 def crop_to_nearest_multiple(tensor, multiple=128):
     """
-    Crops the spatial dimensions of a tensor to the nearest multiple of
+    Crop the spatial dimensions of a tensor to the nearest multiple of
     `multiple`. Supports 1D, 2D, or 3D spatial dimensions.
 
     Parameters
@@ -1695,7 +1686,7 @@ def dice(
     --------
     >>> # Make shape for example segmentations with shape (B, C, *spatial_dims)
     >>> shape = (1, 5, 64, 64)
-    >>> # Sample `seg1` and `seg2` from neurite's uniform samplers
+    >>> # Sample `seg1` and `seg2` ~U(0, 1)
     >>> seg1 = ne.samplers.Uniform(0, 1)(shape)
     >>> seg2 = ne.samplers.Uniform(0, 1)(shape)
     >>> dice_score = ne.utils.dice(seg1, seg2)
@@ -1740,7 +1731,7 @@ def log_dice(
 ) -> torch.Tensor:
     """
     Compute the Dice coefficient in the log domain given two tensors representing log probabilities.
-    
+
     Parameters
     ----------
     seg1 : torch.Tensor
@@ -1840,7 +1831,7 @@ def reduce_tensor(
 ) -> torch.Tensor:
     """
     Apply any torch reduction on a tensor.
-    
+
     This function applies a reduction (e.g., mean, sum, median) on the input tensor across one or
     more dimensions. For reductions that operate on multiple dimensions, the `dim` can be
     a tuple of dimensions. For reductions that operate on a single dimension (e.g., argmin, argmax),

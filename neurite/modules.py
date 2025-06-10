@@ -33,6 +33,8 @@ class Normalization(nn.Module):
     - 'layer': LayerNorm (does not use `ndim`)
     - 'group': GroupNorm (requires `num_groups`)
 
+    Notes
+    -----
     The user can also provide a custom `nn.Module` class in `normalization_type`.
     """
 
@@ -63,7 +65,7 @@ class Normalization(nn.Module):
         **kwargs
     ):
         """
-        Initialize the `Normalization` module.
+        Initialize `Normalization`.
 
         Parameters
         ----------
@@ -96,22 +98,22 @@ class Normalization(nn.Module):
 
         Examples
         --------
-        >>> # Dummy input of shape (B, C, H, W)
+        >>> # Dummy input with 2 spatial dims ~N(0, 1)
         >>> x = torch.randn(1, 16, 32, 32)
 
-        ### Using a custom, pre-instantiated normalization layer
+        ### Normalize with a custom normalization layer
         >>> norm_a = nn.InstanceNorm2d(16)
         >>> norm_A = Normalization(norm_a)
         >>> norm_A(x)
         ...
 
-        ### Using a custom normalization layer that has not been instantiated
+        ### Normalize with a custom, uninitialized normalization layer
         >>> norm_b = nn.InstanceNorm2d
         >>> norm_B = Normalization(norm_b, num_features=16)
         >>> norm_B(x)
         ...
 
-        ### Using the wrapper to define a normalization layer
+        ### Normalize with text-based input
         >>> norm_C = Normalization(normalization_type='instance', ndim=2, num_features=16)
         >>> norm_C(x)
         ...
@@ -192,7 +194,7 @@ class Normalization(nn.Module):
 
 class Activation(nn.Module):
     """
-    Dynamically constructs an activation layer based on the specified type.
+    Dynamically construct an activation/nonlinearity based on the specified type.
     """
     def __init__(
         self,
@@ -202,7 +204,7 @@ class Activation(nn.Module):
         alpha: float = 1.0
     ) -> nn.Module:
         """
-        Initialize the `Activation` module.
+        Initialize `Activation`.
 
         Parameters
         ----------
@@ -256,10 +258,9 @@ class Activation(nn.Module):
                 f"Supported types: 'relu', 'leaky_relu', 'elu'."
             )
 
-
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
-        Forward pass for the activation layer.
+        Forward pass of the activation/nonlinearity.
 
         Parameters
         ----------
@@ -269,7 +270,7 @@ class Activation(nn.Module):
         Returns
         -------
         torch.Tensor
-            Activated output tensor.
+            Input tensor with activation/nonlinearity applied.
         """
         if self.activation is None:
             return nn.Identity()(input_tensor)
@@ -279,8 +280,7 @@ class Activation(nn.Module):
 
 class ConvBlock(nn.Sequential):
     """
-    Convolutional block comprising a convolutional layer, and optionally, an activation function and
-    normalization.
+    Convolutional block comprising a conv, and optionally, an activation and/or normalization.
 
     The default sequence of operations in this block is:
 
@@ -314,6 +314,7 @@ class ConvBlock(nn.Sequential):
     >>> print(output.shape)
     torch.Size([16, 128, 32, 32])
     """
+
     # Mapping of spatial dimensions for convolutions
     conv_dim_map = {1: '1d', 2: '2d', 3: '3d'}
 
@@ -334,7 +335,7 @@ class ConvBlock(nn.Sequential):
         order: str = 'cna',
     ):
         """
-        Initialize the `ConvBlock`.
+        Initialize `ConvBlock`.
 
         Parameters
         ----------
@@ -382,7 +383,7 @@ class ConvBlock(nn.Sequential):
 
         Examples
         --------
-        ### Basic usage with default options:
+        ### Basic usage with default options
         >>> conv_block = ConvBlock(
                 ndim=2,
                 in_channels=16,
@@ -395,7 +396,7 @@ class ConvBlock(nn.Sequential):
         >>> print(output_tensor.shape)
         torch.Size([1, 32, 64, 64])
 
-        ### Using a pre-instantiated `Normalization` and `Activation` module:
+        ### Use pre-initialized `Normalization` and `Activation` modules
         >>> norm_layer = nn.BatchNorm2d(32)
         >>> activation_layer = nn.ReLU()
         >>> conv_block = ConvBlock(
@@ -409,7 +410,7 @@ class ConvBlock(nn.Sequential):
         >>> print(output_tensor.shape)
         torch.Size([1, 32, 64, 64])
 
-        ### Omitting normalization or activation:
+        ### Initialize `ConvBlock` without normalizations nor activations
         >>> conv_block = ConvBlock(
             ndim=2,
             in_channels=16,
@@ -493,14 +494,8 @@ class ConvBlock(nn.Sequential):
 
 class TransposedConv(nn.Module):
     """
-    Dynamically constructs a transposed convolutional layer (ConvTranspose1d,
-    ConvTranspose2d, or ConvTranspose3d) based on the input dimensionality
-    `ndim`.
-
-    This module enables flexible definition of transposed convolutional layers
-    for 1D, 2D, or 3D data, by internally selecting the appropriate PyTorch
-    transposed convolution operation (`torch.nn.ConvTranspose1d`,
-    `torch.nn.ConvTranspose2d`, or `torch.nn.ConvTranspose3d`).
+    Dynamically construct a transposed convolution {`ConvTranspose1d`,
+    `ConvTranspose2d`, `ConvTranspose3d`} based on the number of input dimensions.
     """
 
     def __init__(
@@ -517,12 +512,12 @@ class TransposedConv(nn.Module):
         bias: bool = True,
     ):
         """
-        Initialize the `TransposedConv` module.
+        Initialize `TransposedConv`.
 
         Parameters
         ----------
         ndim : int
-            Dimensionality of the convolution (1 for Conv1d, 2 for Conv2d, 3 for Conv3d).
+            Spatial dimensionality of the convolution (1 for Conv1d, 2 for Conv2d, 3 for Conv3d).
             - 1: Uses `torch.nn.ConvTranspose1d` and expects input tensors of shape `(N, C, L)`,
             where `N` is the batch size, `C` is the number of input channels, and `L` is the length
             of the input sequence.
@@ -584,7 +579,7 @@ class TransposedConv(nn.Module):
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
-        Forward pass of the transposed convolutional layer.
+        Forward pass of the transposed convolution.
 
         Parameters
         ----------
@@ -601,8 +596,7 @@ class TransposedConv(nn.Module):
 
 class Pool(nn.Module):
     """
-    A pooling layer that dynamically constructs a pooling operation based
-    on the dimensionality and pooling mode specified.
+    nD Pooling layer.
 
     Attributes
     ----------
@@ -613,12 +607,12 @@ class Pool(nn.Module):
 
     def __init__(self, ndim: int, pool_mode: str = 'max', kernel_size=2):
         """
-        Initialize the `Pool` module.
+        Initialize `Pool`.
 
         Parameters
         ----------
         ndim : int
-            The dimensionality of the pooling operation. Must be 1, 2, or 3.
+            The spatial dimensionality of the pooling operation. Must be 1, 2, or 3.
         pool_mode : str, optional
             The pooling mode to use. Options are 'max' for max pooling,
             'avg' for average pooling, and 'lp' for LP pooling. Default is
@@ -665,7 +659,7 @@ class Pool(nn.Module):
 
 class DownsampleConvBlock(nn.Module):
     """
-    Downsampling convoultional block consisting of a `ConvBlock` followed by a pooling layer.
+    Apply `ConvBlock` followed by `Pool` to extract features and reduce spatial shape.
 
     Attributes
     ----------
@@ -691,8 +685,8 @@ class DownsampleConvBlock(nn.Module):
         order='nca',
         return_residual: bool = False,
     ):
-        """
-        Initialize the `DownsampleConvBlock`.
+        """the
+        Initialize  `DownsampleConvBlock`.
 
         Parameters
         ----------
@@ -746,7 +740,7 @@ class DownsampleConvBlock(nn.Module):
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
-        Forward pass of the downsampling convolutional block.
+        Forward pass of the downsampling convolution.
 
         Parameters
         ----------
@@ -768,15 +762,17 @@ class DownsampleConvBlock(nn.Module):
 
 class UpsampleConvBlock(nn.Module):
     """
-    Upsampling convoultional block consisting of a `TransposedConvBlock` followed by a
-    `ConvBlock`.
+    Apply `ConvBlock` followed by an upsampling operation to extract features and increase spatial
+    shape.
 
     Attributes
     ----------
     upsample : TransposedConv
-        The transposed convolutional layer to upsample the feature maps.
+        Module to be used for upsampling. One of:
+         - `neurite.modules.TransposedConv`: nD transposed convolution.
+         - `torch.nn.Upsample`: Interpolation upsampler form PyTorch.
     conv_block : ConvBlock
-        The convolutional block applying a series of convolutions, normalization, and activation.
+        The convolutional block applying a series of convolutions, normalizations, and activations.
     """
 
     def __init__(
@@ -898,7 +894,7 @@ class UpsampleConvBlock(nn.Module):
         Returns
         -------
         torch.Tensor
-            Upsampled tensor after applying transposed convolution and further convolutions.
+            Upsampled tensor after applying upsampling operation and conv blocks.
         """
         if isinstance(residual, torch.Tensor):
 

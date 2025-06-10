@@ -48,14 +48,11 @@ def random_crop(
     seed: Union[Sampler, int] = None,
 ):
     """
-    Randomly crops the input tensor along specified dimensions based on a given proportion and
-    probability.
+    Apply random crops ~iid Ber() to the input tensor along the specified dimensions.
 
-    This function randomly selects a subset of the allowed dimensions (excluding `forbidden_dims`)
-    and crops each independently by a proportion that is randomly drawn from a distribution. The
-    proportion to crop can either be fixed or sampled from a specified distribution. Each allowed
-    dimension has a probability `prob` of being cropped based on the results of independent
-    Bernoulli trials.
+    This function selects a subset of the allowed dimensions (excluding `forbidden_dims`)
+    from successful iid Bernoulli trials of each dimension specified by `prob`. The proportion of
+    the dimension's size to crop can either be fixed or sampled.
 
     Parameters
     ----------
@@ -169,7 +166,7 @@ def random_clip(
     seed: Union[int, Sampler] = None,
 ) -> torch.Tensor:
     """
-    Randomly clips the values in a tensor to a specified range with a given probability.
+    Randomly clip values in a tensor to a specified range with a given probability.
 
     Parameters
     ----------
@@ -252,7 +249,7 @@ def random_gamma(
     seed: Union[Sampler, int] = None,
 ) -> torch.Tensor:
     """
-    Applies a randomized nonlinear gamma scaling to the input tensor with a specified probability.
+    Apply randomized nonlinear gamma scaling to the input tensor with a specified probability.
 
     The gamma scaling operation adjusts the contrast of the input tensor by applying a non-linear
     operation. Specifically, each element in the tensor is raised to the power of `gamma`. This can

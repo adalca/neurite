@@ -19,7 +19,7 @@ import neurite as ne
 
 class BasicUNet(nn.Module):
     """
-    Flexible unet with many configuration options!
+    Flexible UNet with many configuration options.
 
     Attributes
     ----------
@@ -34,7 +34,7 @@ class BasicUNet(nn.Module):
 
     Notes
     -----
-    This UNet is based on the architecture of the UNet found in the paper by
+    `BasicUNet` is derived from the architecture of the UNet described in
     [Olaf Ronneberger](https://arxiv.org/pdf/1505.04597)
 
     Examples
@@ -66,12 +66,12 @@ class BasicUNet(nn.Module):
     ):
 
         """
-        Instantiate `BasicUNet`
+        Initialize `BasicUNet`
 
         Parameters
         ----------
         ndim : int
-            Dimensionality of the input (1, 2, or 3).
+            Number of spatial dimensions of the input (1, 2, or 3).
         in_channels : int
             Number of input channels.
         out_channels : int
