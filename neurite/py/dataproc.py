@@ -1,4 +1,13 @@
-''' data processing for neuron project '''
+""" data processing for neuron project """
+
+__all__ = [
+    "proc_mgh_vols",
+    "scans_to_slices",
+    "vol_proc",
+    "prior_to_weights",
+    "filestruct_change",
+    "ml_split",
+]
 
 # built-in
 import sys
@@ -13,10 +22,6 @@ import scipy.ndimage.interpolation
 from tqdm import tqdm_notebook as tqdm  # for verbosity for forloops
 import matplotlib.pyplot as plt
 
-# note sure if tqdm_notebook reverts back to
-from tqdm import tqdm
-
-from subprocess import call
 
 # import local ndutils
 import pystrum.pynd.ndutils as nd

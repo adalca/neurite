@@ -20,6 +20,16 @@ CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.
 """
 
+
+__all__ = [
+    "slices",
+    "volume3D",
+    "flow_legend",
+    "flow",
+    "pca",
+]
+
+
 # third party
 import numpy as np
 import matplotlib.pyplot as plt

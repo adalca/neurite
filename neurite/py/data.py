@@ -8,7 +8,13 @@ from pathlib import Path
 
 # third party
 import numpy as np
-import scipy
+
+
+__all__ = [
+    "DataSplit",
+    "split_dataset",
+    "load_dataset",
+]
 
 
 class DataSplit:

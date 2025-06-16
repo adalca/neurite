@@ -2,15 +2,20 @@
 python utilities for neuron
 """
 
-# internal python imports
-import os
-import warnings
+
+__all__ = [
+    "softmax",
+    "rebase_lab",
+    "load_fs_lut",
+    "seg_to_rgb_fs_lut",
+    "fs_lut_to_cmap",
+    "normalize_axes",
+]
+
 
 # third party imports
 import numpy as np
 import matplotlib
-
-# local (our) imports
 
 
 def softmax(x, axis):
