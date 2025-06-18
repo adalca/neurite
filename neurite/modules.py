@@ -80,7 +80,6 @@ class Normalization(nn.Module):
             - 2 -> *Norm2d
             - 3 -> *Norm3d
             Required for 'batch' or 'instance' normalizations.
-
         num_features : int, optional
             Number of input features or channels. Required for 'batch', 'instance',
             'layer', and 'group' normals. For layer normalization, this is the size of the
@@ -127,14 +126,19 @@ class Normalization(nn.Module):
 
         # Normalization object has been provided but not instantiated
         if isinstance(normalization_type, type) and issubclass(normalization_type, nn.Module):
+
             # Assume user provided a custom normalization class directly
             if num_features is None:
                 raise ValueError("`num_features` must be specified for custom normalizations.")
-            self.normalization = normalization_type(num_features=num_features, eps=eps, affine=affine, **kwargs)
+
+            self.normalization = normalization_type(
+                num_features=num_features, eps=eps, affine=affine, **kwargs
+            )
             return
 
         # Handle known norm_types
         if normalization_type not in self.NORMALIZATION_MAP:
+
             raise ValueError(
                 f"Invalid normalization_type '{normalization_type}'. Must be one of "
                 f"{list(self.NORMALIZATION_MAP.keys())} or a custom nn.Module subclass."
@@ -146,6 +150,7 @@ class Normalization(nn.Module):
                 raise ValueError(
                     "For 'batch' or 'instance' normalization, ndim must be 1, 2, or 3."
                 )
+
             # They also require the number of features
             if num_features is None:
                 raise ValueError("`num_features` must be specified for 'batch' or 'instance' normalization.")
@@ -848,17 +853,13 @@ class UpsampleConvBlock(nn.Module):
             )
 
         else:
-            # Construct a mapping for ndim to the upsampling mode
-            linear_upsampling_modes = {
-                1: 'linear', 2: 'bilinear', 3: 'trilinear'
-            }
 
-            # Only compute linear mode if not nearest
-            if upsample_mode != 'nearest':
-                upsample_mode = linear_upsampling_modes[ndim]
+            if upsample_mode == 'linear':
+                upsample_mode = ne.utils.utils.infer_linear_interpolation_mode(ndim)
 
             # align_corners only applies to non-nearest modes
             align = None if upsample_mode == 'nearest' else True
+
             self.upsample = nn.Upsample(
                 scale_factor=scale_factor,
                 mode=upsample_mode,
