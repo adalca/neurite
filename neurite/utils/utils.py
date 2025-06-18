@@ -637,9 +637,9 @@ def subsample_tensor_random_dims(
 
 def upsample_tensor(
     input_tensor: torch.Tensor,
-    shape: tuple,
     mode: str = 'nearest',
     scale_factor: float = 2,
+    shape: tuple = None,
 ) -> torch.Tensor:
     """
     Upsamples 1D, 2D, or 3D tensors to a given `shape`.
@@ -693,9 +693,9 @@ def upsample_tensor(
 
 def resample_tensor(
     input_tensor: torch.Tensor,
-    resample_dimension: int = 0,
-    downsample_stride: int = 2,
-    upsample_scale_factor: int = 2,
+    resample_dimension: Union[int, List[int]] = None,
+    downsample_stride: Union[int, List[int]] = 2,
+    upsample_scale_factor: Union[Union[int, float], List[Union[int, float]]] = 2,
     mode: str = 'nearest',
     shape: tuple = None,
 ) -> torch.Tensor:
@@ -709,12 +709,13 @@ def resample_tensor(
     ----------
     input_tensor : torch.Tensor
         The tensor to resample.
-    resample_dimension : int, optional
-        Dimension along which to subsample. Default is 0.
-    downsample_stride : int, optional
+    resample_dimension : int or list of ints, optional
+        The dimension(s) that should be resampled. If None, all dimensions are resampled.
+        Default is None.
+    downsample_stride : int or list of ints, optional
         Factor by which to subsample. Default is 2.
-    upsample_scale_factor : float
-        Factor by which to upsample. Default is 2
+    upsample_scale_factor : int, float or list of ints or floats, optional
+        Factor by which to upsample. Default is 2.
     mode : str, optional
         Interpolation mode for upsampling. Options include 'nearest', 'linear', 'bilinear',
         'bicubic', 'trilinear', and 'area'. Default is 'nearest'.
@@ -755,6 +756,7 @@ def resample_tensor(
         mode=mode,
         scale_factor=upsample_scale_factor,
     )
+
     return resampled
 
 
