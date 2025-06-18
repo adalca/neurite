@@ -158,11 +158,11 @@ def test_basicunet_forward_cuda():
 
 
 @pytest.mark.skipif(
-    not torch.mps.is_available(), reason="CUDA device not available"
+    not torch.mps.is_available(), reason="MPS device not available"
 )
 def test_basicunet_forward_mps():
     """
-    Test that the model can be moved to CUDA and still produce correct output.
+    Test that the model can be moved to MPS and still produce correct output.
 
     Returns
     -------
@@ -172,7 +172,7 @@ def test_basicunet_forward_mps():
     in_ch = 1
     out_ch = 1
 
-    # Move model and data to GPU
+    # Move model and data to MPS
     model = ne.models.BasicUNet(
         ndim=ndim,
         in_channels=in_ch,
@@ -183,6 +183,6 @@ def test_basicunet_forward_mps():
     x = torch.randn((1, in_ch, 32, 32), device="mps")
     y = model(x)
 
-    # Ensure output is on CUDA
+    # Ensure output is on MPS
     assert y.device.type == "mps"
     assert y.shape == (1, out_ch, 32, 32)
