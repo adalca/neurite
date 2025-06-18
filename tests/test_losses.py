@@ -5,6 +5,7 @@ import pytest
 import torch
 import neurite as ne
 
+
 @pytest.fixture
 def log_probabilities():
     # Initialize the logits from a normal dist
@@ -62,7 +63,7 @@ def test_dice_identical():
     """
 
     # Create an example tensor of shape (B, C, H, W)
-    seg = torch.ones((1, 1, 8, 8))
+    seg = torch.ones((4, 3, 8, 8))
 
     # Initialize the loss
     dice = ne.losses.Dice(reduction=None)
@@ -79,30 +80,35 @@ def test_dice_identical():
     )
 
 
-def test_dice_nonidentical():
+@pytest.mark.parametrize("spatial_dims", [1, 2, 3])
+def test_dice_nonidentical(spatial_dims):
     """
-    Test the Dice module with non-identical inputs.
+    Test the Dice {1, 2, 3} dim dice score with non-identical inputs.
+    """
 
-    The dice for uniformly distributed binary tensors should be close to 0.5.
-    """
+    # Pick some sizes:
+    batch, channels, spatial = 2, 3, 32
+    spatial = (batch, channels) + (spatial,) * spatial_dims
 
     # Make uniformly distributed binary tensors
-    seg1 = torch.randint(2, (1, 1, 128, 128)).float()
-    seg2 = torch.randint(2, (1, 1, 128, 128)).float()
-
-    # Initialize the dice score
-    dice = ne.losses.Dice(reduction=None)
+    seg1 = torch.randint(0, 2, (spatial)).float()
+    seg2 = 1 - seg1
 
     # Compute the dice score
-    result = dice(seg1, seg2)
+    dice = ne.utils.utils.dice(
+        seg1=seg1,
+        seg2=seg2,
+        reduction=None
+    )
 
-    # The expected value for the dice of uniformly distributed binary tensors should be ~0.5
-    expected = torch.tensor(0.5)
+    # The expected value for the dice of uniformly distributed binary tensors should be 0
+    expected = torch.zeros(batch, channels)
 
     # Allow for a small tolderance because of smoothing and stochasticity
-    assert torch.allclose(result, expected, atol=1e-2), (
+    assert torch.allclose(dice, expected, atol=1e-5), (
         "Dice for uniformly distributed binary tensors should be close to 0.5"
     )
+
 
 def test_log_dice(log_probabilities):
     """
@@ -123,3 +129,4 @@ def test_log_dice(log_probabilities):
     assert torch.allclose(log_dice_score, expected, atol=1e-6), (
         f"Log dice for identical tensors should be close to 1. Got {log_dice_score}"
     )
+
