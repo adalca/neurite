@@ -423,8 +423,8 @@ def apply_bernoulli_mask(input_tensor, p: float = 0.5, returns: str = None) -> t
 
 def subsample_tensor(
     input_tensor: torch.Tensor,
-    subsampling_dimension: int = 0,
-    stride: int = 2
+    stride: int = 2,
+    subsampling_dimension: int = None,
 ) -> torch.Tensor:
     """
     Subsamples `input_tensor` by a factor `stride` along the specified dimension.
@@ -475,16 +475,38 @@ def subsample_tensor(
             [10, 11, 12, 13, 14],
             [20, 21, 22, 23, 24]])
     """
-    # Make a list of slices that we will modify individually.
+
+    # Infer the number of spatial dimensions
+    n_spatial = input_tensor.dim() - 2
+
+    # Precompute list of (empty) slices
     slices = [slice(None)] * input_tensor.ndim
 
-    # Slice the `axis` dimension with a given step size. Keep everything else the same.
-    slices[subsampling_dimension] = slice(None, None, stride)
+    # If stride is a single number, make it the stride in all dimensions
+    if isinstance(stride, int):
+        strides = [stride] * n_spatial
 
-    # Slice the `input_tensor` with all slices to make the subsampled tensor.
-    subsampled_tensor = input_tensor[tuple(slices)]
+    # If stride is a collection, verify it
+    elif isinstance(stride, (tuple, list)):
+        strides = stride
 
-    return subsampled_tensor
+    # If `None` is passed, subsample all dimensions
+    if subsampling_dimension is None:
+        subsampling_dimension = list(range(n_spatial))
+
+    # If it's an int, just make a single slice for that dimension
+    if isinstance(subsampling_dimension, int):
+        strides[subsampling_dimension] = stride
+        slices[subsampling_dimension + 2] = slice(None, None, strides[subsampling_dimension])
+        print(slices)
+
+    # If it's a list, verify and fill slices
+    elif isinstance(subsampling_dimension, (list, tuple)):
+        for dim in subsampling_dimension:
+            strides[dim] = strides[dim]
+            slices[dim + 2] = slice(None, None, strides[dim])
+
+    return input_tensor[slices]
 
 
 def subsample_tensor_random_dims(
