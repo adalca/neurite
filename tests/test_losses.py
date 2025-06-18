@@ -20,38 +20,26 @@ def log_probabilities():
     return log_probabilities
 
 
-def test_dice_shapes():
+@pytest.mark.parametrize('spatial_dims', [1, 2, 3])
+def test_dice_shapes(spatial_dims):
     """
     Test the different shapes that the dice score can potentially handle
 
     The dice score should at least be able to handle 1D, 2D, and 3D tensors.
     """
 
-    # Dice is able to handle multiple dimensions on the fly
-    dice = ne.losses.Dice(reduction=None)
+    # Pick some sizes
+    batch, channels, spatial = 2, 3, 32
+    spatial = (batch, channels) + (spatial,) * spatial_dims
 
-    # Init tensors with batch and channel dims: (B, C, *spatial)
-    tensor_1D = torch.ones(1, 1, 8)
-    tensor_2D = torch.ones(1, 1, 8, 8)
-    tensor_3D = torch.ones(1, 1, 8, 8, 8)
+    # Initialize the seg
+    seg = torch.randint(0, 2, spatial).float()
 
-    # Test the 1D case
     try:
-        dice(tensor_1D, tensor_1D)
+        # Dice is able to handle multiple dimensions on the fly
+        ne.utils.utils.dice(seg, seg, reduction=None)
     except Exception as e:
-        pytest.fail(f"Dice failed for 1D tensor: {e}")
-
-    # Test the 2D case
-    try:
-        dice(tensor_2D, tensor_2D)
-    except Exception as e:
-        pytest.fail(f"Dice failed for 2D tensor: {e}")
-
-    # Test the 3D case
-    try:
-        dice(tensor_3D, tensor_3D)
-    except Exception as e:
-        pytest.fail(f"Dice failed for 3D tensor: {e}")
+        pytest.fail(f"Dice failed for tensor with {spatial_dims} spatial dims: {e}")
 
 
 def test_dice_identical():
@@ -80,18 +68,13 @@ def test_dice_identical():
     )
 
 
-@pytest.mark.parametrize("spatial_dims", [1, 2, 3])
-def test_dice_nonidentical(spatial_dims):
+def test_dice_opposite():
     """
-    Test the Dice {1, 2, 3} dim dice score with non-identical inputs.
+    Ensure dice returns zeros for opposite inputs.
     """
-
-    # Pick some sizes:
-    batch, channels, spatial = 2, 3, 32
-    spatial = (batch, channels) + (spatial,) * spatial_dims
 
     # Make uniformly distributed binary tensors
-    seg1 = torch.randint(0, 2, (spatial)).float()
+    seg1 = torch.randint(0, 2, (4, 3, 128, 128, 128)).float()
     seg2 = 1 - seg1
 
     # Compute the dice score
@@ -102,7 +85,7 @@ def test_dice_nonidentical(spatial_dims):
     )
 
     # The expected value for the dice of uniformly distributed binary tensors should be 0
-    expected = torch.zeros(batch, channels)
+    expected = torch.zeros(4, 3)
 
     # Allow for a small tolderance because of smoothing and stochasticity
     assert torch.allclose(dice, expected, atol=1e-5), (
@@ -129,4 +112,3 @@ def test_log_dice(log_probabilities):
     assert torch.allclose(log_dice_score, expected, atol=1e-6), (
         f"Log dice for identical tensors should be close to 1. Got {log_dice_score}"
     )
-
