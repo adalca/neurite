@@ -489,7 +489,7 @@ def subsample_tensor(
 
     # If stride is a collection, verify it
     elif isinstance(stride, (tuple, list)):
-        strides = stride
+        strides = list(stride)
 
     # If `None` is passed, subsample all dimensions
     if subsampling_dimension is None:
