@@ -353,43 +353,31 @@ class Resample(nn.Module):
     Spatially {subsample, resample} the input tensor.
 
     This module resamples the input tensor by a factor of `stride` along the specified spatial
-    dimension by interleaving dropouts along it (keeping every `stride`'th element).
-    Optionally upsample the tensor after downsampling it to restore it to its original dimensions.
+    dimension(s) by interleaving dropouts (keeping every `stride`'th element), then upsamples to
+    restore it to its original dimensions.
     """
 
     def __init__(
         self,
-        upsample: bool = True,
-        stride: Union[int, Tuple[int, int]] = 2,
-        forbidden_dims: Tuple[int, int] = (1, 0),
-        p: float = 0.5,
-        max_concurrent_subsamplings: int = None,
+        resample_dimension: Union[int, List[int]] = None,
+        downsample_stride: Union[int, List[int]] = 2,
+        upsample_scale_factor: Union[int, List[int]] = 2,
         mode: str = 'nearest',
+        shape: tuple = None,
     ):
         """
         Initialize `Resample`.
 
         Parameters
         ----------
-        upsample : bool, optional
-            optionally upsample the subsampled tensor to the original dimensions of `input_tensor`.
-            By default, True.
-        stride : Sampler or int or tuple, optional
-            The stride value to use when subsampling a given dimension. Can be an integer or
-            a tuple corresponding to the range of strides to sample. By default, 2.
-                - A stride of 1 does not result in any subsampling.
-                - A stride of 2 will reduce the elements of the selected dimension by 1/2.
-        forbidden_dims : list, optional
-            A list of dimensions that should not be subsampled. If None, no dimensions
-            are forbidden from subsampling. Default is (0, 1) to ignore batch and channel
+        resample_dimension : int or list of ints, optional
+            The dimension(s) that should be resampled. If None, all dimensions are resampled.
+            Default is None.
             dimensions.
-        p : float, optional
-            The probability of selecting each dimension for subsampling. This probability
-            is applied as an independent Bernoulli trial for each dimension. By default, 0.5.
-        max_concurrent_subsamplings : int, optional
-            The maximum number of dimensions that can be subsampled simultaneously. If
-            None, the number of concurrent subsamplings is set to the number of dimensions
-            in `input_tensor`. Default is None.
+        downsample_stride : int or list of ints, optional
+            Factor by which to subsample. Default is 2.
+        upsample_scale_factor : int, float or list of ints or floats, optional
+            Factor by which to upsample. Default is 2.
         mode : str, optional
             The interpolation mode to use for upsampling. By default None. Options (WRT spatial
             dimensions) include:
@@ -399,62 +387,58 @@ class Resample(nn.Module):
                 - 'bicubic' (2D-only)
                 - 'trilinear' (3D-only)
                 - 'area'
+        shape : tuple
+            Spatial dimensions (without batch or channel dims) to upsample the subsampled tensor
+            into.
 
         Examples
         --------
         ### Subsample with custom stride
-        >>> # Make a 3D tensor ~N(0, 1) with batch and channel dims
-        >>> input_tensor = torch.randn(1, 1, 128, 128, 128)
-        >>> # Resample with random strides on the inclusive interval (2, 5)
-        >>> resampled_tensor = Resample(upsample=False, stride=(2, 5))(input_tensor)
-        >>> # Ensure spatial dimensions are different
+        >>> # Make a 2D tensor ~N(0, 1) with batch and channel dims
+        >>> input_tensor = torch.randn(1, 1, 128, 128)
+        >>> # Downsample 2x in 1st dim and 4x in second dim. Upsample the same way 
+        >>> resampled_tensor = Resample(
+        ...    downsample_stride=(2, 4),
+        ...    upsample_scale_factor=(2, 4)
+        ... )(input_tensor)
+        >>> # Ensure spatial dimensions are the same
         >>> print(resampled_tensor.shape)
-        torch.Size([1, 1, 64, 128, 32])
+        torch.Size([1, 1, 128, 128])
 
         ### Upsample with custom stride and trilinear interpolation
-        >>> # Initialize a random 3D tensor with batch and channel dims
-        >>> input_tensor = torch.randn(1, 1, 128, 128, 128)
-        >>> # Resample the tensor with a stride upper bound of 6, trilinear interpolation, and with
-        a final upsampling operation after downsampling.
-        >>> resampled_tensor = Resample(stride=6, mode='trilinear')(input_tensor)
-        >>> # Spatial dims should be the same (because the last operation is upsampling to original)
-        >>> print(input_tensor.shape)
-        torch.Size([1, 1, 128, 128, 128])
+        >>> # Make a 3D tensor ~N(0, 1) with batch and channel dims
+        >>> input_tensor = torch.randn(1, 1, 32, 32, 32)
+        >>> # Downsample 2x then upsample 6x
+        >>> resampled_tensor = Resample(
+        ...    downsample_stride=2,
+        ...    upsample_scale_factor=6,
+        ...    mode='trilinear'
+        ... )(input_tensor)
+        >>> # Ensure dimensions are (1, 1, 96, 96, 96)
+        >>> print(resampled_tensor.shape)
+        torch.Size([1, 1, 96, 96, 96])
         """
+
         super().__init__()
-        self.upsample = upsample
-        self.stride = stride
-        self.forbidden_dims = forbidden_dims
-        self.p = p
-        self.max_concurrent_subsamplings = max_concurrent_subsamplings
+        self.resample_dimension = resample_dimension
+        self.downsample_stride = downsample_stride
+        self.upsample_scale_factor = upsample_scale_factor
         self.mode = mode
+        self.shape = shape
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
         Perform the forward pass of the `Resample`.
         """
-        # Store original spatial shape to restore dimensions in upsampling
-        resampled_tensor = input_tensor
-        original_spatial_shape = input_tensor.shape[2:]
 
-        # Start by subsampling the input tensor
-        resampled_tensor = ne.utils.subsample_tensor_random_dims(
-            input_tensor=resampled_tensor,
-            stride=self.theta.get('stride'),
-            forbidden_dims=self.theta.get('forbidden_dims'),
-            p=self.theta.get('p'),
-            max_concurrent_subsamplings=self.theta.get('max_concurrent_subsamplings')
+        return ne.utils.utils.resample_tensor(
+            input_tensor=input_tensor,
+            resample_dimension=self.resample_dimension,
+            downsample_stride=self.downsample_stride,
+            upsample_scale_factor=self.upsample_scale_factor,
+            mode=self.mode,
+            shape=self.shape
         )
-
-        # Optionally upsample the resuling subsampled tensor
-        if self.upsample:
-            # Apply upsampling
-            resampled_tensor = ne.utils.upsample_tensor(
-                resampled_tensor,
-                original_spatial_shape
-            )
-
-        return resampled_tensor
 
 
 class RandomCrop(nn.Module):
