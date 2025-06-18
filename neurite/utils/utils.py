@@ -51,6 +51,7 @@ __all__ = [
     "dice",
     "log_dice",
     "reduce_tensor",
+    "infer_linear_interpolation_mode",
 ]
 
 from typing import Union, List, Tuple, Literal
@@ -2025,3 +2026,39 @@ def reduce_tensor(
             " are {'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean', 'argmin', "
             "'argmax'}"
         )
+
+
+def infer_linear_interpolation_mode(
+    num_spatial: Literal[1, 2, 3]
+):
+    """
+    Infer the interpolation mode for `F.interpolate()` from tensor dimensions.
+
+    Parameters
+    ----------
+    num_spatial : {1, 2, 3}
+        Tensor with batch and channel dimensions, and with {1, 2, 3} spatial dimensions.
+
+    Returns
+    -------
+    mode : str
+        Interpolation mode string:
+        - 'linear' for 1D
+        - 'bilinear' for 2D
+        - 'trilinear' for 3D
+
+    Examples
+    --------
+    >>> # Look at output for different number of spatial dims
+    >>> infer_linear_interpolation_mode(1)
+    'linear'
+    >>> infer_linear_interpolation_mode(3)
+    'trilinear'
+    """
+    match num_spatial:
+        case 1:
+            return 'linear'
+        case 2:
+            return 'bilinear'
+        case 3:
+            return 'trilinear'
