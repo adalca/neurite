@@ -19,7 +19,7 @@ def test_norm_instance(ndim: int):
     x = torch.randn(8, 4, *spatial) * 5 + 10
 
     # Initialize the normalization layer
-    norm_layer = ne.modules.Normalization(
+    norm_layer = ne.utils.utils.build_normalization(
         normalization_type='instance',
         ndim=ndim,
         num_features=4,
@@ -65,11 +65,11 @@ def test_norm_batch(ndim: int):
     x = torch.randn(4, 8, *spatial) * 5 + 10
 
     # Initialize the normalization layer
-    norm_layer = ne.modules.Normalization(
+    norm_layer = ne.utils.utils.build_normalization(
         normalization_type='batch',
         ndim=ndim,
         num_features=8,
-        affine=False
+        affine=False,
     )
 
     # Use current batch statistics, not the stored ones

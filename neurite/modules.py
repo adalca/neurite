@@ -3,7 +3,6 @@ Modules are simple operations containing learnable parameters. The `modules` mod
 nD building blocks for neural networks.
 """
 __all__ = [
-    "Normalization",
     "Activation",
     "ConvBlock",
     "TransposedConv",
@@ -20,181 +19,6 @@ import torch
 from torch import nn
 from torch.nn.modules import activation
 import neurite as ne
-
-
-class Normalization(nn.Module):
-    """
-    Dynamically constructs a normalization layer based on `normalization_type` and `ndim`.
-
-    Supports
-    --------
-    - 'batch': BatchNorm1d, BatchNorm2d, BatchNorm3d (requires `ndim`)
-    - 'instance': InstanceNorm1d, InstanceNorm2d, InstanceNorm3d (requires `ndim`)
-    - 'layer': LayerNorm (does not use `ndim`)
-    - 'group': GroupNorm (requires `num_groups`)
-
-    Notes
-    -----
-    The user can also provide a custom `nn.Module` class in `normalization_type`.
-    """
-
-    # Map normalization types and dimensions for their corresponding PyTorch classes
-    NORMALIZATION_MAP = {
-        "batch": {
-            1: nn.BatchNorm1d,
-            2: nn.BatchNorm2d,
-            3: nn.BatchNorm3d,
-        },
-        "instance": {
-            1: nn.InstanceNorm1d,
-            2: nn.InstanceNorm2d,
-            3: nn.InstanceNorm3d,
-        },
-        "layer": nn.LayerNorm,
-        "group": nn.GroupNorm
-    }
-
-    def __init__(
-        self,
-        normalization_type: Union[str, Type[nn.Module], None],
-        ndim: Optional[int] = None,
-        num_features: Optional[int] = None,
-        num_groups: Optional[int] = None,
-        eps: float = 1e-5,
-        affine: bool = True,
-        **kwargs
-    ):
-        """
-        Initialize `Normalization`.
-
-        Parameters
-        ----------
-        normalization_type : str or nn.Module
-            Type of normalization. Must be one of 'batch', 'instance', 'layer',
-            'group', or a custom `nn.Module` class.
-                - `batch` performs normalization per channel. The mean and variance are calculated
-                across the B, and *spatial dimensions for each channel C.
-        ndim : int, optional
-            Dimensionality for batch/instance normalization:
-            - 1 -> *Norm1d
-            - 2 -> *Norm2d
-            - 3 -> *Norm3d
-            Required for 'batch' or 'instance' normalizations.
-        num_features : int, optional
-            Number of input features or channels. Required for 'batch', 'instance',
-            'layer', and 'group' normals. For layer normalization, this is the size of the
-            normalized dimension. For batch and instance normalizations, this is typically the
-            number of channels/features.
-        num_groups : int, optional
-            Number of groups for GroupNorm. Required for 'group' normalization.
-        eps : float, optional
-            A value added to the denominator for numerical stability. Default is 1e-5.
-        affine : bool, optional
-            If True, the layer has learnable affine parameters. Default is True.
-        **kwargs : dict, optional
-            Additional keyword arguments are passed directly to the normalization class
-            constructor. This enables further customization without modifying this class.
-
-        Examples
-        --------
-        >>> # Dummy input with 2 spatial dims ~N(0, 1)
-        >>> x = torch.randn(1, 16, 32, 32)
-
-        ### Normalize with a custom normalization layer
-        >>> norm_a = nn.InstanceNorm2d(16)
-        >>> norm_A = Normalization(norm_a)
-        >>> norm_A(x)
-        ...
-
-        ### Normalize with a custom, uninitialized normalization layer
-        >>> norm_b = nn.InstanceNorm2d
-        >>> norm_B = Normalization(norm_b, num_features=16)
-        >>> norm_B(x)
-        ...
-
-        ### Normalize with text-based input
-        >>> norm_C = Normalization(normalization_type='instance', ndim=2, num_features=16)
-        >>> norm_C(x)
-        ...
-        """
-        super().__init__()
-
-        # Normalization object has been instantiated with parameters
-        if ne.utils.is_instantiated_normalization(normalization_type):
-            self.normalization = normalization_type
-            return
-
-        # Normalization object has been provided but not instantiated
-        if isinstance(normalization_type, type) and issubclass(normalization_type, nn.Module):
-
-            # Assume user provided a custom normalization class directly
-            if num_features is None:
-                raise ValueError("`num_features` must be specified for custom normalizations.")
-
-            self.normalization = normalization_type(
-                num_features=num_features, eps=eps, affine=affine, **kwargs
-            )
-            return
-
-        # Handle known norm_types
-        if normalization_type not in self.NORMALIZATION_MAP:
-
-            raise ValueError(
-                f"Invalid normalization_type '{normalization_type}'. Must be one of "
-                f"{list(self.NORMALIZATION_MAP.keys())} or a custom nn.Module subclass."
-            )
-
-        # Batch and instance normalization require an input dimensionality
-        if normalization_type in ("batch", "instance"):
-            if ndim not in (1, 2, 3):
-                raise ValueError(
-                    "For 'batch' or 'instance' normalization, ndim must be 1, 2, or 3."
-                )
-
-            # They also require the number of features
-            if num_features is None:
-                raise ValueError("`num_features` must be specified for 'batch' or 'instance' normalization.")
-
-            normalization_class = self.NORMALIZATION_MAP[normalization_type][ndim]
-            self.normalization = normalization_class(
-                num_features=num_features, eps=eps, affine=affine, **kwargs
-            )
-
-        elif normalization_type == "layer":
-            if num_features is None:
-                raise ValueError(
-                    "`num_features` (normalized shape) must be specified for 'layer' normalization."
-                )
-            self.normalization = nn.LayerNorm(
-                num_features, eps=eps, elementwise_affine=affine, **kwargs
-            )
-
-        elif normalization_type == "group":
-            if num_groups is None:
-                raise ValueError("For 'group' normalization, `num_groups` must be specified.")
-            if num_features is None:
-                raise ValueError("`num_features` must be specified for 'group' normalization.")
-            self.normalization = nn.GroupNorm(num_groups, num_features, eps=eps, affine=affine, **kwargs)
-
-    def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass for the normalization layer.
-
-        Parameters
-        ----------
-        input_tensor : torch.Tensor
-            Input tensor to be normalized. The shape depends on the normalization type:
-            - For 1D normalizations: (N, C, L)
-            - For 2D normalizations: (N, C, H, W)
-            - For 3D normalizations: (N, C, D, H, W)
-            - For layer/group normalizations: shape can vary, but typically (N, *)
-
-        Returns
-        -------
-        torch.Tensor
-            Normalized output tensor.
-        """
-        return self.normalization(input_tensor)
 
 
 class Activation(nn.Module):
@@ -484,7 +308,11 @@ class ConvBlock(nn.Sequential):
 
             # Dynamically construct the normalization and assign it to a named key in layers
             elif operation == 'n' and normalization is not None:
-                layers[f'normalization{norm_id}'] = Normalization(normalization, ndim, in_channels)
+                layers[f'normalization{norm_id}'] = ne.utils.utils.build_normalization(
+                    normalization_type=normalization,
+                    ndim=ndim,
+                    num_features=in_channels,
+                )
                 norm_id += 1
 
             # Construct the activation and assign it to a named key in layers
