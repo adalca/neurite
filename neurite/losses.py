@@ -86,7 +86,7 @@ class Dice(nn.Module):
             The type of reduction to apply. Supported values for multidimensional reductions are:
             'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'; for single-dimension
             reductions: 'argmin', 'argmax', and all multidimensionals. Default is 'mean'.
-        dim : int or tuple of ints, optional
+        reduction_dim : int or tuple of ints, optional
             Dimension(s) over which to apply the reduction. For multidimensional reductions, pass a
             tuple of dimensions; for single-dimension reductions, pass an integer. Default is (0, 1)
         keepdims : bool, optional
@@ -118,24 +118,15 @@ class Dice(nn.Module):
             The computed Dice coefficient, optionally reduced according to object initialization.
         """
 
-        # Compute the dice score
-        dice_score = ne.utils.dice(
+        return ne.utils.dice(
             seg1=seg1,
             seg2=seg2,
             smooth_numerator=self.smooth_numerator,
-            smooth_denominator=self.smooth_denominator
+            smooth_denominator=self.smooth_denominator,
+            reduction=self.reduction,
+            reduction_dim=self.reduction_dim,
+            keepdims=self.keepdims
         )
-
-        # Reduce the score if necessary and return
-        if self.reduction is None:
-            return dice_score
-        else:
-            return ne.utils.reduce_tensor(
-                tensor=dice_score,
-                reduction=self.reduction,
-                dim=self.reduction_dim,
-                keepdims=self.keepdims
-            )
 
 
 class CategoricalCrossentropy(nn.Module):

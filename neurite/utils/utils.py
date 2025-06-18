@@ -1761,6 +1761,9 @@ def dice(
     seg2: torch.Tensor,
     smooth_numerator: float = 1e-12,
     smooth_denominator: float = 1e-12,
+    reduction: str = 'mean',
+    reduction_dim: int = (0, 1),
+    keepdims: bool = True,
 ) -> torch.Tensor:
     """
     Compute the Dice score between two segmentation tensors (e.g. ground truth, predictions, etc...)
@@ -1775,6 +1778,15 @@ def dice(
         Smoothing constant added to the numerator.
     smooth_denominator : float, optional
         Smoothing constant added to the denominator.
+    reduction : str, optional
+        The type of reduction to apply. Supported values for multidimensional reductions are:
+        'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'; for single-dimension
+        reductions: 'argmin', 'argmax', and all multidimensionals. Default is 'mean'.
+    reduction_dim : int or tuple of ints, optional
+        Dimension(s) over which to apply the reduction. For multidimensional reductions, pass a
+        tuple of dimensions; for single-dimension reductions, pass an integer. Default is (0, 1)
+    keepdims : bool, optional
+        Whether to retain reduced dimensions as a singleton. Default is True.
 
     Returns
     -------
@@ -1818,7 +1830,16 @@ def dice(
     # Compute the dice score with intersection, smooth, & union
     dice_score = (2 * intersection + smooth_numerator) / (union + smooth_denominator)
 
-    return dice_score
+    # Reduce the score if necessary and return
+    if reduction is None:
+        return dice_score
+    else:
+        return reduce_tensor(
+            tensor=dice_score,
+            reduction=reduction,
+            dim=reduction_dim,
+            keepdims=keepdims
+        )
 
 
 def log_dice(
