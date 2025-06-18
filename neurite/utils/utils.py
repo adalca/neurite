@@ -1948,7 +1948,7 @@ def reduce_tensor(
         Dimension(s) over which to apply the reduction. For multidimensional reductions, pass a
         tuple of dimensions; for single-dimension reductions, pass an integer. Default is (0, 1).
     keepdims : bool, optional
-        Whether to retain reduced dimensions as a singleton. Default is False.
+        Whether to retain reduced dimensions as a singleton. Default is True.
 
     Returns
     -------
