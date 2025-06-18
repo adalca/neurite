@@ -37,7 +37,7 @@ __all__ = [
     "SampleImageFromLabels",
 ]
 
-from typing import Optional, Union, Tuple, List
+from typing import Optional, Union, Tuple, List, Literal
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -90,7 +90,7 @@ class Resize(nn.Module):
         self,
         size: Optional[Union[int, Tuple[int, int]]] = None,
         scale_factor: Optional[Union[float, Tuple[float, float]]] = None,
-        mode: str = "nearest",
+        mode: Literal['linear', 'nearest', 'bicubic', 'area', 'nearest-exact'] = 'linear',
         align_corners: Optional[bool] = None,
         recompute_scale_factor: Optional[bool] = None,
         antialias: bool = False,
@@ -104,8 +104,9 @@ class Resize(nn.Module):
             The desired output size. If None, uses `scale_factor`.
         scale_factor : float or Tuple[float, float], optional
             Scaling factor for resizing. If None, uses `size`.
-        mode : str, default="nearest"
-            Interpolation mode (e.g., "nearest", "bilinear").
+        mode : str, optional
+            Interpolation mode for upsampling. Options include 'nearest', 'linear',
+            'bicubic', 'area', and 'nearest-exact'. Default is 'linear'.
         align_corners : bool, optional
             Alignment for "linear", "bilinear", or "trilinear" modes.
         recompute_scale_factor : bool, optional
@@ -362,7 +363,7 @@ class Resample(nn.Module):
         resample_dimension: Union[int, List[int]] = None,
         downsample_stride: Union[int, List[int]] = 2,
         upsample_scale_factor: Union[int, List[int]] = 2,
-        mode: str = 'nearest',
+        mode: Literal['linear', 'nearest', 'bicubic', 'area', 'nearest-exact'] = 'linear',
         shape: tuple = None,
     ):
         """
@@ -379,14 +380,8 @@ class Resample(nn.Module):
         upsample_scale_factor : int, float or list of ints or floats, optional
             Factor by which to upsample. Default is 2.
         mode : str, optional
-            The interpolation mode to use for upsampling. By default None. Options (WRT spatial
-            dimensions) include:
-                - 'nearest' (default)
-                - 'linear' (1D-only)
-                - 'bilinear' (2D-only)
-                - 'bicubic' (2D-only)
-                - 'trilinear' (3D-only)
-                - 'area'
+            Interpolation mode for upsampling. Options include 'nearest', 'linear',
+            'bicubic', 'area', and 'nearest-exact'. Default is 'linear'.
         shape : tuple
             Spatial dimensions (without batch or channel dims) to upsample the subsampled tensor
             into.
