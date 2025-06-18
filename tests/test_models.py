@@ -149,9 +149,40 @@ def test_basicunet_forward_cuda():
     ).cuda()
     model.eval()
 
-    x = torch.randn((1, in_ch, 16, 16), device="cuda")
+    x = torch.randn((1, in_ch, 32, 32), device="cuda")
     y = model(x)
 
     # Ensure output is on CUDA
     assert y.device.type == "cuda"
-    assert y.shape == (1, out_ch, 16, 16)
+    assert y.shape == (1, out_ch, 32, 32)
+
+
+@pytest.mark.skipif(
+    not torch.mps.is_available(), reason="CUDA device not available"
+)
+def test_basicunet_forward_mps():
+    """
+    Test that the model can be moved to CUDA and still produce correct output.
+
+    Returns
+    -------
+    None
+    """
+    ndim = 2
+    in_ch = 1
+    out_ch = 1
+
+    # Move model and data to GPU
+    model = ne.models.BasicUNet(
+        ndim=ndim,
+        in_channels=in_ch,
+        out_channels=out_ch,
+    ).to('mps')
+    model.eval()
+
+    x = torch.randn((1, in_ch, 32, 32), device="mps")
+    y = model(x)
+
+    # Ensure output is on CUDA
+    assert y.device.type == "mps"
+    assert y.shape == (1, out_ch, 32, 32)
