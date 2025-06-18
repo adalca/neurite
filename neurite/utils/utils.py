@@ -616,6 +616,7 @@ def upsample_tensor(
     input_tensor: torch.Tensor,
     shape: tuple,
     mode: str = 'nearest',
+    scale_factor: float = 2,
 ) -> torch.Tensor:
     """
     Upsamples 1D, 2D, or 3D tensors to a given `shape`.
@@ -657,7 +658,12 @@ def upsample_tensor(
         )
 
     # Perform the upsampling operation
-    upsampled = F.interpolate(input_tensor, size=shape, mode=mode)
+    upsampled = F.interpolate(
+        input=input_tensor,
+        size=shape,
+        mode=mode,
+        scale_factor=scale_factor,
+    )
 
     return upsampled
 
