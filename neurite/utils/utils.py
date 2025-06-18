@@ -33,6 +33,7 @@ __all__ = [
     "subsample_tensor",
     "subsample_tensor_random_dims",
     "upsample_tensor",
+    "resample_tensor",
     "make_range",
     "random_clear_label",
     "sample_image_from_labels",
@@ -539,7 +540,7 @@ def subsample_tensor_random_dims(
         A list of dimensions that should not be subsampled. If None, no dimensions
         are forbidden from subsampling. Default is (0, 1) to ignore batch and channel dimensions.
     p : float, optional
-        The probability of selecting each dimension for subsampling. This probability 
+        The probability of selecting each dimension for subsampling. This probability
         is applied as an independent Bernoulli trial for each dimension. By default, 0.5.
     max_concurrent_subsamplings : int, optional
         The maximum number of dimensions that can be subsampled simultaneously. If
@@ -1159,7 +1160,8 @@ def make_upsampling_conv_blocks(
 
     Notes
     -----
-    - If `normalizations` or `activations` are a list, they must be the same length as the nb_features.
+    - If `normalizations` or `activations` are a list, they must be the same length as the
+    nb_features.
 
     Examples
     --------
@@ -1510,7 +1512,7 @@ def cross_expand(
 
     References
     ----------
-    J. G. Ortiz et al., "UniverSeg: Universal Medical Image Segmentation," 
+    J. G. Ortiz et al., "UniverSeg: Universal Medical Image Segmentation,"
     GitHub repository, 2023. Available: https://github.com/JJGO/UniverSeg
 
     Examples
