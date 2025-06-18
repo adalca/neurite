@@ -638,7 +638,7 @@ def subsample_tensor_random_dims(
 
 def upsample_tensor(
     input_tensor: torch.Tensor,
-    mode: str = 'nearest',
+    mode: Literal['linear', 'nearest', 'bicubic', 'area', 'nearest-exact'] = 'linear',
     scale_factor: float = 2,
     shape: tuple = None,
 ) -> torch.Tensor:
@@ -652,13 +652,8 @@ def upsample_tensor(
     shape : tuple
         Spatial dimensions (without batch or channel dimensions) to upsample `input_tensor` into.
     mode : str, optional
-        The interpolation mode to use. By default None. Options (WRT spatial dimensions) include:
-            - 'nearest' (default)
-            - 'linear' (1D-only)
-            - 'bilinear' (2D-only)
-            - 'bicubic' (2D-only)
-            - 'trilinear' (3D-only)
-            - 'area'
+        Interpolation mode for upsampling. Options include 'nearest', 'linear',
+        'bicubic', 'area', and 'nearest-exact'. Default is 'linear'.
 
     Examples
     --------
@@ -673,6 +668,11 @@ def upsample_tensor(
     >>> print(upsampled_tensor.shape)
     torch.Size([1, 3, 64, 64, 64])
     """
+
+    # Get the correct {'linear', 'bilinear', 'trilinear'} interpolation mode
+    if mode == 'linear':
+        mode = infer_linear_interpolation_mode(input_tensor.dim() - 2)
+
     # Calculate the spatial dimensions (disregarding batch and channel)
     spatial_dims = input_tensor.dim() - 2
     if spatial_dims not in [1, 2, 3]:
@@ -697,7 +697,7 @@ def resample_tensor(
     resample_dimension: Union[int, List[int]] = None,
     downsample_stride: Union[int, List[int]] = 2,
     upsample_scale_factor: Union[Union[int, float], List[Union[int, float]]] = 2,
-    mode: str = 'nearest',
+    mode: Literal['linear', 'nearest', 'bicubic', 'area', 'nearest-exact'] = 'linear',
     shape: tuple = None,
 ) -> torch.Tensor:
     """
@@ -718,8 +718,8 @@ def resample_tensor(
     upsample_scale_factor : int, float or list of ints or floats, optional
         Factor by which to upsample. Default is 2.
     mode : str, optional
-        Interpolation mode for upsampling. Options include 'nearest', 'linear', 'bilinear',
-        'bicubic', 'trilinear', and 'area'. Default is 'nearest'.
+        Interpolation mode for upsampling. Options include 'nearest', 'linear',
+        'bicubic', 'area', and 'nearest-exact'. Default is 'linear'.
     shape : tuple
         Spatial dimensions (without batch or channel dims) to upsample the subsampled tensor into.
 
