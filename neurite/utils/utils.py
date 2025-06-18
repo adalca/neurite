@@ -690,6 +690,73 @@ def upsample_tensor(
     return upsampled
 
 
+def resample_tensor(
+    input_tensor: torch.Tensor,
+    resample_dimension: int = 0,
+    downsample_stride: int = 2,
+    upsample_scale_factor: int = 2,
+    mode: str = 'nearest',
+    shape: tuple = None,
+) -> torch.Tensor:
+    """
+    Subsample `input_tensor` by a factor `stride`, then upsample it by `scale_factor`.
+
+    Combines `subsample_tensor` and `upsample_tensor` by first subsampling `input_tensor` along a
+    given dimension by `stride`, then upsampling back to `shape`.
+
+    Parameters
+    ----------
+    input_tensor : torch.Tensor
+        The tensor to resample.
+    resample_dimension : int, optional
+        Dimension along which to subsample. Default is 0.
+    downsample_stride : int, optional
+        Factor by which to subsample. Default is 2.
+    upsample_scale_factor : float
+        Factor by which to upsample. Default is 2
+    mode : str, optional
+        Interpolation mode for upsampling. Options include 'nearest', 'linear', 'bilinear',
+        'bicubic', 'trilinear', and 'area'. Default is 'nearest'.
+    shape : tuple
+        Spatial dimensions (without batch or channel dims) to upsample the subsampled tensor into.
+
+    Returns
+    -------
+    torch.Tensor
+        The resampled tensor with the same batch and channel dims as `input_tensor` and spatial dims
+        equal to `shape`.
+
+    Examples
+    --------
+    >>> import torch
+    >>> input_tensor = torch.randn(1, 3, 32, 32)
+    >>> # Subsample rows/cols by 2, then upsample to (64, 64)
+    >>> res = resample_tensor(
+    ...     input_tensor, shape=(64, 64),
+    ...     subsampling_dimension=2, stride=2,
+    ...     mode='bilinear'
+    ... )
+    >>> print(res.shape)
+    torch.Size([1, 3, 64, 64])
+    """
+
+    # Subsample tensor
+    resampled = subsample_tensor(
+        input_tensor,
+        subsampling_dimension=resample_dimension,
+        stride=downsample_stride
+    )
+
+    # Upsample tensor
+    resampled = upsample_tensor(
+        resampled,
+        shape=shape,
+        mode=mode,
+        scale_factor=upsample_scale_factor,
+    )
+    return resampled
+
+
 def make_range(*args, **kwargs) -> tuple:
     """
     Creates a tuple specigying the bounds for a range of numbers `(min, max)`.
