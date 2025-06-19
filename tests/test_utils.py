@@ -92,3 +92,14 @@ def test_create_gaussian_kernel_shape_and_symmetry():
     assert torch.allclose(spatial_00, spatial_11)
 
 
+def test_subsample_tensor_magnitudes():
+    """
+    Ensure subsampling produces expected magnitudes/skips.
+    """
+
+    input_tensor = torch.arange(25).view(1, 1, 5, 5).float()
+    subsampled_gt = torch.tensor([0, 2, 4, 10, 12, 14, 20, 22, 24]).view(1, 1, 3, 3).float()
+
+    subsampled_tensor = ne.utils.utils.subsample_tensor(input_tensor, stride=2)
+
+    torch.allclose(subsampled_tensor, subsampled_gt)
