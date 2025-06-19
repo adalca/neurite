@@ -241,10 +241,10 @@ class SoftQuantize(nn.Module):
         >>> plt.imshow(softly_quantized_tensor[0, 0, 16])
         """
         super().__init__()
-        self.nb_bins = nb_bins
-        self.softness = softness
-        self.min_clip = min_clip
-        self.max_clip = max_clip
+        self.nb_bins = ne.samplers.make_sampler(ne.samplers.Fixed, nb_bins)
+        self.softness = ne.samplers.make_sampler(ne.samplers.Fixed, softness)
+        self.min_clip = ne.samplers.make_sampler(ne.samplers.Fixed, min_clip)
+        self.max_clip = ne.samplers.make_sampler(ne.samplers.Fixed, max_clip)
         self.return_log = return_log
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:

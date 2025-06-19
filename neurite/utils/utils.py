@@ -72,10 +72,10 @@ def identity(input_argument):
 
 def soft_quantize(
     input_tensor: torch.Tensor,
-    nb_bins: Union[int, Sampler] = 16,
-    softness: Union[float, int, Sampler] = 1.0,
-    min_clip: Union[float, int, Sampler] = -float('inf'),
-    max_clip: Union[float, int, Sampler] = float('inf'),
+    nb_bins: int = 16,
+    softness: Union[float, int] = 1.0,
+    min_clip: Union[float, int] = -float('inf'),
+    max_clip: Union[float, int] = float('inf'),
     return_log: bool = False
 ) -> torch.Tensor:
     """
@@ -89,14 +89,14 @@ def soft_quantize(
     ----------
     input_tensor : torch.Tensor
         Input tensor to softly quantize.
-    nb_bins : float, int, or Sampler, optional
-        The number of discrete bins to softly quantize the input values into. By default 16
-    softness : float, int, or Sampler, optional
+    nb_bins : float, int, optional
+        The number of discrete bins to softly quantize the input values into. By default, 16
+    softness : float, int, optional
         The softness factor for quantization. A higher value gives smoother quantization.
         By default 1.0
-    min_clip : float, int, or Sampler, optional
+    min_clip : float, int, optional
         Clip data lower than this value before calculating bin centers. By default `-float('inf')`
-    max_clip : float, int, or Sampler, optional
+    max_clip : float, int, optional
         Clip data higher than this value before calculating bin centers. By default `float('inf')`
     return_log : bool, optional
         Optionally return the log of the softly quantized tensor. By default False
@@ -118,11 +118,6 @@ def soft_quantize(
     # Visualize the softly quantized tensor.
     >>> plt.imshow(softly_quantized_tensor[0, 0, 16])
     """
-    # Initialize and draw realizations from samplers from input arguments
-    nb_bins = ne.samplers.make_sampler(ne.samplers.Fixed, nb_bins)()
-    softness = ne.samplers.make_sampler(ne.samplers.Fixed, softness)()
-    min_clip = ne.samplers.make_sampler(ne.samplers.Fixed, min_clip)()
-    max_clip = ne.samplers.make_sampler(ne.samplers.Fixed, max_clip)()
 
     # Invert softness
     softness = 1 / softness
