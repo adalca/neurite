@@ -184,8 +184,8 @@ def mse(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
 
 
 def create_gaussian_kernel(
-    kernel_size: Union[int, Sampler] = 3,
-    sigma: Union[float, int, Sampler] = 1,
+    kernel_size: int = 3,
+    sigma: Union[float, int] = 1,
     ndim: int = 3,
     nchannels: int = 1
 ) -> torch.Tensor:
@@ -194,8 +194,8 @@ def create_gaussian_kernel(
 
     Parameters
     ----------
-    kernel_size : Sampler or int, optional
-        Size of Gaussian kernel. Default is 3.
+    kernel_size : int, optional
+        Size of each dimension in the Gaussian kernel. Default is 3.
     sigma : float, int, or Sampler, optional
         Standard deviation of the Gaussian kernel. Default is 1.
     ndim : int
@@ -212,12 +212,9 @@ def create_gaussian_kernel(
     # Make the kernel!
     >>> gaussian_kernel = create_gaussian_kernel(3, 1, 3)
     # Print shape (should have batch and channel dimensions)
-    >>> gaussian_kernel.shape()
+    >>> gaussian_kernel.shape
     torch.Size([1, 1, 3, 3, 3])
     """
-    # Initialize and sample parameters
-    kernel_size = ne.samplers.make_sampler(ne.samplers.Fixed, kernel_size)()
-    sigma = ne.samplers.make_sampler(ne.samplers.Fixed, sigma)()
 
     # Create a coordinate grid centered at zero
     coords = torch.arange(kernel_size).float() - (kernel_size - 1) / 2
@@ -251,9 +248,9 @@ def gaussian_smoothing(
     ----------
     input_tensor : torch.Tensor
         The input tensor, assumed to be 1D, 2D, or 3D.
-    kernel_size : Sampler or int, optional
+    kernel_size : int, optional
         Size of the Gaussian kernel, default is 3.
-    sigma : float, int, or Sampler, optional
+    sigma : float or int, optional
         Standard deviation of the Gaussian kernel, default is 1.
 
     Returns
@@ -269,9 +266,6 @@ def gaussian_smoothing(
     # Smooth it
     >>> smoothed_tensor = gaussian_smoothing(input_tensor)
     """
-    # Sampling parameters
-    kernel_size = ne.samplers.make_sampler(ne.samplers.Fixed, kernel_size)()
-    sigma = ne.samplers.make_sampler(ne.samplers.Fixed, sigma)()
 
     # Infer dimensionality in voxel/pixel space. Squeeze to remove batch and/or channel dims.
     ndim = input_tensor.dim() - 2
