@@ -12,7 +12,7 @@ __all__ = [
     "ContextCrossConv"
 ]
 
-from typing import List, Union, Type, Optional, Tuple, Literal
+from typing import List, Union, Type, Tuple, Literal
 import importlib
 import einops
 import torch
