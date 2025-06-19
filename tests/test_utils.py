@@ -48,3 +48,47 @@ def test_soft_quantize_clipping():
 
     assert torch.all(output_tensor >= 0.0)
     assert torch.all(output_tensor <= 1.0)
+
+
+def test_create_gaussian_kernel_sums_to_one():
+    """Make sure kernel is normalized (sums to 1)"""
+
+    kernel = ne.utils.utils.create_gaussian_kernel(
+        kernel_size=7,
+        sigma=2.5,
+        ndim=2,
+        nchannels=1
+    )
+
+    total = kernel.sum()
+
+    assert torch.allclose(total, torch.tensor(1.0), atol=1e-6)
+
+
+def test_create_gaussian_kernel_shape_and_symmetry():
+    """
+    For nchannels>1, kernel shape should be
+    [nchannels, nchannels, *spatial_dims], and each channel
+    kernel should be identical.
+    """
+
+    nchannels = 3
+    kernel_size, sigma, ndim = 5, 1.0, 3
+    kernel = ne.utils.utils.create_gaussian_kernel(
+        kernel_size=kernel_size,
+        sigma=sigma,
+        ndim=ndim,
+        nchannels=nchannels
+    )
+
+    # shape check
+    expected = (nchannels, nchannels) + (kernel_size,) * ndim
+    assert kernel.shape == expected
+
+    # spatial kernels along the diagonal should match
+    spatial_00 = kernel[0, 0]
+    spatial_11 = kernel[1, 1]
+
+    assert torch.allclose(spatial_00, spatial_11)
+
+
