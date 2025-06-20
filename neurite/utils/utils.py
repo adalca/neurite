@@ -514,20 +514,15 @@ def subsample_tensor_random_dims(
     """
     Subsample the input tensor along randomly selected dimensions
 
-    This extends neurite.utils.subsample_tensor() by applying constraints on which dimensions to
+    This extends `neurite.utils.subsample_tensor()` by applying constraints on which dimensions to
     subsample (`forbidden_dims`), the stride, and the probability of subsampling.
 
     Parameters
     ----------
     input_tensor : torch.Tensor
         The input tensor to be subsampled. Assumed to have batch and channel dimensions.
-    stride : Sampler or int or tuple optional
-        The stride value to use when subsampling a given dimension. Can be int, Sampler, or tuple
-        corresponding to the range of strides to sample. By default, 2.
-            - When stride is an int, the stride is considered to be fixed
-            - When the stride is a tuple of two elements, the elements correspond to the upper and
-            lower bounds of a uniformly distributed integer sampler.
-            - When a sampler is passed, use that sampler to sample the strides at each calll
+    stride : int,  optional
+        The stride value to use when subsampling a given dimension. By default, 2.
             - A stride of 1 does not result in any subsampling.
             - A stride of 2 will reduce the elements of the selected dimension by 1/2.
     forbidden_dims : list, optional
@@ -565,11 +560,12 @@ def subsample_tensor_random_dims(
               [10, 13],
               [20, 23]]]])
     >>> # Subsample by defining the stride range.
-    >>> subsampled_tensor = subsample_tensor_random_dims(input_tensor, stride=(3, 4))
+    >>> subsampled_tensor = subsample_tensor_random_dims(input_tensor, stride=4)
     >>> print(subsampled_tensor)
     tensor([[[[ 0,  4],
               [20, 24]]]])
     """
+
     # Determine how many dimensions should be subsampled at once
     if max_concurrent_subsamplings is None:
         # If None, we will subsample at most *all* of them (at once!)
@@ -608,22 +604,17 @@ def subsample_tensor_random_dims(
         returns='successes'
     )
 
-    # If the stride is an int we'll set it to be a fixed sampler.
-    # This prevents us from trying to stride 0 elements (not possible), and one element (no effect).
-    if isinstance(stride, int | float):
-        stride_sampler = ne.samplers.make_sampler(ne.samplers.Fixed, stride)
-    else:
-        stride_sampler = ne.samplers.make_sampler(ne.samplers.RandInt, stride)
-
     # Perform the subsampling.
     for dimension in dimensions_to_subsample:
+        print(dimension)
         # Sample the stride
-        sampled_stride = stride_sampler()
+        # sampled_stride = stride_sampler()
         # Apply the subsampling operation
+        print(input_tensor.shape)
         input_tensor = subsample_tensor(
-            input_tensor,
-            subsampling_dimension=dimension,
-            stride=sampled_stride
+            input_tensor=input_tensor,
+            subsampling_dimension=int(dimension) - 2,  # Minus 2 for spatial dims
+            stride=stride
         )
 
     return input_tensor
