@@ -103,3 +103,31 @@ def test_subsample_tensor_magnitudes():
     subsampled_tensor = ne.utils.utils.subsample_tensor(input_tensor, stride=2)
 
     torch.allclose(subsampled_tensor, subsampled_gt)
+
+
+@pytest.mark.parametrize(
+    "stride, subsampling_dimension, input_tensor",
+    [
+        (2, None, torch.randn(1, 1, 32, 32, 32)),
+        ([2], [0], torch.randn(1, 1, 32)),
+        ((2, 4), (0, 1), torch.randn(1, 1, 32, 32)),
+        ((2, 4, 6), [0, 1, 2], torch.randn(1, 1, 32, 32, 32)),
+    ],
+)
+def test_subsample_tensor_strides(
+    stride,
+    subsampling_dimension,
+    input_tensor,
+):
+    """
+    Ensure subsampling produces expected magnitudes/skips.
+    """
+
+    # input_tensor = torch.randn(1, 1, *[32] * len(stride))
+
+    ne.utils.utils.subsample_tensor(
+        input_tensor,
+        stride=stride,
+        subsampling_dimension=subsampling_dimension,
+    )
+
