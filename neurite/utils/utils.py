@@ -218,7 +218,7 @@ def create_gaussian_kernel(
 
     # Create a coordinate grid centered at zero
     coords = torch.arange(kernel_size).float() - (kernel_size - 1) / 2
-    grid = torch.stack(torch.meshgrid([coords] * ndim), -1)
+    grid = torch.stack(torch.meshgrid([coords] * ndim, indexing='ij'), -1)
 
     # Calculate the Gaussian function
     kernel = torch.exp(-((grid ** 2).sum(-1) / (2 * sigma ** 2)))
