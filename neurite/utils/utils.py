@@ -415,8 +415,8 @@ def apply_bernoulli_mask(input_tensor, p: float = 0.5, returns: str = None) -> t
 
 def subsample_tensor(
     input_tensor: torch.Tensor,
-    stride: int = 2,
-    subsampling_dimension: int = None,
+    stride: Union[List, Tuple, int, None] = 2,
+    subsampling_dimension: Union[List, Literal[0, 1, 2], int, None] = None,
 ) -> torch.Tensor:
     """
     Subsamples `input_tensor` by a factor `stride` along the specified dimension.
@@ -467,6 +467,9 @@ def subsample_tensor(
             [10, 11, 12, 13, 14],
             [20, 21, 22, 23, 24]])
     """
+
+    if isinstance(subsampling_dimension, torch.Tensor):
+        raise TypeError("subsampling_dimension must be an int, list, tuple, or None, not a Tensor")
 
     # Infer the number of spatial dimensions
     n_spatial = input_tensor.dim() - 2
