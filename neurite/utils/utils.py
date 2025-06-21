@@ -42,7 +42,7 @@ __all__ = [
     "make_upsampling_conv_blocks",
     "derive_dense_displcement_field_from_affines",
     "grid",
-    "make_sample_checkerboard_image",
+    "checkerboard",
     "make_sample_flow",
     "cross_expand",
     "filter_dim",
@@ -1352,7 +1352,7 @@ def grid(
     return grid
 
 
-def make_sample_checkerboard_image(
+def checkerboard(
         image_shape: tuple = (1, 1, 16, 16),
         square_size: int = 3,
         device: str = "cpu"
@@ -1382,7 +1382,7 @@ def make_sample_checkerboard_image(
 
     Example
     -------
-    >>> img = make_sample_checkerboard_image((1, 1, 6, 6), square_size=2)
+    >>> img = checkerboard((1, 1, 6, 6), square_size=2)
     >>> img[0, 0]
     tensor([[1., 1., 0., 0., 1., 1.],
             [1., 1., 0., 0., 1., 1.],
