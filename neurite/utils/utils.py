@@ -41,7 +41,7 @@ __all__ = [
     "make_downsampling_conv_blocks",
     "make_upsampling_conv_blocks",
     "derive_dense_displcement_field_from_affines",
-    "make_grid",
+    "grid",
     "make_sample_checkerboard_image",
     "make_sample_flow",
     "cross_expand",
@@ -1277,7 +1277,7 @@ def derive_dense_displcement_field_from_affines(
     return displacement
 
 
-def make_grid(
+def grid(
     size: Tuple[int],
     device: Union[str, torch.device] = "cpu",
     dtype: Union[str, torch.dtype] = torch.float32,
@@ -1309,10 +1309,10 @@ def make_grid(
     Examples
     --------
     ### Make a 2d grid of size (3, 2)
-    >>> grid = make_grid(size=(3, 2))
-    >>> print(grid.shape)
+    >>> the_grid = grid(size=(3, 2))
+    >>> print(the_grid.shape)
     torch.Size([1, 2, 3, 2])
-    >>> print(grid)
+    >>> print(the_grid)
     tensor([[[[-1., -1.],
             [ 0.,  0.],
             [ 1.,  1.]],
