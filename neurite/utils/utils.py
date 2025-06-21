@@ -1282,6 +1282,7 @@ def grid(
     device: Union[str, torch.device] = "cpu",
     dtype: Union[str, torch.dtype] = torch.float32,
     normalize: bool = False,
+    indexing: Literal["ij", "xy"] = "ij",
 ) -> torch.Tensor:
     """
     Generate a grid of spatial coordinates.
@@ -1296,7 +1297,9 @@ def grid(
     device : Union[str, torch.device], optional
         The device on which the grid will reside. By default "cpu"
     dtype : Union[str, torch.dtype], optional
-        The data type of the tensor grid, by default None
+        The data type of the tensor grid, by default ``torch.float32``
+    indexing : Literal["ij", "xy"], optional
+        Indexing mode passed to ``torch.meshgrid``. Defaults to ``"ij"``.
     normalize : bool, optional
         Normalize each dimension of the grid to the range [-1, 1]. Otherwise, the grid coords span
         from 0 to `size[i] - 1` for each dimension.
@@ -1338,7 +1341,7 @@ def grid(
         axes.append(axis)
 
     # Make grid as a tuple of torch.Tensor
-    grid = torch.meshgrid(*axes, indexing="ij")
+    grid = torch.meshgrid(*axes, indexing=indexing)
 
     # Stack the grid tuples to make a tensor, and create new leading singleton dimension
     grid = torch.stack(grid)
