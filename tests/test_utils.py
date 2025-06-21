@@ -1,4 +1,6 @@
 import pytest
+import itertools
+
 import torch
 import neurite as ne
 
@@ -131,3 +133,42 @@ def test_subsample_tensor_strides(
         subsampling_dimension=subsampling_dimension,
     )
 
+
+@pytest.mark.parametrize(
+        'grid_shape, expected_out_shape',
+        (
+            ((32,), (1, 32, 1)),
+            ((32, 32), (1, 32, 32, 2)),
+            ((32, 32, 32), (1, 32, 32, 32, 3)),
+        )
+)
+def test_grid_shape(grid_shape, expected_out_shape):
+
+    coord_grid = ne.utils.utils.grid(grid_shape)
+    assert coord_grid.shape == expected_out_shape
+
+
+@pytest.mark.parametrize(
+        "grid_shape", [(32,), (32, 32), (32, 32, 32)]
+)
+def test_grid_normalized(grid_shape: tuple):
+    """
+    Test that when normalize=True and indexing='ij', every corner of the
+    generated coordinate grid has values exactly -1 or 1.
+    """
+
+    coord_grid = ne.utils.utils.grid(grid_shape, normalize=True, indexing='ij')
+    corners = tuple(itertools.product(*[[0, s - 1] for s in grid_shape]))
+
+    expected_corner_values = tuple(
+        tuple(-1 if c == 0 else 1 for c in corner)
+        for corner in corners
+    )
+
+    corner_vals = torch.stack([
+        coord_grid[(0, *corner)] for corner in corners
+    ], dim=0)
+
+    expected_corner_values = torch.tensor(expected_corner_values)
+
+    assert torch.all(corner_vals == expected_corner_values)
