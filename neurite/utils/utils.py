@@ -2039,13 +2039,12 @@ def infer_linear_interpolation_mode(
     >>> infer_linear_interpolation_mode(3)
     'trilinear'
     """
-    match num_spatial:
-        case 1:
-            return 'linear'
-        case 2:
-            return 'bilinear'
-        case 3:
-            return 'trilinear'
+    if num_spatial == 1:
+        return 'linear'
+    elif num_spatial == 2:
+        return 'bilinear'
+    elif num_spatial == 3:
+        return 'trilinear'
 
 
 # Map normalization types to PyTorch classes
