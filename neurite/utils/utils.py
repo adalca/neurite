@@ -1806,8 +1806,8 @@ def dice(
     )
 
     # Flatten spatial dimensions while preserving batch and channel dims
-    seg1 = seg1.view(seg1.size(0), seg1.size(1), -1).contiguous()
-    seg2 = seg2.view(seg2.size(0), seg2.size(1), -1).contiguous()
+    seg1 = seg1.view(seg1.size(0), seg1.size(1), -1)# .contiguous()
+    seg2 = seg2.view(seg2.size(0), seg2.size(1), -1)# .contiguous()
 
     # Per-class intersection
     intersection = (seg2 * seg1).sum(dim=2)
@@ -1893,8 +1893,8 @@ def log_dice(
         assert sum(seg2.exp()) == 1.0, ("seg2 is not a valid probability distribution")
 
     # Flatten all spatial dims into one axis
-    seg1 = seg1.view(seg1.size(0), seg1.size(1), -1).contiguous()
-    seg2 = seg2.view(seg2.size(0), seg2.size(1), -1).contiguous()
+    seg1 = seg1.flatten(2)
+    seg2 = seg2.flatten(2)
 
     # Reshape and convert numerator smoothing factor into log domain for logsumexp
     log_smooth_numerator = torch.tensor(
