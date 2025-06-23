@@ -43,7 +43,7 @@ __all__ = [
     "affine_to_dense_shift",
     "grid",
     "checkerboard",
-    "make_sample_flow",
+    "constant_flow",
     "cross_expand",
     "filter_dim",
     "crop_to_nearest_multiple",
@@ -1418,7 +1418,7 @@ def checkerboard(
     return checkerboard_image
 
 
-def make_sample_flow(
+def constant_flow(
     shape: tuple = (1, 1, 16, 16),
     device: str = 'cpu',
     shift_size: int = 1,
