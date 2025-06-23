@@ -50,7 +50,7 @@ __all__ = [
     "logistic",
     "dice",
     "log_dice",
-    "reduce_tensor",
+    "reduce",
     "infer_linear_interpolation_mode",
     "build_normalization",
 ]
@@ -1822,7 +1822,7 @@ def dice(
     if reduction is None:
         return dice_score
     else:
-        return reduce_tensor(
+        return reduce(
             tensor=dice_score,
             reduction=reduction,
             dim=reduction_dim,
@@ -1931,7 +1931,7 @@ def log_dice(
     return log_dice_vals
 
 
-def reduce_tensor(
+def reduce(
     tensor: torch.Tensor,
     reduction: str = 'mean',
     dim: Union[Tuple[int, ...], int] = (0, 1),
@@ -1975,10 +1975,10 @@ def reduce_tensor(
     >>> # Make a random tensor
     >>> input_tensor = torch.randn(3, 4, 128, 128)
     >>> # Getting the means from each batch
-    >>> reduce_tensor(input_tensor, reduction='mean', dim=(1, 2, 3))
+    >>> reduce(input_tensor, reduction='mean', dim=(1, 2, 3))
     tensor([-0.0004, -0.0021, -0.0052])
     >>> # Getting the largest value from each batch
-    >>> reduce_tensor(input_tensor, reduction='amax', dim=(1, 2, 3))
+    >>> reduce(input_tensor, reduction='amax', dim=(1, 2, 3))
     tensor([4.6618, 3.9218, 4.1831])
     """
 
@@ -2009,7 +2009,7 @@ def reduce_tensor(
 
     else:
         raise ValueError(
-            f"ne.utils.reduce_tensor received an invaid `reduction`. Got {reduction}. Valid options"
+            f"ne.utils.reduce received an invaid `reduction`. Got {reduction}. Valid options"
             " are {'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean', 'argmin', "
             "'argmax'}"
         )
