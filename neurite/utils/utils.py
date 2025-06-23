@@ -30,7 +30,7 @@ __all__ = [
     "gaussian_smoothing",
     "bernoulli",
     "apply_bernoulli_mask",
-    "subsample_tensor",
+    "subsample",
     "subsample_tensor_random_dims",
     "upsample_tensor",
     "resample_tensor",
@@ -413,7 +413,7 @@ def apply_bernoulli_mask(input_tensor, p: float = 0.5, returns: str = None) -> t
     return masked
 
 
-def subsample_tensor(
+def subsample(
     input_tensor: torch.Tensor,
     stride: Union[List, Tuple, int, None] = 2,
     subsampling_dimension: Union[List, Literal[0, 1, 2], int, None] = None,
@@ -452,7 +452,7 @@ def subsample_tensor(
             [15, 16, 17, 18, 19],
             [20, 21, 22, 23, 24]])
     # Subsample along the first dimension (the columns)
-    >>> subsampled_tensor = subsample_tensor(input_tensor, subsampling_dimension=1)
+    >>> subsampled_tensor = subsample(input_tensor, subsampling_dimension=1)
     # With the default stride (of 2), every other column should have been dropped out.
     >>> print(subsampled_tensor)
     tensor([[ 0,  2,  4],
@@ -461,7 +461,7 @@ def subsample_tensor(
             [15, 17, 19],
             [20, 22, 24]])
     # We could, of course, keep the default `subsampling_dimension=0` and subsample the rows:
-    >>> subsampled_tensor = subsample_tensor(input_tensor, subsampling_dimension=1)
+    >>> subsampled_tensor = subsample(input_tensor, subsampling_dimension=1)
     >>> print(subsampled_tensor)
     tensor([[ 0,  1,  2,  3,  4],
             [10, 11, 12, 13, 14],
@@ -514,7 +514,7 @@ def subsample_tensor_random_dims(
     """
     Subsample the input tensor along randomly selected dimensions
 
-    This extends `neurite.utils.subsample_tensor()` by applying constraints on which dimensions to
+    This extends `neurite.utils.subsample()` by applying constraints on which dimensions to
     subsample (`forbidden_dims`), the stride, and the probability of subsampling.
 
     Parameters
@@ -611,7 +611,7 @@ def subsample_tensor_random_dims(
         # sampled_stride = stride_sampler()
         # Apply the subsampling operation
         print(input_tensor.shape)
-        input_tensor = subsample_tensor(
+        input_tensor = subsample(
             input_tensor=input_tensor,
             subsampling_dimension=int(dimension) - 2,  # Minus 2 for spatial dims
             stride=stride
@@ -687,7 +687,7 @@ def resample_tensor(
     """
     Subsample `input_tensor` by a factor `stride`, then upsample it by `scale_factor`.
 
-    Combines `subsample_tensor` and `upsample_tensor` by first subsampling `input_tensor` along a
+    Combines `subsample` and `upsample_tensor` by first subsampling `input_tensor` along a
     given dimension by `stride`, then upsampling back to `shape`.
 
     Parameters
@@ -728,7 +728,7 @@ def resample_tensor(
     """
 
     # Subsample tensor
-    resampled = subsample_tensor(
+    resampled = subsample(
         input_tensor,
         subsampling_dimension=resample_dimension,
         stride=downsample_stride
