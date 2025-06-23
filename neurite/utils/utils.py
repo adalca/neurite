@@ -271,7 +271,7 @@ def gaussian_smoothing(
     ndim = input_tensor.dim() - 2
 
     # Initialize the gaussian kernel
-    gaussian_kernel = gaussian_kernel(
+    gaussian_kernel_ = gaussian_kernel(
         kernel_size=kernel_size,
         sigma=sigma,
         ndim=ndim,
@@ -294,7 +294,7 @@ def gaussian_smoothing(
     # Apply the smoothig operation
     smoothed_tensor = conv_fn(
         input=padded_input_tensor,
-        weight=gaussian_kernel,
+        weight=gaussian_kernel_,
         padding=0,
     )
 
