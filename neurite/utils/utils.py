@@ -40,7 +40,7 @@ __all__ = [
     "is_instantiated_normalization",
     "make_downsampling_conv_blocks",
     "make_upsampling_conv_blocks",
-    "derive_dense_displcement_field_from_affines",
+    "affine_to_dense_shift",
     "grid",
     "checkerboard",
     "make_sample_flow",
@@ -1203,7 +1203,7 @@ def make_upsampling_conv_blocks(
     return upsampling_conv_blocks
 
 
-def derive_dense_displcement_field_from_affines(
+def affine_to_dense_shift(
     affine_a: torch.Tensor,
     affine_b: torch.Tensor,
     grid_size: tuple,
@@ -1243,7 +1243,7 @@ def derive_dense_displcement_field_from_affines(
     >>> # Dilate original affine by 2
     >>> aff_b_2d = aff_a_2d * 2
     >>> grid_size_2d = (128, 128)
-    >>> displacement_field = derive_dense_displacement_field_from_affines(
+    >>> displacement_field = affine_to_dense_shift(
     ...     aff_a_2d, aff_b_2d, grid_size_2d
     ... )
     """
