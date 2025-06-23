@@ -26,7 +26,7 @@ __all__ = [
     "identity",
     "soft_quantize",
     "mse",
-    "create_gaussian_kernel",
+    "gaussian_kernel",
     "gaussian_smoothing",
     "bernoulli",
     "apply_bernoulli_mask",
@@ -183,7 +183,7 @@ def mse(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
     return torch.mean((tensor1 - tensor2) ** 2)
 
 
-def create_gaussian_kernel(
+def gaussian_kernel(
     kernel_size: int = 3,
     sigma: Union[float, int] = 1,
     ndim: int = 3,
@@ -210,9 +210,9 @@ def create_gaussian_kernel(
     --------
     >>> import torch
     # Make the kernel!
-    >>> gaussian_kernel = create_gaussian_kernel(3, 1, 3)
+    >>> gaussian_kernel_ = gaussian_kernel(3, 1, 3)
     # Print shape (should have batch and channel dimensions)
-    >>> gaussian_kernel.shape
+    >>> gaussian_kernel_.shape
     torch.Size([1, 1, 3, 3, 3])
     """
 
@@ -271,7 +271,7 @@ def gaussian_smoothing(
     ndim = input_tensor.dim() - 2
 
     # Initialize the gaussian kernel
-    gaussian_kernel = create_gaussian_kernel(
+    gaussian_kernel = gaussian_kernel(
         kernel_size=kernel_size,
         sigma=sigma,
         ndim=ndim,

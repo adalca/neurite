@@ -55,7 +55,7 @@ def test_soft_quantize_clipping():
 def test_create_gaussian_kernel_sums_to_one():
     """Make sure kernel is normalized (sums to 1)"""
 
-    kernel = ne.utils.utils.create_gaussian_kernel(
+    kernel = ne.utils.utils.gaussian_kernel(
         kernel_size=7,
         sigma=2.5,
         ndim=2,
@@ -76,7 +76,7 @@ def test_create_gaussian_kernel_shape_and_symmetry():
 
     nchannels = 3
     kernel_size, sigma, ndim = 5, 1.0, 3
-    kernel = ne.utils.utils.create_gaussian_kernel(
+    kernel = ne.utils.utils.gaussian_kernel(
         kernel_size=kernel_size,
         sigma=sigma,
         ndim=ndim,
