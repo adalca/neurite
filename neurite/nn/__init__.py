@@ -3,5 +3,6 @@ Rich set of tools for building and training neural networks, and operating on te
 """
 
 from . import functional
+from . import layers
 from . import models
 from . import modules

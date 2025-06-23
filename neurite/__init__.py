@@ -66,6 +66,5 @@ if (
 from . import py        # Noqa: F401
 from . import nn
 from . import utils
-from . import layers
 from . import losses
 from . import samplers
