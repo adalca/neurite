@@ -38,7 +38,7 @@ __all__ = [
     "random_clear_label",
     "sample_image_from_labels",
     "is_instantiated_normalization",
-    "make_downsampling_conv_blocks",
+    "downsampling_conv_blocks",
     "make_upsampling_conv_blocks",
     "affine_to_dense_shift",
     "grid",
@@ -984,7 +984,7 @@ def is_instantiated_normalization(obj: object) -> bool:
     return isinstance(obj, normalization_classes)
 
 
-def make_downsampling_conv_blocks(
+def downsampling_conv_blocks(
     ndim: int,
     nb_features: List[int],
     kernel_size: int = 3,
@@ -1038,7 +1038,7 @@ def make_downsampling_conv_blocks(
 
     Examples
     --------
-    >>> downsampling_conv_blocks = make_downsampling_conv_blocks(
+    >>> downsampling_conv_blocks = downsampling_conv_blocks(
     ...     ndim=2,
     ...     nb_features=[3, 16, 32],
     ...     kernel_size=3,

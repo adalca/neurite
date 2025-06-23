@@ -117,7 +117,7 @@ class BasicUNet(nn.Module):
         self.reversed_features = list(reversed(nb_features))
 
         # Downsampling convolutional blocks
-        self.downsampling_conv_blocks = ne.utils.make_downsampling_conv_blocks(
+        self.downsampling_conv_blocks = ne.utils.downsampling_conv_blocks(
             ndim=ndim,
             nb_features=self.nb_features,
             normalizations=self.normalizations,
@@ -284,7 +284,7 @@ class BasicAutoencoder(nn.Module):
             self.activations = [activations] * len(nb_features)
 
         # Encoder network
-        self.downsampling_conv_blocks = ne.utils.make_downsampling_conv_blocks(
+        self.downsampling_conv_blocks = ne.utils.downsampling_conv_blocks(
             ndim=ndim,
             nb_features=[in_channels, *nb_features],
             normalizations=self.normalizations,
