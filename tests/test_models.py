@@ -35,7 +35,7 @@ def test_basicunet_forward_shapes(ndim, spatial_size):
     out_ch = 5
 
     # Instantiate model with a small feature map
-    model = ne.models.BasicUNet(
+    model = ne.nn.models.BasicUNet(
         ndim=ndim,
         in_channels=in_ch,
         out_channels=out_ch,
@@ -76,7 +76,7 @@ def test_basicunet_residual_option(residual):
     out_ch = 1
     size = (16, 16)
 
-    model = ne.models.BasicUNet(
+    model = ne.nn.models.BasicUNet(
         ndim=ndim,
         in_channels=in_ch,
         out_channels=out_ch,
@@ -111,7 +111,7 @@ def test_basicunet_upsample_modes(mode):
     in_ch = 1
     out_ch = 1
 
-    model = ne.models.BasicUNet(
+    model = ne.nn.models.BasicUNet(
         ndim=ndim,
         in_channels=in_ch,
         out_channels=out_ch,
@@ -142,7 +142,7 @@ def test_basicunet_forward_cuda():
     out_ch = 1
 
     # Move model and data to GPU
-    model = ne.models.BasicUNet(
+    model = ne.nn.models.BasicUNet(
         ndim=ndim,
         in_channels=in_ch,
         out_channels=out_ch,
@@ -173,7 +173,7 @@ def test_basicunet_forward_mps():
     out_ch = 1
 
     # Move model and data to MPS
-    model = ne.models.BasicUNet(
+    model = ne.nn.models.BasicUNet(
         ndim=ndim,
         in_channels=in_ch,
         out_channels=out_ch,

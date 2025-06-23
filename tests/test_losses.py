@@ -43,7 +43,7 @@ def test_dice_shapes(spatial_dims):
 
     try:
         # Dice is able to handle multiple dimensions on the fly
-        ne.utils.utils.dice(seg, seg, reduction=None)
+        ne.nn.functional.dice(seg, seg, reduction=None)
     except Exception as e:
         pytest.fail(f"Dice failed for tensor with {spatial_dims} spatial dims: {e}")
 
@@ -154,7 +154,6 @@ def test_dice_wrapper():
     assert torch.allclose(result, expected, atol=1e-6), (
         "Dice for identical inputs should be close to 1."
     )
-
 
 
 def test_log_dice(log_probabilities):
