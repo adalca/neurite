@@ -33,7 +33,7 @@ __all__ = [
     "subsample",
     "subsample_tensor_random_dims",
     "upsample",
-    "resample_tensor",
+    "resample",
     "make_range",
     "random_clear_label",
     "sample_image_from_labels",
@@ -676,7 +676,7 @@ def upsample(
     return upsampled
 
 
-def resample_tensor(
+def resample(
     input_tensor: torch.Tensor,
     resample_dimension: Union[int, List[int]] = None,
     downsample_stride: Union[int, List[int]] = 2,
@@ -718,7 +718,7 @@ def resample_tensor(
     >>> import torch
     >>> input_tensor = torch.randn(1, 3, 32, 32)
     >>> # Subsample rows/cols by 2, then upsample to (64, 64)
-    >>> res = resample_tensor(
+    >>> res = resample(
     ...     input_tensor, shape=(64, 64),
     ...     subsampling_dimension=2, stride=2,
     ...     mode='bilinear'
