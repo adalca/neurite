@@ -128,7 +128,7 @@ class BasicUNet(nn.Module):
         )
 
         # Convolutional block between downsampling and upsampling arms (lowest resolution)
-        self.lowest_resolution_conv_block = ne.modules.ConvBlock(
+        self.lowest_resolution_conv_block = ne.nn.modules.ConvBlock(
             ndim=ndim,
             in_channels=self.nb_features[-1],
             out_channels=self.nb_features[-1],
@@ -152,7 +152,7 @@ class BasicUNet(nn.Module):
         )
 
         # Final convolutional block
-        self.out_layer = ne.modules.ConvBlock(
+        self.out_layer = ne.nn.modules.ConvBlock(
             ndim=ndim,
             in_channels=nb_features[0],
             out_channels=out_channels,
@@ -294,7 +294,7 @@ class BasicAutoencoder(nn.Module):
         )
 
         # Bottleneck layer (latent space)
-        bottleneck = ne.modules.ConvBlock(
+        bottleneck = ne.nn.modules.ConvBlock(
             ndim=ndim,
             in_channels=nb_features[-1],
             out_channels=latent_features,
@@ -319,7 +319,7 @@ class BasicAutoencoder(nn.Module):
         )
 
         # Output layer
-        self.out_layer = ne.modules.ConvBlock(
+        self.out_layer = ne.nn.modules.ConvBlock(
             ndim=ndim,
             in_channels=nb_features[1],
             out_channels=out_channels,
