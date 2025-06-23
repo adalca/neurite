@@ -32,7 +32,7 @@ __all__ = [
     "apply_bernoulli_mask",
     "subsample",
     "subsample_tensor_random_dims",
-    "upsample_tensor",
+    "upsample",
     "resample_tensor",
     "make_range",
     "random_clear_label",
@@ -620,7 +620,7 @@ def subsample_tensor_random_dims(
     return input_tensor
 
 
-def upsample_tensor(
+def upsample(
     input_tensor: torch.Tensor,
     mode: Literal['linear', 'nearest', 'bicubic', 'area', 'nearest-exact'] = 'linear',
     scale_factor: float = 2,
@@ -643,12 +643,12 @@ def upsample_tensor(
     --------
     >>> # 2D Upsampling
     >>> input_tensor = torch.randn(1, 3, 32, 32)  # (B, C, H, W)
-    >>> upsampled_tensor = upsample_tensor(input_tensor, shape=(64, 64), mode='bilinear')
+    >>> upsampled_tensor = upsample(input_tensor, shape=(64, 64), mode='bilinear')
     >>> print(upsampled_tensor.shape)
     torch.Size([1, 3, 64, 64])
     >>> # 3D Upsampling
     >>> input_tensor = torch.randn(1, 3, 32, 32, 32)  # (B, C, D, H, W)
-    >>> upsampled_tensor = upsample_tensor(input_tensor, shape=(64, 64, 64), mode='bilinear')
+    >>> upsampled_tensor = upsample(input_tensor, shape=(64, 64, 64), mode='bilinear')
     >>> print(upsampled_tensor.shape)
     torch.Size([1, 3, 64, 64, 64])
     """
@@ -687,7 +687,7 @@ def resample_tensor(
     """
     Subsample `input_tensor` by a factor `stride`, then upsample it by `scale_factor`.
 
-    Combines `subsample` and `upsample_tensor` by first subsampling `input_tensor` along a
+    Combines `subsample` and `upsample` by first subsampling `input_tensor` along a
     given dimension by `stride`, then upsampling back to `shape`.
 
     Parameters
@@ -735,7 +735,7 @@ def resample_tensor(
     )
 
     # Upsample tensor
-    resampled = upsample_tensor(
+    resampled = upsample(
         resampled,
         shape=shape,
         mode=mode,
