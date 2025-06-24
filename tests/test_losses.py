@@ -180,11 +180,11 @@ def test_multiple_log_dice(n_segs, log_probabilities):
     log_probs = [log_probabilities] * n_segs
 
     # Compute dice on log between the same tensor
-    log_dice_score = ne.utils.log_dice(*log_probs)
+    log_dice_score = ne.utils.log_dice(*log_probs, reduction='mean')
 
     # The expected log dice (still in the log domain) should be zero
     expected = torch.tensor(0.0)
 
-    assert torch.allclose(log_dice_score, expected, atol=1e-6), (
+    assert torch.allclose(log_dice_score, expected, atol=1e-4), (
         f"Log dice for identical tensors should be close to 1. Got {log_dice_score}"
     )

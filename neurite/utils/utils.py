@@ -1874,6 +1874,9 @@ def log_dice(
     *segs,
     smooth_numerator: float = 1e-12,
     smooth_denominator: float = 1e-12,
+    reduction: str = 'mean',
+    reduction_dim: Union[int, Tuple[int, ...]] = (0, 1),
+    keepdims: bool = True,
     enforce_valid_probabilities: bool = False,
 ) -> torch.Tensor:
     """
@@ -1888,6 +1891,15 @@ def log_dice(
         Smoothing constant added to the numerator to avoid log(0). By default, 1e-12.
     smooth_denominator : float, optional
         Smoothing constant added to the denominator to avoid log(0). By default, 1e-12.
+    reduction : str, optional
+        The type of reduction to apply. Supported values for multidimensional reductions are:
+        'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'; for single-dimension
+        reductions: 'argmin', 'argmax', and all multidimensionals. Default is 'mean'.
+    reduction_dim : int or tuple of ints, optional
+        Dimension(s) over which to apply the reduction. For multidimensional reductions, pass a
+        tuple of dimensions; for single-dimension reductions, pass an integer. Default is (0, 1)
+    keepdims : bool, optional
+        Whether to retain reduced dimensions as a singleton. Default is True.
     enforce_valid_probabilities : bool, optional
         Ensure input segmentations represent valid probabilities by checking that ensuring
         exp(seg1) and exp(seg2) sum to 1.
@@ -1978,10 +1990,15 @@ def log_dice(
     # Compute the dice score by negating (dividing in linear domain)
     log_dice_vals = numerator - denominator
 
-    # Average the log dice over the spatial dimensions
-    log_dice_vals = log_dice_vals.mean(dim=2)
+    if reduction is None:
+        return log_dice_vals
 
-    return log_dice_vals
+    return ne.utils.utils.reduce(
+        tensor=log_dice_vals,
+        reduction=reduction,
+        dim=reduction_dim,
+        keepdims=keepdims,
+    )
 
 
 def reduce(
