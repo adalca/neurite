@@ -150,6 +150,7 @@ def test_dice_wrapper():
     )
 
 
+
 def test_log_dice(log_probabilities):
     """
     Test the log-dice score with log-probabilities
@@ -168,4 +169,22 @@ def test_log_dice(log_probabilities):
     )
 
 
+@pytest.mark.parametrize(
+        'n_segs', (2, 5)
+)
+def test_multiple_log_dice(n_segs, log_probabilities):
+    """
+    Test the log-dice score with multiple log-probabilities
+    """
 
+    log_probs = [log_probabilities] * n_segs
+
+    # Compute dice on log between the same tensor
+    log_dice_score = ne.utils.log_dice(*log_probs)
+
+    # The expected log dice (still in the log domain) should be zero
+    expected = torch.tensor(0.0)
+
+    assert torch.allclose(log_dice_score, expected, atol=1e-6), (
+        f"Log dice for identical tensors should be close to 1. Got {log_dice_score}"
+    )
