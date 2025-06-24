@@ -43,7 +43,7 @@ __all__ = [
     "affine_to_dense_shift",
     "grid",
     "checkerboard",
-    "constant_flow",
+    "constant_shift_field",
     "cross_expand",
     "filter_dim",
     "crop_to_nearest_multiple",
@@ -1418,7 +1418,7 @@ def checkerboard(
     return checkerboard_image
 
 
-def constant_flow(
+def constant_shift_field(
     shape: tuple = (1, 1, 16, 16),
     device: str = 'cpu',
     shift_size: int = 1,
@@ -1447,11 +1447,11 @@ def constant_flow(
 
     Example
     -------
-    >>> flow = create_sample_flow((1, 1, 4, 4), device='cpu')
+    >>> flow = create_constant_shift_field((1, 1, 4, 4), device='cpu')
     >>> flow.shape
     torch.Size([1, 2, 4, 4])
 
-    >>> flow_3d = create_sample_flow((1, 1, 4, 4, 4), device='cpu')
+    >>> flow_3d = create_constant_shift_field((1, 1, 4, 4, 4), device='cpu')
     >>> flow_3d.shape
     torch.Size([1, 3, 4, 4, 4])
     """
