@@ -53,11 +53,8 @@ def test_dice_identical():
     # Create an example tensor of shape (B, C, H, W)
     seg = torch.ones((4, 3, 8, 8))
 
-    # Initialize the loss
-    dice = ne.losses.Dice(reduction=None)
-
     # Calculate the dice score
-    result = dice(seg, seg)
+    result = ne.utils.utils.dice(seg, seg)
 
     # The expected value for the dice score for identical inputs
     expected = torch.tensor(1.0)
@@ -89,6 +86,27 @@ def test_dice_nonidentical():
     )
 
 
+def test_dice_opposite():
+    """
+    Ensure dice returns zeros for opposite inputs.
+    """
+
+    # Make uniformly distributed binary tensors
+    seg1 = torch.randint(0, 2, (4, 3, 128, 128, 128)).float()
+    seg2 = 1 - seg1
+
+    # Compute the dice score
+    dice = ne.utils.utils.dice(seg1, seg2, reduction=None)
+
+    # The expected value for the dice of uniformly distributed binary tensors should be 0
+    expected = torch.zeros(4, 3)
+
+    # Allow for a small tolderance because of smoothing and stochasticity
+    assert torch.allclose(dice, expected, atol=1e-5), (
+        "Dice for uniformly distributed binary tensors should be close to 0.5"
+    )
+
+
 def test_multiple_dice_nonidentical():
     """
     Ensure dice returns zeros for opposite inputs.
@@ -109,24 +127,26 @@ def test_multiple_dice_nonidentical():
     )
 
 
-def test_dice_opposite():
+def test_dice_wrapper():
     """
-    Ensure dice returns zeros for opposite inputs.
+    Test Dice module with identical inputs.
     """
 
-    # Make uniformly distributed binary tensors
-    seg1 = torch.randint(0, 2, (4, 3, 128, 128, 128)).float()
-    seg2 = 1 - seg1
+    # Create an example tensor of shape (B, C, H, W)
+    seg = torch.ones((4, 3, 8, 8))
 
-    # Compute the dice score
-    dice = ne.utils.utils.dice(seg1, seg2, reduction=None)
+    # Initialize the loss
+    dice = ne.losses.Dice(reduction=None)
 
-    # The expected value for the dice of uniformly distributed binary tensors should be 0
-    expected = torch.zeros(4, 3)
+    # Calculate the dice score
+    result = dice(seg, seg)
 
-    # Allow for a small tolderance because of smoothing and stochasticity
-    assert torch.allclose(dice, expected, atol=1e-5), (
-        "Dice for uniformly distributed binary tensors should be close to 0.5"
+    # The expected value for the dice score for identical inputs
+    expected = torch.tensor(1.0)
+
+    # Allow a small tolerance because of smoothing constants
+    assert torch.allclose(result, expected, atol=1e-6), (
+        "Dice for identical inputs should be close to 1."
     )
 
 
@@ -149,3 +169,6 @@ def test_log_dice(log_probabilities):
     assert torch.allclose(log_dice_score, expected, atol=1e-6), (
         f"Log dice for identical tensors should be close to 1. Got {log_dice_score}"
     )
+
+
+
