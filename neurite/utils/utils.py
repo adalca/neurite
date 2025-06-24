@@ -1434,8 +1434,8 @@ def constant_shift_field(
     Parameters
     ----------
     shape : tuple, optional
-        Shape of the input tensor, expected as (B, C, *spatial_dims).
-        Default is (1, 1, 4, 4) for a 2D case.
+        Shape of the input tensor, expected as (B, C, *spatial_dims). Default is (1, 1, 4, 4) for a
+        2D case.
     device : str, optional
         The device to allocate tensors to ('cpu' or 'cuda').
 
@@ -1447,22 +1447,42 @@ def constant_shift_field(
 
     Example
     -------
-    >>> flow = create_constant_shift_field((1, 1, 4, 4), device='cpu')
+    >>> flow = constant_shift_field((1, 1, 4, 4), device='cpu')
     >>> flow.shape
     torch.Size([1, 2, 4, 4])
 
-    >>> flow_3d = create_constant_shift_field((1, 1, 4, 4, 4), device='cpu')
+    >>> flow_3d = constant_shift_field((1, 1, 4, 4, 4), device='cpu')
     >>> flow_3d.shape
     torch.Size([1, 3, 4, 4, 4])
     """
-    spatial_dims = shape[2:]  # Extract spatial dimensions
+
+    # Get number of spatial dimensions
+    spatial_dims = shape[2:]
     n_spatial_dims = len(spatial_dims)
 
-    # Create a flow field tensor
-    flow_field = torch.zeros(shape[0], n_spatial_dims, *spatial_dims, device=device)
+    # Make sure the shift size is a tensor
+    if isinstance(shift_size, int):
+        shift_size = torch.tensor([shift_size] * n_spatial_dims)
+    elif isinstance(shift_size, (list, tuple)):
+        shift_size = torch.tensor(shift_size)
+    elif isinstance(shift_size, torch.Tensor):
+        pass
+    else:
+        raise ValueError(
+            f'shift_size must be a tensor, got {type(shift_size)}: {shift_size}'
+        )
 
-    # Shift along the first spatial dimension
-    flow_field[:, 0, ...] = shift_size
+    # Make sure shift_size is the correct shape
+    assert shift_size.shape[0] == n_spatial_dims, (
+        f'shift_size must have {n_spatial_dims} elements. Got {shift_size.shape}: {shift_size}'
+    )
+
+    # Create a flow field tensor and make shift_size compatable
+    flow_field = torch.zeros(shape[0], n_spatial_dims, *spatial_dims, device=device)
+    shift_size = shift_size.view(1, -1, *[1] * n_spatial_dims)
+
+    # Apply the shift
+    flow_field += shift_size
 
     # Optionally normalize
     if normalize:
