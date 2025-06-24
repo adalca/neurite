@@ -101,16 +101,14 @@ class Dice(nn.Module):
         self.reduction_dim = reduction_dim
         self.keepdims = keepdims
 
-    def forward(self, seg1: torch.Tensor, seg2: torch.Tensor) -> torch.Tensor:
+    def forward(self, *segs) -> torch.Tensor:
         """
-        Compute the Dice coefficient between two segmentation tensors.
+        Compute the Dice coefficient between two or more segmentation tensors.
 
         Parameters
         ----------
-        seg1 : torch.Tensor
-            First segmentation tensor of shape (B, C, *spatial_dims).
-        seg2 : torch.Tensor
-            Second segmentation tensor with the same shape as `seg1`
+        *segs : torch.Tensor
+            Two or more segmentation tensors of shape (B, C, *spatial_dims) with values in [0, 1].
 
         Returns
         -------
@@ -119,8 +117,7 @@ class Dice(nn.Module):
         """
 
         return ne.utils.dice(
-            seg1=seg1,
-            seg2=seg2,
+            *segs,
             smooth_numerator=self.smooth_numerator,
             smooth_denominator=self.smooth_denominator,
             reduction=self.reduction,
