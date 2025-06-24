@@ -158,10 +158,7 @@ def test_log_dice(log_probabilities):
     log_probs = log_probabilities
 
     # Compute dice on log between the same tensor
-    log_dice_score = ne.utils.log_dice(
-        seg1=log_probs,
-        seg2=log_probs,
-    )
+    log_dice_score = ne.utils.log_dice(log_probs, log_probs)
 
     # The expected log dice (still in the log domain) should be zero
     expected = torch.tensor(0.0)
