@@ -1420,9 +1420,9 @@ def checkerboard(
 
 def constant_shift_field(
     shape: tuple = (1, 1, 16, 16),
-    device: str = 'cpu',
     shift_size: int = 1,
     normalize: bool = False,
+    device: str = 'cpu',
 ) -> torch.Tensor:
     """
     Makes a simple flow field for testing registration in N-dimensional space.
@@ -1436,6 +1436,12 @@ def constant_shift_field(
     shape : tuple, optional
         Shape of the input tensor, expected as (B, C, *spatial_dims). Default is (1, 1, 4, 4) for a
         2D case.
+    shift_size : int, list of int, or torch.Tensor, optional
+        Shift magnitude for each axis. If int, same shift on all axes. If list/tuple, length must
+        equal number of spatial dims. If Tensor, must have shape (n_spatial_dims,). Default is 1.
+    normalize : bool, optional
+        If True, normalize the first spatial channel by (size - 1), where
+        size is the extent of that axis. Default is False.
     device : str, optional
         The device to allocate tensors to ('cpu' or 'cuda').
 
