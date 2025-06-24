@@ -1871,8 +1871,7 @@ def dice(
 
 
 def log_dice(
-    seg1: torch.Tensor,
-    seg2: torch.Tensor,
+    *segs,
     smooth_numerator: float = 1e-12,
     smooth_denominator: float = 1e-12,
     enforce_valid_probabilities: bool = False,
@@ -1882,10 +1881,9 @@ def log_dice(
 
     Parameters
     ----------
-    seg1 : torch.Tensor
-        Log-probability of the first segmentation. Expected to have batch and channel dims.
-    seg2 : torch.Tensor
-        Log-probability of the second tensor (e.g., ground truth). Shape must match seg1.
+    *segs : torch.Tensor
+        Two or more segmentation tensors of shape (B, C, *spatial_dims) representing
+        log-probabilities.
     smooth_numerator : float, optional
         Smoothing constant added to the numerator to avoid log(0). By default, 1e-12.
     smooth_denominator : float, optional
@@ -1921,43 +1919,58 @@ def log_dice(
     tensor([[0.4981]])
     """
 
-    # Ensure `seg1` and `seg2` represent log probabilities
-    assert torch.all(seg1 <= 0).item() and torch.all(seg2 <= 0).item(), (
-        "ne.utils.log_dice expects input tensors to represent log-probabilities (be entirely "
-        f"negative) but got max={seg1.max()} at entry 0 and max={seg2.max()} at entry 1."
-    )
+    # Validate number of inputs
+    if len(segs) < 2:
+        raise ValueError(
+            'Provide at least two segmentation tensors.'
+        )
 
-    # Ensure input segmentations represent valid probabilities
+    # All shapes must match
+    if not all(segs[0].shape == seg.shape for seg in segs):
+        shapes = {seg.shape for seg in segs}
+        raise ValueError(
+            f'All segmentations must share shape; got {shapes}'
+        )
+
+    # Ensure input segmentations represent valid log probabilities
     if enforce_valid_probabilities:
-        assert sum(seg1.exp()) == 1.0, ("seg1 is not a valid probability distribution")
-        assert sum(seg2.exp()) == 1.0, ("seg2 is not a valid probability distribution")
+        assert all(torch.all(seg <= 0) for seg in segs), (
+            "ne.utils.log_dice expects input tensors to represent log-probabilities (be entirely "
+            f"negative) but got the following maximum values: {[seg.max().item() for seg in segs]}"
+        )
+        assert all(torch.all(seg.exp() == 1.0) for seg in segs), (
+            "seg1 is not a valid probability distribution"
+        )
 
     # Flatten all spatial dims into one axis
-    seg1 = seg1.flatten(2)
-    seg2 = seg2.flatten(2)
+    segs_flat = [seg.flatten(2) for seg in segs]
+    n_segs = len(segs_flat)
 
     # Reshape and convert numerator smoothing factor into log domain for logsumexp
     log_smooth_numerator = torch.tensor(
         smooth_numerator,
-        device=seg1.device
-    ).expand(seg1.shape).log()
+        device=segs_flat[0].device
+    ).expand(segs_flat[0].shape).log()
 
     # Reshape and convert denominator smoothing factor into log domain for logsumexp
     log_smooth_denominator = torch.tensor(
         smooth_denominator,
-        device=seg1.device
-    ).expand(seg1.shape).log()
+        device=segs_flat[0].device
+    ).expand(segs_flat[0].shape).log()
 
-    # 2 * e^(L_1 + L_2) in log space is log(2) + L_1 + L_2
-    numerator = torch.log(torch.tensor(2.0, device=seg1.device)) + seg1 + seg2
+    # N * e^(L_1 + L_2) in log space is log(N) + L_1 + L_2
+    numerator = segs_flat[0] + torch.log(torch.tensor(n_segs, device=segs_flat[0].device))
+    for seg in segs_flat[1:]:
+        numerator = numerator + seg
 
     # Stack numerator and smoothing factor. Add with logsumexp trick
     numerator = torch.logsumexp(torch.stack([numerator, log_smooth_numerator], dim=-1), dim=-1)
 
-    # e^(2L_1) + e^(2L_2) in log space can be computed using logsumexp of [2 * seg1, 2 * seg2]
+    # e^(N*L_1) + e^(N*L_2) in log space can be computed using logsumexp of [N * seg1, N * seg2
+    scaled_segs = [n_segs * seg for seg in segs_flat]
     denominator = torch.logsumexp(
         torch.stack(
-            [2.0 * seg1, 2.0 * seg2, log_smooth_denominator], dim=-1
+            [*scaled_segs, log_smooth_denominator], dim=-1
         ),
         dim=-1
     )
