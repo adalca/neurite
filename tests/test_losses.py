@@ -78,14 +78,30 @@ def test_dice_nonidentical():
     seg2 = torch.randint(0, 2, (4, 3, 256, 256, 256)).float()
 
     # Compute the dice score
-    dice = ne.utils.utils.dice(
-        seg1=seg1,
-        seg2=seg2,
-        reduction=None
+    dice = ne.utils.utils.dice(seg1, seg2, reduction=None)
+
+    # The expected value for the dice of uniformly distributed binary tensors should be 0.5
+    expected = torch.ones(4, 3) * 0.5
+
+    # Allow for a small tolderance because of smoothing and stochasticity
+    assert torch.allclose(dice, expected, atol=1e-3), (
+        "Dice for uniformly distributed binary tensors should be close to 0.5"
     )
 
-    # The expected value for the dice of uniformly distributed binary tensors should be 0
-    expected = torch.ones(4, 3) * 0.5
+
+def test_multiple_dice_nonidentical():
+    """
+    Ensure dice returns zeros for opposite inputs.
+    """
+
+    # Make uniformly distributed binary tensors
+    segs = [torch.randint(0, 2, (4, 3, 256, 256, 256)).float() for _ in range(3)]
+
+    # Compute the dice score
+    dice = ne.utils.utils.dice(*segs, reduction=None)
+
+    # The expected value for the dice of 3 uniformly distributed binary tensors should be 0.25
+    expected = torch.ones(4, 3) * 0.25
 
     # Allow for a small tolderance because of smoothing and stochasticity
     assert torch.allclose(dice, expected, atol=1e-3), (
@@ -103,11 +119,7 @@ def test_dice_opposite():
     seg2 = 1 - seg1
 
     # Compute the dice score
-    dice = ne.utils.utils.dice(
-        seg1=seg1,
-        seg2=seg2,
-        reduction=None
-    )
+    dice = ne.utils.utils.dice(seg1, seg2, reduction=None)
 
     # The expected value for the dice of uniformly distributed binary tensors should be 0
     expected = torch.zeros(4, 3)
