@@ -1771,23 +1771,20 @@ def logistic(
 
 
 def dice(
-    seg1: torch.Tensor,
-    seg2: torch.Tensor,
+    *segs: torch.Tensor,
     smooth_numerator: float = 1e-12,
     smooth_denominator: float = 1e-12,
     reduction: str = 'mean',
-    reduction_dim: int = (0, 1),
+    reduction_dim: Union[int, Tuple[int, ...]] = (0, 1),
     keepdims: bool = True,
 ) -> torch.Tensor:
     """
-    Compute the Dice score between two segmentation tensors (e.g. ground truth, predictions, etc...)
+    Compute Dice score over multiple segmentation maps.
 
     Parameters
     ----------
-    seg1 : torch.Tensor
-        First segmentation tensor of shape (B, C, *spatial_dims).
-    seg2 : torch.Tensor
-        Second segmentation tensor with the same shape as `seg1`
+    *segs : torch.Tensor
+        Two or more segmentation tensors of shape (B, C, *spatial_dims) with values in [0, 1].
     smooth_numerator : float, optional
         Smoothing constant added to the numerator.
     smooth_denominator : float, optional
@@ -1809,51 +1806,68 @@ def dice(
 
     Examples
     --------
-    >>> # Make shape for example segmentations with shape (B, C, *spatial_dims)
-    >>> shape = (1, 5, 64, 64)
-    >>> # Sample `seg1` and `seg2` ~U(0, 1)
-    >>> seg1 = ne.samplers.Uniform(0, 1)(shape)
-    >>> seg2 = ne.samplers.Uniform(0, 1)(shape)
-    >>> dice_score = ne.utils.dice(seg1, seg2)
-    >>> dice_score
-    tensor([[0.5068, 0.4974, 0.5031, 0.4982, 0.4999]])
+    # Compute dice for 2 segmentation tensors (batch=2, classes=1, H=W=32) with no reduction
+    >>> seg1 = torch.rand((2, 1, 32, 32))
+    >>> seg2 = torch.rand((2, 1, 32, 32))
+    >>> score = dice(seg1, seg2, reduction=None)
+    >>> print(score.shape)
+    torch.Size([2, 1])
+
+    # Compute the dice for three classes (batch=2, classes=3)
+    >>> segs = [torch.rand((2, 3, 64, 64)) for _ in range(3)]
+    >>> per_class = dice(*segs, reduction='mean')
+    >>> print(per_class.shape)
+    tensor([[0.2487]])
     """
 
-    # Ensure `seg1` can be interpreted as valid probabilities
-    assert seg1.min() >= 0 and seg1.max() <= 1, (
-        f"`seg1` must be between zero and one. Got seg1.min()={seg1.min()}, "
-        f"seg1.max()={seg1.max()}"
-    )
+    # Validate number of inputs
+    if len(segs) < 2:
+        raise ValueError(
+            'Provide at least two segmentation tensors.'
+        )
 
-    # Ensure `seg2` can be interpreted as valid probabilities
-    assert seg2.min() >= 0 and seg2.max() <= 1, (
-        f"`seg2` must be between zero and one. Got seg2.min()={seg2.min()}, "
-        f"seg2.max()={seg2.max()}"
-    )
+    # All shapes must match
+    if not all(segs[0].shape == seg.shape for seg in segs):
+        shapes = {seg.shape for seg in segs}
+        raise ValueError(
+            f'All segmentations must share shape; got {shapes}'
+        )
+
+    # Ensure all segs can be interpreted as valid probabilities
+    for seg in segs:
+        if seg.min() < 0 or seg.max() > 1:
+            raise AssertionError(
+                f'Segmentations must be in [0,1]; '
+                f'got min {seg.min()}, max {seg.max()}'
+            )
 
     # Flatten spatial dimensions while preserving batch and channel dims
-    seg1 = seg1.flatten(2)
-    seg2 = seg2.flatten(2)
+    segs_flat = [seg.flatten(2) for seg in segs]
 
-    # Per-class intersection
-    intersection = (seg2 * seg1).sum(dim=2)
+    # Intersection: product across all segs, then sum spatially
+    intersection = segs_flat[0]
+    for seg in segs_flat[1:]:
+        intersection = intersection * seg
+    intersection = intersection.sum(dim=2)
 
-    # Per-class union
-    union = seg2.sum(dim=2) + seg1.sum(dim=2)
+    # Union: sum of each seg over spatial dims
+    union = sum(seg.sum(dim=2) for seg in segs_flat)
 
-    # Compute the dice score with intersection, smooth, & union
-    dice_score = (2 * intersection + smooth_numerator) / (union + smooth_denominator)
+    # Dice for N tensors: N * intersection / union
+    n = len(segs)
+    dice_score = (
+        n * intersection + smooth_numerator
+    ) / (union + smooth_denominator)
 
-    # Reduce the score if necessary and return
     if reduction is None:
         return dice_score
-    else:
-        return reduce(
-            tensor=dice_score,
-            reduction=reduction,
-            dim=reduction_dim,
-            keepdims=keepdims
-        )
+
+    return ne.utils.utils.reduce(
+        tensor=dice_score,
+        reduction=reduction,
+        dim=reduction_dim,
+        keepdims=keepdims,
+    )
 
 
 def log_dice(
