@@ -4,6 +4,11 @@ from __future__ import annotations
 Random (samplers) for the neurite project.
 """
 
+import inspect
+from functools import wraps
+from typing import Type, Dict, Any, TypeVar, Generator, List, Union, Tuple, Callable
+import torch
+
 __all__ = [
     "register_init_arguments",
     "ensure_list",
@@ -17,11 +22,6 @@ __all__ = [
     "RandInt",
     "make_sampler"
 ]
-
-import inspect
-from functools import wraps
-from typing import Type, Dict, Any, TypeVar, Generator, List, Union, Tuple, Callable
-import torch
 
 SamplerType = TypeVar('SamplerType', bound='Sampler')
 

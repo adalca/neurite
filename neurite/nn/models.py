@@ -5,16 +5,17 @@ components of the neurite for streamlined object construction.
 """
 
 from __future__ import annotations
+from typing import List, Union, Callable, Literal
+
+import torch
+from torch import nn
+
+import neurite as ne
 
 __all__ = [
     "BasicUNet",
     "BasicAutoencoder",
 ]
-
-from typing import List, Union, Callable, Literal
-import torch
-from torch import nn
-import neurite as ne
 
 
 class BasicUNet(nn.Module):

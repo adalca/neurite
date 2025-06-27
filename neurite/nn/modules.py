@@ -24,6 +24,19 @@ implied. Seee License for the specific language governing permissions and limita
 the License.
 """
 
+from typing import List, Union, Type, Tuple, Literal, Optional
+import importlib
+
+import einops
+import torch
+from torch import nn
+from torch.nn.modules import activation
+import torch.nn.functional as F
+
+import neurite as ne
+from neurite.samplers import Sampler
+
+
 __all__ = [
     "Activation",
     "ConvBlock",
@@ -48,18 +61,6 @@ __all__ = [
     "CategoricalCrossentropy",
     "MeanSquaredErrorProb",
 ]
-
-from typing import List, Union, Type, Tuple, Literal, Optional
-import importlib
-
-import einops
-import torch
-from torch import nn
-from torch.nn.modules import activation
-import torch.nn.functional as F
-
-import neurite as ne
-from neurite.samplers import Sampler
 
 
 class Activation(nn.Module):

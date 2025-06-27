@@ -23,6 +23,16 @@ implied. See the License for the specific language governing permissions and lim
 the License.
 """
 
+from typing import Union, List, Tuple, Literal, Type, Optional
+import inspect
+import einops
+import torch
+import torch.nn.functional as F
+from torch import nn
+import neurite as ne
+from neurite.samplers import Sampler
+
+
 __all__ = [
     "create_gaussian_kernel",
     "bernoulli",
@@ -33,15 +43,6 @@ __all__ = [
     "make_downsampling_conv_blocks",
     "make_upsampling_conv_blocks"
 ]
-
-from typing import Union, List, Tuple, Literal, Type, Optional
-import inspect
-import einops
-import torch
-import torch.nn.functional as F
-from torch import nn
-import neurite as ne
-from neurite.samplers import Sampler
 
 
 def create_gaussian_kernel(
