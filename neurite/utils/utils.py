@@ -32,18 +32,18 @@ from neurite.samplers import Sampler
 
 
 __all__ = [
-    "create_gaussian_kernel",
+    "gaussian_kernel",
     "bernoulli",
     "make_range",
     "is_instantiated_normalization",
     "infer_linear_interpolation_mode",
     "build_normalization",
-    "make_downsampling_conv_blocks",
-    "make_upsampling_conv_blocks"
+    "downsampling_conv_blocks",
+    "upsampling_conv_blocks"
 ]
 
 
-def create_gaussian_kernel(
+def gaussian_kernel(
     kernel_size: int = 3,
     sigma: Union[float, int] = 1,
     ndim: int = 3,
@@ -424,7 +424,7 @@ def build_normalization(
     return normalization
 
 
-def make_downsampling_conv_blocks(
+def downsampling_conv_blocks(
     ndim: int,
     nb_features: List[int],
     kernel_size: int = 3,
@@ -478,7 +478,7 @@ def make_downsampling_conv_blocks(
 
     Examples
     --------
-    >>> downsampling_conv_blocks = make_downsampling_conv_blocks(
+    >>> downsampling_conv_blocks = downsampling_conv_blocks(
     ...     ndim=2,
     ...     nb_features=[3, 16, 32],
     ...     kernel_size=3,
@@ -524,7 +524,7 @@ def make_downsampling_conv_blocks(
     return downsampling_conv_blocks
 
 
-def make_upsampling_conv_blocks(
+def upsampling_conv_blocks(
     ndim: int,
     nb_features: List[int],
     kernel_size: int = 3,
@@ -592,7 +592,7 @@ def make_upsampling_conv_blocks(
 
     Examples
     --------
-    >>> upsampling_conv_blocks = make_upsampling_conv_blocks(
+    >>> upsampling_conv_blocks = upsampling_conv_blocks(
     ...     ndim=2,
     ...     nb_features=[32, 16, 4],
     ...     upsample_kernel_size=4,

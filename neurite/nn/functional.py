@@ -189,7 +189,7 @@ def gaussian_smoothing(
     ndim = input_tensor.dim() - 2
 
     # Initialize the gaussian kernel
-    gaussian_kernel = ne.utils.utils.create_gaussian_kernel(
+    gaussian_kernel = ne.utils.utils.gaussian_kernel(
         kernel_size=kernel_size,
         sigma=sigma,
         ndim=ndim,
