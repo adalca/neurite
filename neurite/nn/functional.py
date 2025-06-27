@@ -2,9 +2,10 @@
 Functions that work with tensors.
 """
 
-from typing import Union, List, Tuple, Literal
+from typing import Union, List, Tuple, Literal, Type, Optional
 import einops
 import torch
+from torch import nn
 import torch.nn.functional as F
 
 import neurite as ne
@@ -189,7 +190,7 @@ def gaussian_smoothing(
     ndim = input_tensor.dim() - 2
 
     # Initialize the gaussian kernel
-    gaussian_kernel = ne.utils.utils.gaussian_kernel(
+    gaussian_kernel_ = ne.utils.utils.gaussian_kernel(
         kernel_size=kernel_size,
         sigma=sigma,
         ndim=ndim,
@@ -212,7 +213,7 @@ def gaussian_smoothing(
     # Apply the smoothig operation
     smoothed_tensor = conv_fn(
         input=padded_input_tensor,
-        weight=gaussian_kernel,
+        weight=gaussian_kernel_,
         padding=0,
     )
 
@@ -806,7 +807,7 @@ def affine_to_dense_shift(
     >>> # Dilate original affine by 2
     >>> aff_b_2d = aff_a_2d * 2
     >>> grid_size_2d = (128, 128)
-    >>> displacement_field = derive_dense_displacement_field_from_affines(
+    >>> displacement_field = affine_to_dense_shift(
     ...     aff_a_2d, aff_b_2d, grid_size_2d
     ... )
     """
@@ -983,9 +984,9 @@ def checkerboard(
 
 def constant_shift_field(
     shape: tuple = (1, 1, 16, 16),
-    device: str = 'cpu',
     shift_size: int = 1,
     normalize: bool = False,
+    device: str = 'cpu',
 ) -> torch.Tensor:
     """
     Makes a simple flow field for testing registration in N-dimensional space.
@@ -997,10 +998,14 @@ def constant_shift_field(
     Parameters
     ----------
     shape : tuple, optional
-        Shape of the input tensor, expected as (B, C, *spatial_dims).
-        Default is (1, 1, 4, 4) for a 2D case.
-    device : str, optional
-        The device to allocate tensors to ('cpu' or 'cuda').
+        Shape of the input tensor, expected as (B, C, *spatial_dims). Default is (1, 1, 4, 4) for a
+        2D case.
+    shift_size : int, list of int, or torch.Tensor, optional
+        Shift magnitude for each axis. If int, same shift on all axes. If list/tuple, length must
+        equal number of spatial dims. If Tensor, must have shape (n_spatial_dims,). Default is 1.
+    normalize : bool, optional
+        If True, normalize the first spatial channel by (size - 1), where
+        size is the extent of that axis. Default is False.
 
     Returns
     -------
@@ -1010,22 +1015,42 @@ def constant_shift_field(
 
     Example
     -------
-    >>> flow = create_sample_flow((1, 1, 4, 4), device='cpu')
+    >>> flow = constant_shift_field((1, 1, 4, 4), device='cpu')
     >>> flow.shape
     torch.Size([1, 2, 4, 4])
 
-    >>> flow_3d = create_sample_flow((1, 1, 4, 4, 4), device='cpu')
+    >>> flow_3d = constant_shift_field((1, 1, 4, 4, 4), device='cpu')
     >>> flow_3d.shape
     torch.Size([1, 3, 4, 4, 4])
     """
-    spatial_dims = shape[2:]  # Extract spatial dimensions
+
+    # Get number of spatial dimensions
+    spatial_dims = shape[2:]
     n_spatial_dims = len(spatial_dims)
 
-    # Create a flow field tensor
-    flow_field = torch.zeros(shape[0], n_spatial_dims, *spatial_dims, device=device)
+    # Make sure the shift size is a tensor
+    if isinstance(shift_size, int):
+        shift_size = torch.tensor([shift_size] * n_spatial_dims)
+    elif isinstance(shift_size, (list, tuple)):
+        shift_size = torch.tensor(shift_size)
+    elif isinstance(shift_size, torch.Tensor):
+        pass
+    else:
+        raise ValueError(
+            f'shift_size must be a tensor, got {type(shift_size)}: {shift_size}'
+        )
 
-    # Shift along the first spatial dimension
-    flow_field[:, 0, ...] = shift_size
+    # Make sure shift_size is the correct shape
+    assert shift_size.shape[0] == n_spatial_dims, (
+        f'shift_size must have {n_spatial_dims} elements. Got {shift_size.shape}: {shift_size}'
+    )
+
+    # Create a flow field tensor and make shift_size compatable
+    flow_field = torch.zeros(shape[0], n_spatial_dims, *spatial_dims, device=device)
+    shift_size = shift_size.view(1, -1, *[1] * n_spatial_dims)
+
+    # Apply the shift
+    flow_field += shift_size
 
     # Optionally normalize
     if normalize:
@@ -1308,23 +1333,20 @@ def logistic(
 
 
 def dice(
-    seg1: torch.Tensor,
-    seg2: torch.Tensor,
+    *segs: torch.Tensor,
     smooth_numerator: float = 1e-12,
     smooth_denominator: float = 1e-12,
     reduction: str = 'mean',
-    reduction_dim: int = (0, 1),
+    reduction_dim: Union[int, Tuple[int, ...]] = (0, 1),
     keepdims: bool = True,
 ) -> torch.Tensor:
     """
-    Compute the Dice score between two segmentation tensors (e.g. ground truth, predictions, etc...)
+    Compute Dice score over multiple segmentation maps.
 
     Parameters
     ----------
-    seg1 : torch.Tensor
-        First segmentation tensor of shape (B, C, *spatial_dims).
-    seg2 : torch.Tensor
-        Second segmentation tensor with the same shape as `seg1`
+    *segs : torch.Tensor
+        Two or more segmentation tensors of shape (B, C, *spatial_dims) with values in [0, 1].
     smooth_numerator : float, optional
         Smoothing constant added to the numerator.
     smooth_denominator : float, optional
@@ -1346,58 +1368,77 @@ def dice(
 
     Examples
     --------
-    >>> # Make shape for example segmentations with shape (B, C, *spatial_dims)
-    >>> shape = (1, 5, 64, 64)
-    >>> # Sample `seg1` and `seg2` ~U(0, 1)
-    >>> seg1 = ne.samplers.Uniform(0, 1)(shape)
-    >>> seg2 = ne.samplers.Uniform(0, 1)(shape)
-    >>> dice_score = ne.utils.dice(seg1, seg2)
-    >>> dice_score
-    tensor([[0.5068, 0.4974, 0.5031, 0.4982, 0.4999]])
+    # Compute dice for 2 segmentation tensors (batch=2, classes=1, H=W=32) with no reduction
+    >>> seg1 = torch.rand((2, 1, 32, 32))
+    >>> seg2 = torch.rand((2, 1, 32, 32))
+    >>> score = dice(seg1, seg2, reduction=None)
+    >>> print(score.shape)
+    torch.Size([2, 1])
+
+    # Compute the dice for three classes (batch=2, classes=3)
+    >>> segs = [torch.rand((2, 3, 64, 64)) for _ in range(3)]
+    >>> per_class = dice(*segs, reduction='mean')
+    >>> print(per_class.shape)
+    tensor([[0.2487]])
     """
 
-    # Ensure `seg1` can be interpreted as valid probabilities
-    assert seg1.min() >= 0 and seg1.max() <= 1, (
-        f"`seg1` must be between zero and one. Got seg1.min()={seg1.min()}, "
-        f"seg1.max()={seg1.max()}"
-    )
+    # Validate number of inputs
+    if len(segs) < 2:
+        raise ValueError(
+            'Provide at least two segmentation tensors.'
+        )
 
-    # Ensure `seg2` can be interpreted as valid probabilities
-    assert seg2.min() >= 0 and seg2.max() <= 1, (
-        f"`seg2` must be between zero and one. Got seg2.min()={seg2.min()}, "
-        f"seg2.max()={seg2.max()}"
-    )
+    # All shapes must match
+    if not all(segs[0].shape == seg.shape for seg in segs):
+        shapes = {seg.shape for seg in segs}
+        raise ValueError(
+            f'All segmentations must share shape; got {shapes}'
+        )
+
+    # Ensure all segs can be interpreted as valid probabilities
+    for seg in segs:
+        if seg.min() < 0 or seg.max() > 1:
+            raise AssertionError(
+                f'Segmentations must be in [0,1]; '
+                f'got min {seg.min()}, max {seg.max()}'
+            )
 
     # Flatten spatial dimensions while preserving batch and channel dims
-    seg1 = seg1.flatten(2)
-    seg2 = seg2.flatten(2)
+    segs_flat = [seg.flatten(2) for seg in segs]
 
-    # Per-class intersection
-    intersection = (seg2 * seg1).sum(dim=2)
+    # Intersection: product across all segs, then sum spatially
+    intersection = segs_flat[0]
+    for seg in segs_flat[1:]:
+        intersection = intersection * seg
+    intersection = intersection.sum(dim=2)
 
-    # Per-class union
-    union = seg2.sum(dim=2) + seg1.sum(dim=2)
+    # Union: sum of each seg over spatial dims
+    union = sum(seg.sum(dim=2) for seg in segs_flat)
 
-    # Compute the dice score with intersection, smooth, & union
-    dice_score = (2 * intersection + smooth_numerator) / (union + smooth_denominator)
+    # Dice for N tensors: N * intersection / union
+    n = len(segs)
+    dice_score = (
+        n * intersection + smooth_numerator
+    ) / (union + smooth_denominator)
 
-    # Reduce the score if necessary and return
     if reduction is None:
         return dice_score
-    else:
-        return reduce(
-            tensor=dice_score,
-            reduction=reduction,
-            dim=reduction_dim,
-            keepdims=keepdims
-        )
+
+    return reduce(
+        tensor=dice_score,
+        reduction=reduction,
+        dim=reduction_dim,
+        keepdims=keepdims,
+    )
 
 
 def log_dice(
-    seg1: torch.Tensor,
-    seg2: torch.Tensor,
+    *segs,
     smooth_numerator: float = 1e-12,
     smooth_denominator: float = 1e-12,
+    reduction: str = 'mean',
+    reduction_dim: Union[int, Tuple[int, ...]] = (0, 1),
+    keepdims: bool = True,
     enforce_valid_probabilities: bool = False,
 ) -> torch.Tensor:
     """
@@ -1405,14 +1446,22 @@ def log_dice(
 
     Parameters
     ----------
-    seg1 : torch.Tensor
-        Log-probability of the first segmentation. Expected to have batch and channel dims.
-    seg2 : torch.Tensor
-        Log-probability of the second tensor (e.g., ground truth). Shape must match seg1.
+    *segs : torch.Tensor
+        Two or more segmentation tensors of shape (B, C, *spatial_dims) representing
+        log-probabilities.
     smooth_numerator : float, optional
         Smoothing constant added to the numerator to avoid log(0). By default, 1e-12.
     smooth_denominator : float, optional
         Smoothing constant added to the denominator to avoid log(0). By default, 1e-12.
+    reduction : str, optional
+        The type of reduction to apply. Supported values for multidimensional reductions are:
+        'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'; for single-dimension
+        reductions: 'argmin', 'argmax', and all multidimensionals. Default is 'mean'.
+    reduction_dim : int or tuple of ints, optional
+        Dimension(s) over which to apply the reduction. For multidimensional reductions, pass a
+        tuple of dimensions; for single-dimension reductions, pass an integer. Default is (0, 1)
+    keepdims : bool, optional
+        Whether to retain reduced dimensions as a singleton. Default is True.
     enforce_valid_probabilities : bool, optional
         Ensure input segmentations represent valid probabilities by checking that ensuring
         exp(seg1) and exp(seg2) sum to 1.
@@ -1444,43 +1493,58 @@ def log_dice(
     tensor([[0.4981]])
     """
 
-    # Ensure `seg1` and `seg2` represent log probabilities
-    assert torch.all(seg1 <= 0).item() and torch.all(seg2 <= 0).item(), (
-        "ne.utils.log_dice expects input tensors to represent log-probabilities (be entirely "
-        f"negative) but got max={seg1.max()} at entry 0 and max={seg2.max()} at entry 1."
-    )
+    # Validate number of inputs
+    if len(segs) < 2:
+        raise ValueError(
+            'Provide at least two segmentation tensors.'
+        )
 
-    # Ensure input segmentations represent valid probabilities
+    # All shapes must match
+    if not all(segs[0].shape == seg.shape for seg in segs):
+        shapes = {seg.shape for seg in segs}
+        raise ValueError(
+            f'All segmentations must share shape; got {shapes}'
+        )
+
+    # Ensure input segmentations represent valid log probabilities
     if enforce_valid_probabilities:
-        assert sum(seg1.exp()) == 1.0, ("seg1 is not a valid probability distribution")
-        assert sum(seg2.exp()) == 1.0, ("seg2 is not a valid probability distribution")
+        assert all(torch.all(seg <= 0) for seg in segs), (
+            "ne.utils.log_dice expects input tensors to represent log-probabilities (be entirely "
+            f"negative) but got the following maximum values: {[seg.max().item() for seg in segs]}"
+        )
+        assert all(torch.all(seg.exp() == 1.0) for seg in segs), (
+            "seg1 is not a valid probability distribution"
+        )
 
     # Flatten all spatial dims into one axis
-    seg1 = seg1.flatten(2)
-    seg2 = seg2.flatten(2)
+    segs_flat = [seg.flatten(2) for seg in segs]
+    n_segs = len(segs_flat)
 
     # Reshape and convert numerator smoothing factor into log domain for logsumexp
     log_smooth_numerator = torch.tensor(
         smooth_numerator,
-        device=seg1.device
-    ).expand(seg1.shape).log()
+        device=segs_flat[0].device
+    ).expand(segs_flat[0].shape).log()
 
     # Reshape and convert denominator smoothing factor into log domain for logsumexp
     log_smooth_denominator = torch.tensor(
         smooth_denominator,
-        device=seg1.device
-    ).expand(seg1.shape).log()
+        device=segs_flat[0].device
+    ).expand(segs_flat[0].shape).log()
 
-    # 2 * e^(L_1 + L_2) in log space is log(2) + L_1 + L_2
-    numerator = torch.log(torch.tensor(2.0, device=seg1.device)) + seg1 + seg2
+    # N * e^(L_1 + L_2) in log space is log(N) + L_1 + L_2
+    numerator = segs_flat[0] + torch.log(torch.tensor(n_segs, device=segs_flat[0].device))
+    for seg in segs_flat[1:]:
+        numerator = numerator + seg
 
     # Stack numerator and smoothing factor. Add with logsumexp trick
     numerator = torch.logsumexp(torch.stack([numerator, log_smooth_numerator], dim=-1), dim=-1)
 
-    # e^(2L_1) + e^(2L_2) in log space can be computed using logsumexp of [2 * seg1, 2 * seg2]
+    # e^(N*L_1) + e^(N*L_2) in log space can be computed using logsumexp of [N * seg1, N * seg2
+    scaled_segs = [n_segs * seg for seg in segs_flat]
     denominator = torch.logsumexp(
         torch.stack(
-            [2.0 * seg1, 2.0 * seg2, log_smooth_denominator], dim=-1
+            [*scaled_segs, log_smooth_denominator], dim=-1
         ),
         dim=-1
     )
@@ -1488,10 +1552,15 @@ def log_dice(
     # Compute the dice score by negating (dividing in linear domain)
     log_dice_vals = numerator - denominator
 
-    # Average the log dice over the spatial dimensions
-    log_dice_vals = log_dice_vals.mean(dim=2)
+    if reduction is None:
+        return log_dice_vals
 
-    return log_dice_vals
+    return reduce(
+        tensor=log_dice_vals,
+        reduction=reduction,
+        dim=reduction_dim,
+        keepdims=keepdims,
+    )
 
 
 def reduce(
@@ -1576,3 +1645,195 @@ def reduce(
             " are {'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean', 'argmin', "
             "'argmax'}"
         )
+
+
+def infer_linear_interpolation_mode(
+    num_spatial: Literal[1, 2, 3]
+):
+    """
+    Infer the interpolation mode for `F.interpolate()` from tensor dimensions.
+
+    Parameters
+    ----------
+    num_spatial : {1, 2, 3}
+        Tensor with batch and channel dimensions, and with {1, 2, 3} spatial dimensions.
+
+    Returns
+    -------
+    mode : str
+        Interpolation mode string:
+        - 'linear' for 1D
+        - 'bilinear' for 2D
+        - 'trilinear' for 3D
+
+    Examples
+    --------
+    >>> # Look at output for different number of spatial dims
+    >>> infer_linear_interpolation_mode(1)
+    'linear'
+    >>> infer_linear_interpolation_mode(3)
+    'trilinear'
+    """
+    if num_spatial == 1:
+        return 'linear'
+    elif num_spatial == 2:
+        return 'bilinear'
+    elif num_spatial == 3:
+        return 'trilinear'
+
+
+# Map normalization types to PyTorch classes
+NORMALIZATION_MAP = {
+    "batch": {
+        1: nn.BatchNorm1d,
+        2: nn.BatchNorm2d,
+        3: nn.BatchNorm3d,
+    },
+    "instance": {
+        1: nn.InstanceNorm1d,
+        2: nn.InstanceNorm2d,
+        3: nn.InstanceNorm3d,
+    },
+    "layer": nn.LayerNorm,
+    "group": nn.GroupNorm,
+}
+
+
+def build_normalization(
+    normalization_type: Union[
+        str,
+        Type[nn.Module],
+        nn.Module,
+        None
+    ],
+    ndim: Optional[int] = None,
+    num_features: Optional[int] = None,
+    num_groups: Optional[int] = None,
+    eps: float = 1e-5,
+    affine: bool = True,
+    **kwargs
+) -> nn.Module:
+
+    """
+    Factory for various normalization layers.
+
+    Parameters
+    ----------
+    normalization_type : str or nn.Module
+        Type of normalization. Must be one of 'batch', 'instance', 'layer', 'group', or a custom
+        `nn.Module` class.
+            - `batch` performs normalization per channel. The mean and variance are calculated
+            across the B, and *spatial dimensions for each channel C.
+    ndim : int, optional
+        Dimensionality for batch/instance normalization:
+        - 1 -> *Norm1d
+        - 2 -> *Norm2d
+        - 3 -> *Norm3d
+        Required for 'batch' or 'instance' normalizations.
+    num_features : int, optional
+        Number of input features or channels. Required for 'batch', 'instance', 'layer', and 'group'
+        normalizations. For layer normalization, this is the size of the normalized dimension. For
+        batch and instance normalizations, this is typically the number of channels/features.
+    num_groups : int, optional
+        Number of groups for GroupNorm. Required for 'group' normalization.
+    eps : float, optional
+        A value added to the denominator for numerical stability. Default is 1e-5.
+    affine : bool, optional
+        If True, the layer has learnable affine parameters. Default is True.
+    **kwargs : dict, optional
+        Additional keyword arguments are passed directly to the normalization class constructor.
+        This enables further customization without modifying this class.
+
+    Returns
+    -------
+    nn.Module
+        Configured and initialized normalization layer.
+
+    Examples
+    --------
+    >>> # Dummy input with 2 spatial dims ~N(0, 1)
+    >>> x = torch.randn(1, 16, 32, 32)
+
+    ### Normalize with a custom normalization layer
+    >>> norm_a = nn.InstanceNorm2d(16)
+    >>> norm_A = build_normalization(norm_a)
+    >>> norm_A(x)
+    ...
+
+    ### Normalize with a custom, uninitialized normalization layer
+    >>> norm_b = nn.InstanceNorm2d
+    >>> norm_B = build_normalization(norm_b, num_features=16)
+    >>> norm_B(x)
+    ...
+
+    ### Normalize with text-based input
+    >>> norm_C = build_normalization(normalization_type='instance', ndim=2, num_features=16)
+    >>> norm_C(x)
+    ...
+    """
+
+    # Normalization object has been instantiated with parameters
+    if ne.utils.is_instantiated_normalization(normalization_type):
+        normalization = normalization_type
+        return
+
+    # Normalization object has been provided but not instantiated
+    if isinstance(normalization_type, type) and issubclass(normalization_type, nn.Module):
+
+        # Assume user provided a custom normalization class directly
+        if num_features is None:
+            raise ValueError("`num_features` must be specified for custom normalizations.")
+
+        normalization = normalization_type(
+            num_features=num_features, eps=eps, affine=affine, **kwargs
+        )
+        return
+
+    # Handle known norm_types
+    if normalization_type not in NORMALIZATION_MAP:
+
+        raise ValueError(
+            f"Invalid normalization_type '{normalization_type}'. Must be one of "
+            f"{list(NORMALIZATION_MAP.keys())} or a custom nn.Module subclass."
+        )
+
+    # Batch and instance normalization require an input dimensionality
+    if normalization_type in ("batch", "instance"):
+
+        if ndim not in (1, 2, 3):
+
+            raise ValueError(
+                "For 'batch' or 'instance' normalization, ndim must be 1, 2, or 3."
+            )
+
+        # They also require the number of features
+        if num_features is None:
+            raise ValueError(
+                "`num_features` must be specified for 'batch' or 'instance' normalization."
+            )
+
+        normalization_class = NORMALIZATION_MAP[normalization_type][ndim]
+        normalization = normalization_class(
+            num_features=num_features, eps=eps, affine=affine, **kwargs
+        )
+
+    elif normalization_type == "layer":
+        if num_features is None:
+            raise ValueError(
+                "`num_features` (normalized shape) must be specified for 'layer' normalization."
+            )
+
+        normalization = nn.LayerNorm(
+            num_features, eps=eps, elementwise_affine=affine, **kwargs
+        )
+
+    elif normalization_type == "group":
+        if num_groups is None:
+            raise ValueError("For 'group' normalization, `num_groups` must be specified.")
+
+        if num_features is None:
+            raise ValueError("`num_features` must be specified for 'group' normalization.")
+
+        normalization = nn.GroupNorm(num_groups, num_features, eps=eps, affine=affine, **kwargs)
+
+    return normalization

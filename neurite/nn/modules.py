@@ -33,6 +33,7 @@ from torch import nn
 import torch.nn.functional as F
 
 import neurite as ne
+import neurite.nn.functional as nef
 from neurite.samplers import Sampler
 
 
@@ -1795,6 +1796,7 @@ class SampleImageFromLabels(nn.Module):
             self.noise_variance
         )
 
+
 class Dice(nn.Module):
     """
     Compute the Dice score between two segmentation tensors (e.g. ground truth, predictions, etc...)
@@ -1863,16 +1865,14 @@ class Dice(nn.Module):
         self.reduction_dim = reduction_dim
         self.keepdims = keepdims
 
-    def forward(self, seg1: torch.Tensor, seg2: torch.Tensor) -> torch.Tensor:
+    def forward(self, *segs) -> torch.Tensor:
         """
-        Compute the Dice coefficient between two segmentation tensors.
+        Compute the Dice coefficient between two or more segmentation tensors.
 
         Parameters
         ----------
-        seg1 : torch.Tensor
-            First segmentation tensor of shape (B, C, *spatial_dims).
-        seg2 : torch.Tensor
-            Second segmentation tensor with the same shape as `seg1`
+        *segs : torch.Tensor
+            Two or more segmentation tensors of shape (B, C, *spatial_dims) with values in [0, 1].
 
         Returns
         -------
@@ -1880,9 +1880,8 @@ class Dice(nn.Module):
             The computed Dice coefficient, optionally reduced according to object initialization.
         """
 
-        return ne.nn.functional.dice(
-            seg1=seg1,
-            seg2=seg2,
+        return nef.dice(
+            *segs,
             smooth_numerator=self.smooth_numerator,
             smooth_denominator=self.smooth_denominator,
             reduction=self.reduction,
