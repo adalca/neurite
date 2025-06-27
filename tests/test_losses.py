@@ -20,6 +20,12 @@ def log_probabilities():
     return log_probabilities
 
 
+def test_mse_simple():
+    t1 = torch.tensor([1.0, 2.0])
+    t2 = torch.tensor([2.0, 3.0])
+    assert ne.utils.utils.mse(t1, t2).item() == 1.0
+
+
 @pytest.mark.parametrize('spatial_dims', [1, 2, 3])
 def test_dice_shapes(spatial_dims):
     """

@@ -172,3 +172,24 @@ def test_grid_normalized(grid_shape: tuple):
     expected_corner_values = torch.tensor(expected_corner_values)
 
     assert torch.all(corner_vals == expected_corner_values)
+
+
+def test_logistic_midpoint():
+    out = ne.utils.utils.logistic(torch.tensor(0.0))
+    assert torch.allclose(out, torch.tensor(0.5))
+
+
+@pytest.mark.parametrize('n,mode', [
+    (1, 'linear'),
+    (2, 'bilinear'),
+    (3, 'trilinear'),
+])
+def test_infer_linear_interpolation_mode(n, mode):
+    assert ne.utils.utils.infer_linear_interpolation_mode(n) == mode
+
+
+def test_apply_bernoulli_mask_all_keep():
+    t = torch.ones(10)
+    masked = ne.utils.utils.apply_bernoulli_mask(t, p=1.0)
+    assert masked.shape == t.shape
+    assert torch.all(masked == 1)
