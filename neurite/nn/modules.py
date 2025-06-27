@@ -1379,7 +1379,7 @@ class Resample(nn.Module):
         Perform the forward pass of the `Resample`.
         """
 
-        return ne.utils.utils.resample_tensor(
+        return ne.utils.utils.resample(
             input_tensor=input_tensor,
             resample_dimension=self.resample_dimension,
             downsample_stride=self.downsample_stride,

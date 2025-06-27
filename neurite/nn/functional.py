@@ -16,23 +16,23 @@ __all__ = [
     "mse",
     "gaussian_smoothing",
     "apply_bernoulli_mask",
-    "subsample_tensor",
+    "subsample",
     "subsample_tensor_random_dims",
-    "upsample_tensor",
-    "resample_tensor",
+    "upsample",
+    "resample",
     "random_clear_label",
     "sample_image_from_labels",
-    "derive_dense_displcement_field_from_affines",
+    "affine_to_dense_shift",
     "grid",
     "checkerboard",
-    "make_sample_flow",
+    "constant_shift_field",
     "cross_expand",
     "filter_dim",
     "crop_to_nearest_multiple",
     "logistic",
     "dice",
     "log_dice",
-    "reduce_tensor",
+    "reduce",
 ]
 
 
@@ -294,7 +294,7 @@ def apply_bernoulli_mask(input_tensor, p: float = 0.5, returns: str = None) -> t
     return masked
 
 
-def subsample_tensor(
+def subsample(
     input_tensor: torch.Tensor,
     stride: Union[List, Tuple, int, None] = 2,
     subsampling_dimension: Union[List, Literal[0, 1, 2], int, None] = None,
@@ -333,7 +333,7 @@ def subsample_tensor(
             [15, 16, 17, 18, 19],
             [20, 21, 22, 23, 24]])
     # Subsample along the first dimension (the columns)
-    >>> subsampled_tensor = subsample_tensor(input_tensor, subsampling_dimension=1)
+    >>> subsampled_tensor = subsample(input_tensor, subsampling_dimension=1)
     # With the default stride (of 2), every other column should have been dropped out.
     >>> print(subsampled_tensor)
     tensor([[ 0,  2,  4],
@@ -342,7 +342,7 @@ def subsample_tensor(
             [15, 17, 19],
             [20, 22, 24]])
     # We could, of course, keep the default `subsampling_dimension=0` and subsample the rows:
-    >>> subsampled_tensor = subsample_tensor(input_tensor, subsampling_dimension=1)
+    >>> subsampled_tensor = subsample(input_tensor, subsampling_dimension=1)
     >>> print(subsampled_tensor)
     tensor([[ 0,  1,  2,  3,  4],
             [10, 11, 12, 13, 14],
@@ -395,7 +395,7 @@ def subsample_tensor_random_dims(
     """
     Subsample the input tensor along randomly selected dimensions
 
-    This extends `neurite.utils.subsample_tensor()` by applying constraints on which dimensions to
+    This extends `neurite.utils.subsample()` by applying constraints on which dimensions to
     subsample (`forbidden_dims`), the stride, and the probability of subsampling.
 
     Parameters
@@ -492,7 +492,7 @@ def subsample_tensor_random_dims(
         # sampled_stride = stride_sampler()
         # Apply the subsampling operation
         print(input_tensor.shape)
-        input_tensor = subsample_tensor(
+        input_tensor = subsample(
             input_tensor=input_tensor,
             subsampling_dimension=int(dimension) - 2,  # Minus 2 for spatial dims
             stride=stride
@@ -501,7 +501,7 @@ def subsample_tensor_random_dims(
     return input_tensor
 
 
-def upsample_tensor(
+def upsample(
     input_tensor: torch.Tensor,
     mode: Literal['linear', 'nearest', 'bicubic', 'area', 'nearest-exact'] = 'linear',
     scale_factor: float = 2,
@@ -524,12 +524,12 @@ def upsample_tensor(
     --------
     >>> # 2D Upsampling
     >>> input_tensor = torch.randn(1, 3, 32, 32)  # (B, C, H, W)
-    >>> upsampled_tensor = upsample_tensor(input_tensor, shape=(64, 64), mode='bilinear')
+    >>> upsampled_tensor = upsample(input_tensor, shape=(64, 64), mode='bilinear')
     >>> print(upsampled_tensor.shape)
     torch.Size([1, 3, 64, 64])
     >>> # 3D Upsampling
     >>> input_tensor = torch.randn(1, 3, 32, 32, 32)  # (B, C, D, H, W)
-    >>> upsampled_tensor = upsample_tensor(input_tensor, shape=(64, 64, 64), mode='bilinear')
+    >>> upsampled_tensor = upsample(input_tensor, shape=(64, 64, 64), mode='bilinear')
     >>> print(upsampled_tensor.shape)
     torch.Size([1, 3, 64, 64, 64])
     """
@@ -557,7 +557,7 @@ def upsample_tensor(
     return upsampled
 
 
-def resample_tensor(
+def resample(
     input_tensor: torch.Tensor,
     resample_dimension: Union[int, List[int]] = None,
     downsample_stride: Union[int, List[int]] = 2,
@@ -568,7 +568,7 @@ def resample_tensor(
     """
     Subsample `input_tensor` by a factor `stride`, then upsample it by `scale_factor`.
 
-    Combines `subsample_tensor` and `upsample_tensor` by first subsampling `input_tensor` along a
+    Combines `subsample` and `upsample` by first subsampling `input_tensor` along a
     given dimension by `stride`, then upsampling back to `shape`.
 
     Parameters
@@ -599,7 +599,7 @@ def resample_tensor(
     >>> import torch
     >>> input_tensor = torch.randn(1, 3, 32, 32)
     >>> # Subsample rows/cols by 2, then upsample to (64, 64)
-    >>> res = resample_tensor(
+    >>> res = resample(
     ...     input_tensor, shape=(64, 64),
     ...     subsampling_dimension=2, stride=2,
     ...     mode='bilinear'
@@ -609,14 +609,14 @@ def resample_tensor(
     """
 
     # Subsample tensor
-    resampled = subsample_tensor(
+    resampled = subsample(
         input_tensor,
         subsampling_dimension=resample_dimension,
         stride=downsample_stride
     )
 
     # Upsample tensor
-    resampled = upsample_tensor(
+    resampled = upsample(
         resampled,
         shape=shape,
         mode=mode,
@@ -766,7 +766,7 @@ def sample_image_from_labels(
     return sampled_image
 
 
-def derive_dense_displcement_field_from_affines(
+def affine_to_dense_shift(
     affine_a: torch.Tensor,
     affine_b: torch.Tensor,
     grid_size: tuple,
@@ -1385,7 +1385,7 @@ def dice(
     if reduction is None:
         return dice_score
     else:
-        return reduce_tensor(
+        return reduce(
             tensor=dice_score,
             reduction=reduction,
             dim=reduction_dim,
@@ -1494,7 +1494,7 @@ def log_dice(
     return log_dice_vals
 
 
-def reduce_tensor(
+def reduce(
     tensor: torch.Tensor,
     reduction: str = 'mean',
     dim: Union[Tuple[int, ...], int] = (0, 1),
@@ -1538,10 +1538,10 @@ def reduce_tensor(
     >>> # Make a random tensor
     >>> input_tensor = torch.randn(3, 4, 128, 128)
     >>> # Getting the means from each batch
-    >>> reduce_tensor(input_tensor, reduction='mean', dim=(1, 2, 3))
+    >>> reduce(input_tensor, reduction='mean', dim=(1, 2, 3))
     tensor([-0.0004, -0.0021, -0.0052])
     >>> # Getting the largest value from each batch
-    >>> reduce_tensor(input_tensor, reduction='amax', dim=(1, 2, 3))
+    >>> reduce(input_tensor, reduction='amax', dim=(1, 2, 3))
     tensor([4.6618, 3.9218, 4.1831])
     """
 
@@ -1572,7 +1572,7 @@ def reduce_tensor(
 
     else:
         raise ValueError(
-            f"ne.utils.reduce_tensor received an invaid `reduction`. Got {reduction}. Valid options"
+            f"ne.utils.reduce received an invaid `reduction`. Got {reduction}. Valid options"
             " are {'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean', 'argmin', "
             "'argmax'}"
         )
