@@ -59,8 +59,11 @@ def test_dice_identical():
     # Create an example tensor of shape (B, C, H, W)
     seg = torch.ones((4, 3, 8, 8))
 
+    # Initialize the loss
+    dice = ne.nn.modules.Dice(reduction=None)
+
     # Calculate the dice score
-    result = ne.utils.utils.dice(seg, seg)
+    result = dice(seg, seg)
 
     # The expected value for the dice score for identical inputs
     expected = torch.tensor(1.0)
