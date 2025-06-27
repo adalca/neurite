@@ -2,8 +2,8 @@
 
 A neural networks toolbox with a focus on medical image analysis in tensorflow/keras for now.
 
-> ⚠️ **Warning**: neurite is under active development. We are in the process of finalizing the structure for PyTorch. Please keep this in mind when using the library, as interfaces may change.
- 
+> ⚠️ **Warning**: neurite is under active development. We are in the process of finalizing the structure for PyTorch -- interfaces may change.
+
 ## Install
 
 To use the Neurite library, either clone this repository and install the requirements listed in `setup.py` or install directly with pip.
