@@ -6,7 +6,6 @@ from typing import Union, List, Tuple, Literal
 import einops
 import torch
 import torch.nn.functional as F
-from torch import nn
 
 import neurite as ne
 from neurite.samplers import Sampler
