@@ -30,7 +30,6 @@ import importlib
 import einops
 import torch
 from torch import nn
-from torch.nn.modules import activation
 import torch.nn.functional as F
 
 import neurite as ne

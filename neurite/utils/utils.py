@@ -23,11 +23,9 @@ implied. See the License for the specific language governing permissions and lim
 the License.
 """
 
-from typing import Union, List, Tuple, Literal, Type, Optional
+from typing import Union, List, Literal, Type, Optional
 import inspect
-import einops
 import torch
-import torch.nn.functional as F
 from torch import nn
 import neurite as ne
 from neurite.samplers import Sampler
