@@ -981,7 +981,7 @@ def checkerboard(
     return checkerboard_image
 
 
-def make_sample_flow(
+def constant_shift_field(
     shape: tuple = (1, 1, 16, 16),
     device: str = 'cpu',
     shift_size: int = 1,
