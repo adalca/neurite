@@ -110,7 +110,7 @@ def random_crop(
     # If `crop_proportion` is float, interpret it as upper bound of uniform distribution.
     crop_sampler = ne.samplers.make_sampler(
         ne.samplers.Uniform,
-        ne.utils.utils.make_range(0, crop_proportion)
+        ne.utils.utils.range_endpoints(0, crop_proportion)
     )
 
     # If prob is a sampler, sample from it

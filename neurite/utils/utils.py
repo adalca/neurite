@@ -34,7 +34,7 @@ __all__ = [
     "subsample_tensor_random_dims",
     "upsample",
     "resample",
-    "make_range",
+    "range_endpoints",
     "random_clear_label",
     "sample_image_from_labels",
     "is_instantiated_normalization",
@@ -745,7 +745,7 @@ def resample(
     return resampled
 
 
-def make_range(*args, **kwargs) -> tuple:
+def range_endpoints(*args, **kwargs) -> tuple:
     """
     Creates a tuple specigying the bounds for a range of numbers `(min, max)`.
 
@@ -769,15 +769,15 @@ def make_range(*args, **kwargs) -> tuple:
     Examples
     --------
     >>> # Using two positional arguments
-    >>> rng = make_range(0, 19.7)
+    >>> rng = range_endpoints(0, 19.7)
     >>> print(rng)
     (0, 19.7)
     >>> # Using one positional argument
-    >>> rng = make_range(5)
+    >>> rng = range_endpoints(5)
     >>> print(rng)
     (0, 5)
     >>> # Using keyword arguments
-    >>> rng = make_range(min=0.6, 1)
+    >>> rng = range_endpoints(min=0.6, 1)
     >>> print(rng)
     (0.6, 1)
     """
