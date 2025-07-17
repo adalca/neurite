@@ -841,7 +841,7 @@ def affine_to_dense_shift(
     return displacement
 
 
-def grid(
+def volshape_to_ndgrid(
     size: Tuple[int],
     device: Union[str, torch.device] = "cpu",
     dtype: Union[str, torch.dtype] = torch.float32,
@@ -876,7 +876,7 @@ def grid(
     Examples
     --------
     ### Make a 2d grid of size (3, 2)
-    >>> the_grid = grid(size=(3, 2))
+    >>> the_grid = volshape_to_ndgrid(size=(3, 2))
     >>> print(the_grid.shape)
     torch.Size([1, 2, 3, 2])
     >>> print(the_grid)

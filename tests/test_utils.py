@@ -144,7 +144,7 @@ def test_subsample_tensor_strides(
 )
 def test_grid_shape(grid_shape, expected_out_shape):
 
-    coord_grid = ne.nn.functional.grid(grid_shape)
+    coord_grid = ne.nn.functional.volshape_to_ndgrid(grid_shape)
     assert coord_grid.shape == expected_out_shape
 
 
@@ -157,7 +157,7 @@ def test_grid_normalized(grid_shape: tuple):
     generated coordinate grid has values exactly -1 or 1.
     """
 
-    coord_grid = ne.nn.functional.grid(grid_shape, normalize=True, indexing='ij')
+    coord_grid = ne.nn.functional.volshape_to_ndgrid(grid_shape, normalize=True, indexing='ij')
     corners = tuple(itertools.product(*[[0, s - 1] for s in grid_shape]))
 
     expected_corner_values = tuple(
