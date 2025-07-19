@@ -29,7 +29,7 @@ __all__ = [
     "random_clear_label",
     "sample_image_from_labels",
     "affine_to_dense_shift",
-    "grid",
+    "volshape_to_ndgrid",
     "checkerboard",
     "constant_shift_field",
     "cross_expand",
