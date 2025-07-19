@@ -2,14 +2,19 @@
 Functions that work with tensors.
 """
 
+# Standard library imports
 from typing import Union, List, Tuple, Literal, Type, Optional
+
+# Third party imports
 import einops
 import torch
 from torch import nn
 import torch.nn.functional as F
 
+# Custom imports
 import neurite as ne
 from neurite.samplers import Sampler
+
 
 __all__ = [
     "identity",

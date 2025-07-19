@@ -4,13 +4,17 @@ segmentation, registration, or classification. models leverage layers and module
 components of the neurite for streamlined object construction.
 """
 
+# Standard library imports
 from __future__ import annotations
 from typing import List, Union, Callable, Literal
 
+# Third party imports
 import torch
 from torch import nn
 
+# Custom imports
 import neurite as ne
+
 
 __all__ = [
     "BasicUNet",

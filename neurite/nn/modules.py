@@ -24,14 +24,17 @@ implied. Seee License for the specific language governing permissions and limita
 the License.
 """
 
+# Standard library imports
 from typing import List, Union, Type, Tuple, Literal, Optional
 import importlib
 
+# Third party imports
 import einops
 import torch
 from torch import nn
 import torch.nn.functional as F
 
+# Custom imports
 import neurite as ne
 import neurite.nn.functional as nef
 from neurite.samplers import Sampler

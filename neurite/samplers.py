@@ -4,9 +4,12 @@ from __future__ import annotations
 Random (samplers) for the neurite project.
 """
 
+# Standard library imports
 import inspect
 from functools import wraps
 from typing import Type, Dict, Any, TypeVar, Generator, List, Union, Tuple, Callable
+
+# Third party imports
 import torch
 
 __all__ = [

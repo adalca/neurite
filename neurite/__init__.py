@@ -45,6 +45,8 @@ __version__ = '0.2'
 
 # Third-party imports
 from packaging import version
+
+# Custom imports
 import pystrum
 
 # Set the minimum allowable pystrum version

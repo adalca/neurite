@@ -1,5 +1,5 @@
 """
-plot utilities for the neuron project
+Plot utilities for `neurite`.
 
 If you use this code, please cite the first paper this was built for:
 Dalca AV, Guttag J, Sabuncu MR
@@ -20,6 +20,16 @@ CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.
 """
 
+# Standard library imports
+from typing import Union, List, Any
+
+# Third party imports
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+from matplotlib.colors import Normalize
+from mpl_toolkits.axes_grid1 import make_axes_locatable  # plotting
+
 
 __all__ = [
     "slices",
@@ -28,15 +38,6 @@ __all__ = [
     "flow",
     "pca",
 ]
-
-
-# third party
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-from matplotlib.colors import Normalize
-from mpl_toolkits.axes_grid1 import make_axes_locatable  # plotting
-from typing import Union, List, Any
 
 
 def slices(

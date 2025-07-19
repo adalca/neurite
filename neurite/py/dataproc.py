@@ -1,4 +1,25 @@
-""" data processing for neuron project """
+"""
+Data processing for `neurite`.
+"""
+
+# Standard library imports
+import sys
+import os
+import shutil
+import six
+import re
+
+# Third party imports
+import nibabel as nib
+import numpy as np
+import scipy.ndimage.interpolation
+from tqdm import tqdm_notebook as tqdm  # for verbosity for forloops
+import matplotlib.pyplot as plt
+
+
+# Custom imports
+import pystrum.pynd.ndutils as nd
+
 
 __all__ = [
     "proc_mgh_vols",
@@ -8,24 +29,6 @@ __all__ = [
     "filestruct_change",
     "ml_split",
 ]
-
-# built-in
-import sys
-import os
-import shutil
-import six
-
-# third party
-import nibabel as nib
-import numpy as np
-import scipy.ndimage.interpolation
-from tqdm import tqdm_notebook as tqdm  # for verbosity for forloops
-import matplotlib.pyplot as plt
-
-
-# import local ndutils
-import pystrum.pynd.ndutils as nd
-import re
 
 
 def proc_mgh_vols(inpath,

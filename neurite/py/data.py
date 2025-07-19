@@ -1,12 +1,12 @@
 """
-data resources for neurite.
+Data resources for `neurite`.
 """
 
-# internal imports
+# Standard library imports
 import random
 from pathlib import Path
 
-# third party
+# Third party imports
 import numpy as np
 
 

@@ -23,10 +23,15 @@ implied. See the License for the specific language governing permissions and lim
 the License.
 """
 
+# Standard library imports
 from typing import Union, List, Literal, Type, Optional
 import inspect
+
+# Third party imports
 import torch
 from torch import nn
+
+# Custom imports
 import neurite as ne
 from neurite.samplers import Sampler
 

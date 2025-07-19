@@ -1,6 +1,10 @@
 """
-python utilities for neuron
+Python utilities for `neurite`.
 """
+
+# Third party imports
+import numpy as np
+import matplotlib
 
 
 __all__ = [
@@ -11,11 +15,6 @@ __all__ = [
     "fs_lut_to_cmap",
     "normalize_axes",
 ]
-
-
-# third party imports
-import numpy as np
-import matplotlib
 
 
 def softmax(x, axis):

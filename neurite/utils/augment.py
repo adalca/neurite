@@ -26,12 +26,15 @@ implied. See the License for the specific language governing permissions and lim
 the License.
 """
 
+# Standard library imports
 from __future__ import annotations
 from typing import Union, Tuple, List
 
+# Third party imports
 import torch
-import neurite as ne
 
+# Custom imports
+import neurite as ne
 from neurite.samplers import Sampler
 
 
