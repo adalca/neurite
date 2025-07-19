@@ -277,7 +277,7 @@ def apply_bernoulli_mask(input_tensor, p: float = 0.5, returns: str = None) -> t
     >>> print((masked_shape/original_shape))
     """
     # Sample the Bernoulli mask with parameter `p`
-    bernoulli_mask = ne.utils.util.bernoulli(p=p, shape=input_tensor.shape)
+    bernoulli_mask = ne.utils.utils.bernoulli(p=p, shape=input_tensor.shape)
 
     # Clone the input tensor for future computations
     masked = torch.clone(input_tensor)

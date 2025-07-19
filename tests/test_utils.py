@@ -3,6 +3,7 @@ import itertools
 
 import torch
 import neurite as ne
+import neurite.nn.functional as nef
 
 
 def test_soft_quantize_constant_input_same_output():
@@ -10,7 +11,7 @@ def test_soft_quantize_constant_input_same_output():
 
     const_val = 3.14
     input_tensor = torch.full((2, 3), const_val)
-    output_tensor = ne.nn.functional.soft_quantize(input_tensor.clone(), nb_bins=10, softness=2.0)
+    output_tensor = nef.soft_quantize(input_tensor.clone(), nb_bins=10, softness=2.0)
 
     assert torch.allclose(output_tensor, input_tensor)
 
@@ -23,7 +24,7 @@ def test_soft_quantize_monotonic_increasing(softness):
 
     input_tensor = torch.linspace(0.0, 1.0, steps=5)
 
-    output_tensor = ne.nn.functional.soft_quantize(
+    output_tensor = nef.soft_quantize(
         input_tensor.clone(),
         nb_bins=5,
         softness=softness
@@ -40,7 +41,7 @@ def test_soft_quantize_clipping():
 
     input_tensor = torch.randn(1, 1, 16, 16)
 
-    output_tensor = ne.nn.functional.soft_quantize(
+    output_tensor = nef.soft_quantize(
         input_tensor.clone(),
         nb_bins=3,
         softness=1.0,
@@ -102,7 +103,7 @@ def test_subsample_tensor_magnitudes():
     input_tensor = torch.arange(25).view(1, 1, 5, 5).float()
     subsampled_gt = torch.tensor([0, 2, 4, 10, 12, 14, 20, 22, 24]).view(1, 1, 3, 3).float()
 
-    subsampled_tensor = ne.nn.functional.subsample(input_tensor, stride=2)
+    subsampled_tensor = nef.subsample(input_tensor, stride=2)
 
     torch.allclose(subsampled_tensor, subsampled_gt)
 
@@ -127,7 +128,7 @@ def test_subsample_tensor_strides(
 
     # input_tensor = torch.randn(1, 1, *[32] * len(stride))
 
-    ne.nn.functional.subsample(
+    nef.subsample(
         input_tensor,
         stride=stride,
         subsampling_dimension=subsampling_dimension,
@@ -144,7 +145,7 @@ def test_subsample_tensor_strides(
 )
 def test_grid_shape(grid_shape, expected_out_shape):
 
-    coord_grid = ne.nn.functional.volshape_to_ndgrid(grid_shape)
+    coord_grid = nef.volshape_to_ndgrid(grid_shape)
     assert coord_grid.shape == expected_out_shape
 
 
@@ -175,7 +176,7 @@ def test_grid_normalized(grid_shape: tuple):
 
 
 def test_logistic_midpoint():
-    out = ne.utils.utils.logistic(torch.tensor(0.0))
+    out = nef.logistic(torch.tensor(0.0))
     assert torch.allclose(out, torch.tensor(0.5))
 
 
@@ -190,6 +191,6 @@ def test_infer_linear_interpolation_mode(n, mode):
 
 def test_apply_bernoulli_mask_all_keep():
     t = torch.ones(10)
-    masked = ne.utils.utils.apply_bernoulli_mask(t, p=1.0)
+    masked = nef.apply_bernoulli_mask(t, p=1.0)
     assert masked.shape == t.shape
     assert torch.all(masked == 1)

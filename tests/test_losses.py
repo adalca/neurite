@@ -24,7 +24,7 @@ def log_probabilities():
 def test_mse_simple():
     t1 = torch.tensor([1.0, 2.0])
     t2 = torch.tensor([2.0, 3.0])
-    assert ne.utils.utils.mse(t1, t2).item() == 1.0
+    assert nef.mse(t1, t2).item() == 1.0
 
 
 @pytest.mark.parametrize('spatial_dims', [1, 2, 3])
@@ -186,7 +186,7 @@ def test_multiple_log_dice(n_segs, log_probabilities):
     log_probs = [log_probabilities] * n_segs
 
     # Compute dice on log between the same tensor
-    log_dice_score = ne.utils.log_dice(*log_probs, reduction='mean')
+    log_dice_score = nef.log_dice(*log_probs, reduction='mean')
 
     # The expected log dice (still in the log domain) should be zero
     expected = torch.tensor(0.0)
