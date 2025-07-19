@@ -1571,8 +1571,8 @@ def log_dice(
 def reduce(
     tensor: torch.Tensor,
     reduction: str = 'mean',
-    dim: Union[Tuple[int, ...], int] = (0, 1),
-    keepdims: bool = True,
+    dim: Union[Tuple[int, ...], int] = None,
+    keepdims: bool = False,
 ) -> torch.Tensor:
     """
     Apply any torch reduction on a tensor.
@@ -1588,13 +1588,14 @@ def reduce(
         The input tensor to reduce.
     reduction : str, optional
         The type of reduction to apply. Supported values for multidimensional reductions are:
-        'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'; for single-dimension
-        reductions: 'argmin', 'argmax', and all multidimensionals. Default is 'mean'.
+        None, 'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'; for single
+        dimension reductions: 'argmin', 'argmax', and all multidimensionals. Default is None; all
+        dimensions are reduced to return a scalar.
     dim : int or tuple of ints, optional
         Dimension(s) over which to apply the reduction. For multidimensional reductions, pass a
         tuple of dimensions; for single-dimension reductions, pass an integer. Default is (0, 1).
     keepdims : bool, optional
-        Whether to retain reduced dimensions as a singleton. Default is True.
+        Whether to retain reduced dimensions as a singleton. Default is False.
 
     Returns
     -------
@@ -1621,7 +1622,7 @@ def reduce(
 
     # The multidimensional reductions (which also work as single dimension reductions)
     torch_multidim_reductions = [
-        'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'
+        'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean', None
     ]
 
     # The obligitory single dimension reductions

@@ -194,3 +194,14 @@ def test_apply_bernoulli_mask_all_keep():
     masked = nef.apply_bernoulli_mask(t, p=1.0)
     assert masked.shape == t.shape
     assert torch.all(masked == 1)
+
+
+def test_reduction():
+
+    tensor = torch.randn(1, 1, 128, 128, 128)
+
+    reduced_tensor = nef.reduce(tensor, reduction='mean', keepdims=False)
+
+    assert reduced_tensor.shape == torch.Size([]), (
+        f"Reduced tensor should be a scalar, got {reduced_tensor.shape}"
+    )
