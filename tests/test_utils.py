@@ -205,3 +205,37 @@ def test_reduction():
     assert reduced_tensor.shape == torch.Size([]), (
         f"Reduced tensor should be a scalar, got {reduced_tensor.shape}"
     )
+
+
+@pytest.mark.parametrize(
+    'prob, expected_range', (
+        (0.1, (900, 1100)), (0.5, (4800, 5200))
+    )
+)
+def test_random_flip(prob, expected_range):
+    """
+    Test random flip function to ensure it flips correctly along specified dimensions.
+
+    Notes
+    -----
+    I calculated the expected ranges using the binomial distribution CDF `scipy.stats.binom`
+    with n=10000 and p=prob. The ranges correspond to a 99% confidence interval. This test is
+    expected to fail approximately 1% of the time due to the probabilistic nature of the function.
+    """
+
+    input_tensor = torch.randn(1, 1, 8, 8)
+    flipped_tensor_gt = input_tensor.clone().flip([2])
+
+    num_times_flipped = 0
+    num_trials = 10_000
+
+    for i in range(num_trials):
+        flipped_tensor = nef.random_flip(2, input_tensor, prob=prob)
+        if torch.equal(flipped_tensor, flipped_tensor_gt):
+            num_times_flipped += 1
+
+    assert expected_range[0] <= num_times_flipped <= expected_range[1], (
+        f"Number of flips {num_times_flipped} out of {num_trials} trials with p={prob} "
+        f"not within expected range {expected_range}. WARNING: This test is expected to fail ~1% of"
+        "the time, due to the probabilistic nature of the function."
+    )
