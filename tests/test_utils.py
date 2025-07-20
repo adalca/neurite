@@ -239,3 +239,34 @@ def test_random_flip(prob, expected_range):
         f"not within expected range {expected_range}. WARNING: This test is expected to fail ~1% of"
         "the time, due to the probabilistic nature of the function."
     )
+
+
+def test_resize_scale_factor():
+    """
+    Test resizing constant tensor scales shape and preserves constant values.
+    """
+    device = torch.device(
+        "cuda" if torch.cuda.is_available() else "cpu"
+    )
+    img = torch.ones((1, 2, 2), device=device)
+    out = nef.resize(img, scale_factor=3)
+    assert out.shape == (1, 6, 6)
+    assert torch.allclose(out, torch.ones_like(out))
+
+
+def test_resize_nearest():
+    """
+    Nearest neighbor resizing should match repeat_interleave for integer scale factors.
+    """
+
+    # Image to be resized
+    img = torch.arange(16).view(1, 4, 4).float()
+
+    # Resized image using neurite function
+    resized_img = nef.resize(img, scale_factor=2, nearest=True).float()
+
+    # Ground truth resized image using repeat_interleave
+    img = torch.arange(16).view(1, 1, 4, 4).repeat_interleave(2, dim=2).repeat_interleave(2, dim=3)
+    resized_img_gt = img.reshape(1, 8, 8).float()
+
+    assert torch.allclose(resized_img, resized_img_gt, atol=1e-8)
