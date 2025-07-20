@@ -8,6 +8,7 @@ from typing import Union, List, Tuple, Literal, Type, Optional
 # Third party imports
 import einops
 import torch
+import numpy as np
 from torch import nn
 import torch.nn.functional as F
 
@@ -39,6 +40,8 @@ __all__ = [
     "dice",
     "log_dice",
     "reduce",
+    "random_flip",
+    "resize",
 ]
 
 
@@ -1872,3 +1875,102 @@ def random_flip(
     if len(args) == 1:
         return result[0]
     return result
+
+
+def resize(
+    image: torch.Tensor,
+    scale_factor: List[float] = None,
+    shape: List[int] = None,
+    nearest: bool = False
+) -> torch.Tensor:
+    """
+    Resize an image with the option of scaling and/or setting to a new shape.
+
+    Parameters
+    ----------
+    image: torch.Tensor
+        An input tensor with shape (C, H, W[, D]) to resize.
+    scale_factor: float or List[float], optional
+        Multiplicative factor(s) for scaling the input tensor. If a float, then the same
+        scale factor is applied to all spatial dimensions. If a tuple, then the scaling
+        factor for each dimension should be provided.
+    shape: List[int], optional
+        Target shape of the output tensor.
+    nearest: bool, optional
+        If True, use nearest neighbor interpolation. Otherwise, use linear interpolation.
+
+    Returns:
+    --------
+    torch.Tensor
+        The resized tensor with the shape specified by `shape` or scaled by `scale_factor`.
+
+    Notes
+    -----
+    TODO: This function has numpy operations and other general things (e.g. antialiasing) that
+    Adrian wants to refactor.
+    """
+    ndim = image.ndim - 1
+
+    # scale the image if the scale factor is provided
+    if scale_factor is not None and scale_factor != 1:
+
+        # compute target shape based on the scale factor
+        target_shape = [int(s * scale_factor + 0.5) for s in image.shape[1:]]
+
+        # convert image to float32 if it's not already to enable interpolation
+        # if using nearest interpolation, save the original dtype to convert back later
+        reset_type = None
+        if not torch.is_floating_point(image):
+            if nearest:
+                reset_type = image.dtype
+            image = image.type(torch.float32)
+
+        # determine interpolation mode based on ndim and interpolation type
+        linear = 'trilinear' if image.ndim - 1 == 3 else 'bilinear'
+        mode = 'nearest' if nearest else linear
+
+        # apply interpolation to the image
+        if nearest:
+            image = torch.nn.functional.interpolate(image.unsqueeze(0), target_shape, mode=mode)
+        else:
+            image = torch.nn.functional.interpolate(image.unsqueeze(0), target_shape, mode=mode)
+        image = image.squeeze(0)
+
+        # convert image back to its original dtype if necessary
+        if reset_type is not None:
+            image = image.type(reset_type)
+
+    if shape is not None:
+
+        # compute padding for each spatial dimension
+        padding = []
+        baseshape = image.shape[1:]
+        for d in range(ndim):
+            diff = shape[d] - baseshape[d]
+            if diff > 0:
+                half = diff / 2
+                a, b = int(np.floor(half)), int(np.ceil(half))
+                padding.extend([a, b])
+            else:
+                padding.extend([0, 0])
+
+        # apply padding to the image
+        padding.reverse()
+        image = torch.nn.functional.pad(image, padding)
+
+        # compute slice to remove excess dimensions
+        slicing = [slice(0, image.shape[0])]
+        baseshape = image.shape[1:]
+        for d in range(ndim):
+            diff = baseshape[d] - shape[d]
+            if diff > 0:
+                half = diff / 2
+                a, b = int(np.floor(half)), int(np.ceil(half))
+                slicing.append(slice(a, baseshape[d] - b))
+            else:
+                slicing.append(slice(0, baseshape[d]))
+
+        # apply slice to remove excess dimensions
+        image = image[tuple(slicing)]
+
+    return image
