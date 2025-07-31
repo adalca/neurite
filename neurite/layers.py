@@ -43,7 +43,7 @@ from tensorflow.python.ops import gen_sparse_ops
 
 # local imports
 from . import utils
-from .. import py
+from . import py
 
 
 class Negate(Layer):
