@@ -39,7 +39,7 @@ import pystrum.pytools.timer as timer
 
 
 # other neuron (this project) packages
-from neurite import dataproc as nrn_proc
+from .py import dataproc as nrn_proc
 
 
 class Vol(object):
