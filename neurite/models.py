@@ -984,7 +984,6 @@ def labels_to_image(
     return_mean=False,
     return_bias=False,
     id=0,
-    **kwargs,
 ):
     """Build model that augments label maps and synthesizes images from them.
 
@@ -1076,32 +1075,6 @@ def labels_to_image(
     """
     import voxelmorph as vxm
 
-    # Deprecation.
-    slice_new = kwargs.pop('slice_new', False)
-    if not slice_new:
-        warnings.warn('model `labels_to_image` will switch from `ne.layers.Subsample` to '
-                      '`vxm.layers.DownUpSample` soon. Enable the new behavior by setting '
-                      '`slice_new=True`.')
-
-    warp_zero_mean = kwargs.pop('warp_zero_mean', False)
-    if not warp_zero_mean:
-        warnings.warn('argument `warp_zero_mean` to `labels_to_image` is deprecated and will be '
-                      'removed in the future, as the SVF components will always have zero mean. '
-                      'Enable the new behavior by setting `warp_zero_mean=True`.')
-
-    if 'slice_stride_min' in kwargs:
-        slice_min = kwargs.pop('slice_stride_min')
-        warnings.warn('argument `slice_stride_min` to `labels_to_image` is deprecated and will be '
-                      'removed in the future. Please use `slice_min` instead.')
-
-    if 'slice_stride_max' in kwargs:
-        slice_max = kwargs.pop('slice_stride_max')
-        warnings.warn('argument `slice_stride_max` to `labels_to_image` is deprecated and will be '
-                      'removed in the future. Please use `slice_max` instead.')
-
-    if kwargs:
-        raise ValueError(f'unknown argument {kwargs}')
-
     # Compute type.
     compute_type = tf.keras.mixed_precision.global_policy().compute_dtype
     compute_type = tf.dtypes.as_dtype(compute_type)
@@ -1192,10 +1165,7 @@ def labels_to_image(
             out_type=compute_type,
             seed=seeds.pop('warp', None),
         )(labels)
-        if warp_zero_mean:
-            vel_field -= KL.Lambda(
-                lambda x: tf.reduce_mean(x, axis=range(1, num_dim + 1)),
-            )(vel_field)
+        vel_field -= KL.Lambda(lambda x: tf.reduce_mean(x, axis=range(1, num_dim + 1)))(vel_field)
         def_field = vxm.layers.VecInt(int_steps=5, name=f'vec_int_{id}')(vel_field)
         if not half_res:
             def_field = vxm.layers.RescaleTransform(zoom_factor=2, name=f'def_{id}')(def_field)
@@ -1289,14 +1259,9 @@ def labels_to_image(
         axes=slice_axes,
         seed=seeds.pop('slice', 1234 if slice_labels else None),
     )
-    if slice_new:
-        image = vxm.layers.DownUpSample(**prop)(image)
-        if slice_labels:
-            labels = vxm.layers.DownUpSample(interp_method='nearest', **prop)(labels)
-    else:
-        image = layers.Subsample(**prop)(image)
-        if slice_labels:
-            labels = layers.Subsample(**prop)(labels)
+    image = vxm.layers.DownUpSample(**prop)(image)
+    if slice_labels:
+        labels = vxm.layers.DownUpSample(interp_method='nearest', **prop)(labels)
 
     # Intensity manipulations.
     image = layers.RandomClip(
