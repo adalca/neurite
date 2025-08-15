@@ -1118,7 +1118,7 @@ def labels_to_image(
     # Input model.
     if input_model is None:
         labels = KL.Input(shape=(*in_shape, 1), name=f'input_{id}', dtype=compute_type)
-        input_model = tf.keras.Model(*[labels] * 2)
+        input_model = tf.keras.Model(labels, tf.keras.layers.Activation('linear')(labels))
     labels = input_model.output
     if labels.dtype != compute_type:
         labels = KL.Lambda(lambda x: tf.cast(x, compute_type))(labels)
