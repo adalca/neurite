@@ -24,12 +24,12 @@ the License.
 """
 
 # Standard library imports
-from typing import Union, List, Literal, Type, Optional
+from typing import Union, List, Literal, Type, Optional, Collection
 import inspect
 
 # Third party imports
 import torch
-from torch import nn
+from torch import isin, nn
 
 # Custom imports
 import neurite as ne
@@ -52,7 +52,9 @@ def gaussian_kernel(
     kernel_size: int = 3,
     sigma: Union[float, int] = 1,
     ndim: int = 3,
-    nchannels: int = 1
+    nchannels: int = 1,
+    device: Optional[torch.device] = None,
+    dtype: Optional[torch.dtype] = torch.float32,
 ) -> torch.Tensor:
     """
     Create a {1D, 2D, 3D} Gaussian kernel.
@@ -82,17 +84,43 @@ def gaussian_kernel(
     """
 
     # Create a coordinate grid centered at zero
-    coords = torch.arange(kernel_size).float() - (kernel_size - 1) / 2
-    grid = torch.stack(torch.meshgrid([coords] * ndim, indexing='ij'), -1)
+    if isinstance(kernel_size, list):
+        if len(kernel_size) != ndim:
+            raise ValueError("If coords is a list, it must have length equal to `ndim`.")
+        coords = [
+            torch.arange(
+                ks, device=device, dtype=dtype
+            ).float() - (ks - 1) / 2
+            for ks in kernel_size
+        ]
+    else:
+        coords = [torch.arange(kernel_size, device=device, dtype=dtype).float() - (kernel_size - 1) / 2] * ndim
+        kernel_size = [kernel_size] * ndim
 
-    # Calculate the Gaussian function
-    kernel = torch.exp(-((grid ** 2).sum(-1) / (2 * sigma ** 2)))
+    grid = torch.stack(
+        torch.meshgrid(coords, indexing='ij'), -1
+    ).to(device=device, dtype=dtype)
 
-    # Normalize the kernel so that the sum of all elements is 1
-    kernel = kernel / kernel.sum()
+    # print(f'ndim: {ndim}, grid.shape: {grid.shape}, sigma: {sigma}')
+    # Per-dimension sigma
+    if isinstance(sigma, (float, int)):
+        sigma = [sigma] * ndim
+
+    elif isinstance(sigma, Collection):
+        if len(sigma) != ndim:
+            raise ValueError("If sigma is a collection, it must have length equal to `ndim`.")
+
+    # Make the sigmas on device
+    sigma = torch.tensor(sigma, device=device, dtype=dtype)
+
+    # Calculate the Gaussian function. Make the kernel by integrating over all spatial dimensions.
+    kernel = torch.exp(-0.5 * (grid ** 2 / sigma**2).sum(-1))
+
+    # Normalize the kernel so that it sums to 1
+    kernel /= kernel.sum()
 
     # Reshape to 5D tensor for conv3d
-    kernel = kernel.view(1, 1, *([kernel_size] * ndim))
+    kernel = kernel.view(1, 1, *kernel_size)
 
     # Repeat the kernel for each channel (depth-wise convolution)
     if nchannels > 1:

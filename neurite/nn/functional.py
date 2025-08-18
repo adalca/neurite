@@ -203,12 +203,13 @@ def gaussian_smoothing(
         sigma=sigma,
         ndim=ndim,
         nchannels=input_tensor.shape[1]
-    )
+    ).float()
 
     # Calculate padding size
-    padding = kernel_size // 2
+    padding = torch.tensor(kernel_size) // 2
     # Make the padding symmetric and
-    padding = torch.tensor(padding).repeat(ndim * 2)
+    padding = padding.repeat(2)
+    print(padding)
     # Convert to tuple (F.pad takes a tuple of ints, not tensors)
     padding = tuple(padding.tolist())
 
@@ -383,7 +384,6 @@ def subsample(
     if isinstance(subsampling_dimension, int):
         strides[subsampling_dimension] = stride
         slices[subsampling_dimension + 2] = slice(None, None, strides[subsampling_dimension])
-        print(slices)
 
     # If it's a list, verify and fill slices
     elif isinstance(subsampling_dimension, (list, tuple)):
@@ -496,11 +496,9 @@ def subsample_tensor_random_dims(
 
     # Perform the subsampling.
     for dimension in dimensions_to_subsample:
-        print(dimension)
         # Sample the stride
         # sampled_stride = stride_sampler()
         # Apply the subsampling operation
-        print(input_tensor.shape)
         input_tensor = subsample(
             input_tensor=input_tensor,
             subsampling_dimension=int(dimension) - 2,  # Minus 2 for spatial dims
