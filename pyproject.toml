@@ -25,14 +25,14 @@ maintainers = [
   { name = "Etienne Chollet", email = "etiennepchollet@gmail.com" }
 ]
 dependencies = [
-  "torch",
+  "tensorflow",
   "einops",
   "pystrum",
   "tensorflow",
 ]
 keywords = [
   "python",
-  "pytorch",
+  "tensorflow",
   "medical-imaging",
   "segmentation",
   "medical-image-computing",
