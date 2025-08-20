@@ -42,15 +42,37 @@ if (
         f'{current_pystrum_version}'
     )
 
-# neurite main tools
-from . import modelio
-from . import generators
+# Immediate submodules
 from . import callbacks
-from . import metrics
-from . import losses
-from . import models
-from . import utils
-from . import layers
-from . import regularizers
 from . import data
+from . import generators
+from . import layers
+from . import losses
+from . import metrics
+from . import modelio
+from . import models
+from . import regularizers
+
+# Subpackages
+from . import utils
 from . import py
+
+# Import `py/` and `utils/` subpackages to namespace to enable non-explicit imports
+from .py import plot
+from .utils import utils
+
+
+__all__ = [
+    'callbacks',
+    'data',
+    'generators',
+    'layers',
+    'losses',
+    'metrics',
+    'modelio',
+    'models',
+    'regularizers',
+    'utils',
+    'py',
+    'plot'
+]
