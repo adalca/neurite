@@ -28,7 +28,12 @@ dependencies = [
   "tensorflow",
   "einops",
   "pystrum",
+  "nibabel",
+  "pytest",
+  "tqdm",
+  "scikit-learn",
 ]
+
 keywords = [
   "python",
   "tensorflow",
