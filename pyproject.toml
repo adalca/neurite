@@ -28,7 +28,6 @@ dependencies = [
   "tensorflow",
   "einops",
   "pystrum",
-  "tensorflow",
 ]
 keywords = [
   "python",
