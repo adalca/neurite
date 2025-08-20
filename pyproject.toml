@@ -32,6 +32,7 @@ dependencies = [
   "pytest",
   "tqdm",
   "scikit-learn",
+  "pystrum",
 ]
 
 keywords = [
