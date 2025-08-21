@@ -29,7 +29,7 @@ import inspect
 
 # Third party imports
 import torch
-from torch import isin, nn
+from torch import nn
 
 # Custom imports
 import neurite as ne

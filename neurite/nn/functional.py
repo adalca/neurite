@@ -209,7 +209,7 @@ def gaussian_smoothing(
     padding = torch.tensor(kernel_size) // 2
     # Make the padding symmetric and
     padding = padding.repeat(2)
-    print(padding)
+
     # Convert to tuple (F.pad takes a tuple of ints, not tensors)
     padding = tuple(padding.tolist())
 
