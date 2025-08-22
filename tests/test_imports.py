@@ -18,6 +18,7 @@ def test_nonexplicit_imports():
     _ = ne.utils.interpn
     _ = ne.utils.volshape_to_meshgrid
     _ = ne.utils.resize
+    _ = ne.utils.augment.draw_perlin
 
 
 def test_explicit_submodule_imports():
@@ -53,4 +54,3 @@ def test_primary_modules():
 
     # metrics.py
     _ = ne.metrics.MutualInformation
-
