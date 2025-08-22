@@ -57,7 +57,7 @@ from . import regularizers
 from . import utils
 from . import py
 
-# Import `py/` and `utils/` subpackages to namespace to enable non-explicit imports
+# Import `py/` subpackage to namespace to enable non-explicit imports
 from .py import plot
 
 
