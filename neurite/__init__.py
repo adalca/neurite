@@ -59,7 +59,6 @@ from . import py
 
 # Import `py/` and `utils/` subpackages to namespace to enable non-explicit imports
 from .py import plot
-from .utils import utils
 
 
 __all__ = [
