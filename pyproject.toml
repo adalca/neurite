@@ -26,10 +26,15 @@ maintainers = [
 ]
 dependencies = [
   "torch",
+  "numpy",
   "einops",
   "pystrum",
-  "torch",
+  "nibabel",
+  "scipy",
+  "matplotlib",
+  "tqdm",
 ]
+
 keywords = [
   "python",
   "pytorch",
