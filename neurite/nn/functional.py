@@ -391,7 +391,7 @@ def subsample(
             strides[dim] = strides[dim]
             slices[dim + 2] = slice(None, None, strides[dim])
 
-    return input_tensor[slices]
+    return input_tensor[tuple(slices)]
 
 
 def subsample_tensor_random_dims(
