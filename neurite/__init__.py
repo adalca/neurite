@@ -69,3 +69,11 @@ from . import py        # Noqa: F401
 from . import nn
 from . import utils
 from . import samplers
+
+# Importing submodules from `py` to top level. Not `utils` to avoid shadowing
+from .py import data, dataproc, plot
+
+# Public API
+__all__ = [
+    'py', 'nn', 'utils', 'samplers', 'data', 'dataproc', 'plot',
+]
