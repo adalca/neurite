@@ -1,5 +1,34 @@
 """
-Functions that work with tensors.
+Tensor operations and functions for Neurite.
+
+This module provides a collection of functions for manipulating and analyzing
+PyTorch tensors, with applications a focus on imaging. Functions include:
+
+- **Basic operations**: `identity`, `mse`, `reduce`
+- **Sampling and quantization**: `soft_quantize`, `subsample`,
+  `subsample_tensor_random_dims`, `apply_bernoulli_mask`
+- **Filtering and smoothing**: `gaussian_smoothing`, `filter_dim`
+- **Geometric transforms**: `upsample`, `resample`, `resize`,
+  `affine_to_dense_shift`, `volshape_to_ndgrid`
+- **Label/image utilities**: `random_clear_label`, `sample_image_from_labels`
+- **Evaluation metrics**: `dice`, `log_dice`
+
+These functions are written in PyTorch (optionally GPU-accelerated) and are
+designed to interoperate with Neurite’s samplers, layers, and models.
+
+Examples
+--------
+>>> import torch
+>>> import neurite.nn.functional as nef
+>>> x = torch.randn(1, 1, 32, 32, 32)
+>>> qx = nef.soft_quantize(x, nb_bins=4, softness=0.5)
+>>> sx = nef.gaussian_smoothing(x, kernel_size=5, sigma=1.2)
+
+Notes
+-----
+- All functions assume tensors follow the (B, C, *spatial_dims) convention.
+- Some utilities accept `Sampler` objects from `neurite.samplers` for
+  stochastic behavior.
 """
 
 # Standard library imports
@@ -1153,14 +1182,14 @@ def filter_dim(
     """
     Filters slices of a tensor that contain NaNs, infinite values, or are entirely zero.
 
-    Parameters:
+    Parameters
     ----------
     tensor : torch.Tensor
         An n-dimensional tensor.
     verbose : bool, optional
         If True, prints the number of elements filtered for each condition. Default is False.
 
-    Returns:
+    Returns
     -------
     torch.Tensor
         The filtered tensor containing only slice elements without NaNs, infinite values, and not
