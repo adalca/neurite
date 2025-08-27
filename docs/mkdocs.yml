@@ -59,6 +59,9 @@ plugins:
             docstring_style: numpy
             docstring_section_style: spacy
             merge_init_into_class: true
+            show_signature: true
+            show_signature_annotations: true
+            show_root_toc_entry: true
             separate_signature: true
             members_order: alphabetical
             show_source: true
