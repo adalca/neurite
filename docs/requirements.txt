@@ -1,0 +1,6 @@
+mkdocs>=1.6
+mkdocs-material>=9.5
+pymdown-extensions>=10.8
+mkdocs-autorefs>=1.2
+mkdocstrings>=0.25
+mkdocstrings-python>=1.10
