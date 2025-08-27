@@ -3,15 +3,11 @@ Neurite: A modular deep learning library for medical image processing.
 ======================================================================
 
 Neurite is organized into two main parts:
-- Backend-specific modules: Each backend (e.g., PyTorch, TensorFlow) is contained in their own
-  subpackages with functionalities such as layers and models.
-- Core Python utilities: Common functionality implemented in pure Python and NumPy, organized under
-  the 'py' subpackage.
 
-This module is the top-level initializer for the Neurite package. It performs the following tasks:
-  1. Validates that the required version of pystrum is installed.
-  2. Imports core utilities from the 'py' subpackage.
-  3. Dynamically loads backend-specific modules based on the configured backend.
+- **Backend-specific modules**: Each backend (e.g., PyTorch, TensorFlow) is contained in their own
+  subpackage with functionalities such as layers and models.
+- **Core Python utilities**: Common functionality implemented in pure Python and NumPy, organized under
+  the 'py' subpackage.
 
 Configuration
 -------------
@@ -39,6 +35,14 @@ models
     segmentation, registration, or classification. models leverage layers and modules from
     other components of the neurite for streamlined object construction.
 """
+
+# Note: This block is intentionally omitted from the module-level docstring to avoid showing it in documentation.
+# This module is the top-level initializer for the Neurite package. It performs the following tasks:
+# 
+#   1. Validates that the required version of pystrum is installed.
+#   2. Imports core utilities from the 'py' subpackage.
+#   3. Dynamically loads backend-specific modules based on the configured backend.
+
 
 # Define the version of neurite
 __version__ = '0.2'
