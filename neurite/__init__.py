@@ -58,7 +58,7 @@ from . import utils
 from . import py
 
 # Import `py/` subpackage to namespace to enable non-explicit imports
-from .py import plot
+from .py import data, dataproc, plot
 
 
 __all__ = [
@@ -73,5 +73,7 @@ __all__ = [
     'regularizers',
     'utils',
     'py',
-    'plot'
+    'plot',
+    'data',
+    'dataproc'
 ]
