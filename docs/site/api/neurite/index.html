@@ -710,15 +710,13 @@
     <div class="doc doc-contents first">
 
         <h2 id="neurite--neurite-a-modular-deep-learning-library-for-medical-image-processing">Neurite: A modular deep learning library for medical image processing.</h2>
-<p>Neurite is organized into two main parts:
-- Backend-specific modules: Each backend (e.g., PyTorch, TensorFlow) is contained in their own
-  subpackages with functionalities such as layers and models.
-- Core Python utilities: Common functionality implemented in pure Python and NumPy, organized under
-  the 'py' subpackage.</p>
-<p>This module is the top-level initializer for the Neurite package. It performs the following tasks:
-  1. Validates that the required version of pystrum is installed.
-  2. Imports core utilities from the 'py' subpackage.
-  3. Dynamically loads backend-specific modules based on the configured backend.</p>
+<p>Neurite is organized into two main parts:</p>
+<ul>
+<li><strong>Backend-specific modules</strong>: Each backend (e.g., PyTorch, TensorFlow) is contained in their own
+  subpackage with functionalities such as layers and models.</li>
+<li><strong>Core Python utilities</strong>: Common functionality implemented in pure Python and NumPy, organized under
+  the 'py' subpackage.</li>
+</ul>
 
 
 <details class="configuration" open>
