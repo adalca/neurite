@@ -1,4 +1,13 @@
-site_name: neurite
+site_name: 'Neurite: Deep Learning toolbox for Medical Imaging'
+site_description: >
+  Neurite is a modular deep learning library for medical image processing,
+  with PyTorch and TensorFlow backends for layers, models, and utilities.
+site_author: Adrian V. Dalca (DalcaLab @ HMS and MIT)
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/adalca/neurite
 
 nav:
   - Home: index.md
