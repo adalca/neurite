@@ -2,7 +2,7 @@
 
 A neural networks toolbox with a focus on medical image analysis in tensorflow/keras for now.
 
-> ⚠️ **Warning**: neurite is under active development. We are in the process of finalizing the structure for PyTorch -- interfaces may change.
+> ⚠️ **Warning**: neurite is under active development. We are in the process of finalizing the structure for PyTorch -- interfaces may change. 
 
 ## Install
 
@@ -11,6 +11,8 @@ To use the Neurite library, either clone this repository and install the require
 ```
 pip install neurite
 ```
+
+**For users who want to use the stable TensorFlow version**, use either `pip install neurite`, or pull/clone from the `dev-tensorflow` branch.
 
 ## Main tools
 - [layers](neurite/tf/layers.py): various network layers, sparse operations (e.g. `SpatiallySparse_Dense`), and `LocallyConnected3D` currently not included in `keras`  
