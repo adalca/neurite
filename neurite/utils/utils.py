@@ -190,15 +190,15 @@ def make_range(*args, **kwargs) -> tuple:
     Examples
     --------
     >>> # Using two positional arguments
-    >>> rng = range_endpoints(0, 19.7)
+    >>> rng = make_range(0, 19.7)
     >>> print(rng)
     (0, 19.7)
     >>> # Using one positional argument
-    >>> rng = range_endpoints(5)
+    >>> rng = make_range(5)
     >>> print(rng)
     (0, 5)
     >>> # Using keyword arguments
-    >>> rng = range_endpoints(min=0.6, 1)
+    >>> rng = make_range(min=0.6, 1)
     >>> print(rng)
     (0.6, 1)
     """
