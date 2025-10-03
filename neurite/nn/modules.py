@@ -66,6 +66,99 @@ __all__ = [
 ]
 
 
+class Dice(nn.Module):
+    """
+    Compute the Dice score between two segmentation tensors (e.g. ground truth, predictions, etc...)
+
+    Examples
+    --------
+    # Example 1: Computing the hard dice score with binary seg maps
+    >>> # Instantiate the dice score module
+    >>> dice_module = ne.losses.Dice()
+    >>> # Randomly sample binary tensors with 3 batches and 4 channels
+    >>> seg1 = ne.samplers.RandInt(0, 1)((3, 4, 128, 128))
+    >>> seg2 = ne.samplers.RandInt(0, 1)((3, 4, 128, 128))
+    >>> # Compute the dice score and return
+    >>> dice_module(seg1, seg2)
+    tensor([[0.5003]])
+
+    # Example 2: Computing the soft dice score with continuious seg maps and no reduction
+    >>> dice_module = Dice(reduction=None)
+    >>> # Randomly sample continuious "logits"
+    >>> seg1 = ne.samplers.Normal(0, 1)((3, 4, 128, 128))
+    >>> seg2 = ne.samplers.Normal(0, 1)((3, 4, 128, 128))
+    >>> # Activation functions
+    >>> seg1 = ne.utils.logistic(seg1)
+    >>> seg2 = ne.utils.logistic(seg2)
+    >>> # Compute the dice score and return
+    >>> dice_module(seg1, seg2)
+    tensor([[0.4982, 0.5022, 0.4984, 0.5024],
+            [0.5016, 0.5035, 0.5021, 0.5001],
+            [0.5001, 0.4998, 0.4990, 0.4996]])
+    """
+
+    def __init__(
+        self,
+        smooth_numerator: float = 1e-12,
+        smooth_denominator: float = 1e-12,
+        reduction: str = 'mean',
+        reduction_dim: int = (0, 1),
+        keepdims: bool = True,
+    ) -> None:
+
+        """
+        Initialize `Dice`.
+
+        Parameters
+        ----------
+        smooth_numerator : float, optional
+            Smoothing constant added to the numerator.
+        smooth_denominator : float, optional
+            Smoothing constant added to the denominator.
+        reduction : str, optional
+            The type of reduction to apply. Supported values for multidimensional reductions are:
+            'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'; for single-dimension
+            reductions: 'argmin', 'argmax', and all multidimensionals. Default is 'mean'.
+        reduction_dim : int or tuple of ints, optional
+            Dimension(s) over which to apply the reduction. For multidimensional reductions, pass a
+            tuple of dimensions; for single-dimension reductions, pass an integer. Default is (0, 1)
+        keepdims : bool, optional
+            Whether to retain reduced dimensions as a singleton. Default is True.
+        """
+        super().__init__()
+
+        # Store attributes
+        self.smooth_numerator = smooth_numerator
+        self.smooth_denominator = smooth_denominator
+        self.reduction = reduction
+        self.reduction_dim = reduction_dim
+        self.keepdims = keepdims
+
+    def forward(self, *segs) -> torch.Tensor:
+        """
+        Compute the Dice coefficient between two or more segmentation tensors.
+
+        Parameters
+        ----------
+        *segs : torch.Tensor
+            Two or more segmentation tensors of shape (B, C, *spatial_dims) with values in [0, 1].
+
+        Returns
+        -------
+        torch.Tensor
+            The computed Dice coefficient, optionally reduced according to object initialization.
+        """
+
+        return nef.dice(
+            *segs,
+            smooth_numerator=self.smooth_numerator,
+            smooth_denominator=self.smooth_denominator,
+            reduction=self.reduction,
+            reduction_dim=self.reduction_dim,
+            keepdims=self.keepdims
+        )
+
+
 class Activation(nn.Module):
     """
     Dynamically construct an activation/nonlinearity based on the specified type.
@@ -1800,99 +1893,6 @@ class SampleImageFromLabels(nn.Module):
             self.mean_sampler,
             self.noise_sampler,
             self.noise_variance
-        )
-
-
-class Dice(nn.Module):
-    """
-    Compute the Dice score between two segmentation tensors (e.g. ground truth, predictions, etc...)
-
-    Examples
-    --------
-    # Example 1: Computing the hard dice score with binary seg maps
-    >>> # Instantiate the dice score module
-    >>> dice_module = ne.losses.Dice()
-    >>> # Randomly sample binary tensors with 3 batches and 4 channels
-    >>> seg1 = ne.samplers.RandInt(0, 1)((3, 4, 128, 128))
-    >>> seg2 = ne.samplers.RandInt(0, 1)((3, 4, 128, 128))
-    >>> # Compute the dice score and return
-    >>> dice_module(seg1, seg2)
-    tensor([[0.5003]])
-
-    # Example 2: Computing the soft dice score with continuious seg maps and no reduction
-    >>> dice_module = Dice(reduction=None)
-    >>> # Randomly sample continuious "logits"
-    >>> seg1 = ne.samplers.Normal(0, 1)((3, 4, 128, 128))
-    >>> seg2 = ne.samplers.Normal(0, 1)((3, 4, 128, 128))
-    >>> # Activation functions
-    >>> seg1 = ne.utils.logistic(seg1)
-    >>> seg2 = ne.utils.logistic(seg2)
-    >>> # Compute the dice score and return
-    >>> dice_module(seg1, seg2)
-    tensor([[0.4982, 0.5022, 0.4984, 0.5024],
-            [0.5016, 0.5035, 0.5021, 0.5001],
-            [0.5001, 0.4998, 0.4990, 0.4996]])
-    """
-
-    def __init__(
-        self,
-        smooth_numerator: float = 1e-12,
-        smooth_denominator: float = 1e-12,
-        reduction: str = 'mean',
-        reduction_dim: int = (0, 1),
-        keepdims: bool = True,
-    ) -> None:
-
-        """
-        Initialize `Dice`.
-
-        Parameters
-        ----------
-        smooth_numerator : float, optional
-            Smoothing constant added to the numerator.
-        smooth_denominator : float, optional
-            Smoothing constant added to the denominator.
-        reduction : str, optional
-            The type of reduction to apply. Supported values for multidimensional reductions are:
-            'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'; for single-dimension
-            reductions: 'argmin', 'argmax', and all multidimensionals. Default is 'mean'.
-        reduction_dim : int or tuple of ints, optional
-            Dimension(s) over which to apply the reduction. For multidimensional reductions, pass a
-            tuple of dimensions; for single-dimension reductions, pass an integer. Default is (0, 1)
-        keepdims : bool, optional
-            Whether to retain reduced dimensions as a singleton. Default is True.
-        """
-        super().__init__()
-
-        # Store attributes
-        self.smooth_numerator = smooth_numerator
-        self.smooth_denominator = smooth_denominator
-        self.reduction = reduction
-        self.reduction_dim = reduction_dim
-        self.keepdims = keepdims
-
-    def forward(self, *segs) -> torch.Tensor:
-        """
-        Compute the Dice coefficient between two or more segmentation tensors.
-
-        Parameters
-        ----------
-        *segs : torch.Tensor
-            Two or more segmentation tensors of shape (B, C, *spatial_dims) with values in [0, 1].
-
-        Returns
-        -------
-        torch.Tensor
-            The computed Dice coefficient, optionally reduced according to object initialization.
-        """
-
-        return nef.dice(
-            *segs,
-            smooth_numerator=self.smooth_numerator,
-            smooth_denominator=self.smooth_denominator,
-            reduction=self.reduction,
-            reduction_dim=self.reduction_dim,
-            keepdims=self.keepdims
         )
 
 
