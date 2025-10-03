@@ -66,7 +66,7 @@ class BasicUNet(nn.Module):
         normalizations: Union[List[Union[Callable, str]], Callable, str, None] = None,
         activations: Union[List[Union[Callable, str]], Callable, str, None] = nn.ReLU,
         order: str = 'caca',
-        final_activation: Union[str, nn.Module, None] = nn.Sigmoid(),
+        final_activation: Union[str, nn.Module, None] = None,
         residual_connections: bool = True,
     ):
 
@@ -248,7 +248,7 @@ class BasicAutoencoder(nn.Module):
         normalizations: Union[List[Union[Callable, str]], Callable, str, None] = None,
         activations: Union[List[Union[Callable, str]], Callable, str, None] = nn.ReLU,
         order: str = 'caca',
-        final_activation: Union[str, nn.Module, None] = nn.Sigmoid(),
+        final_activation: Union[str, nn.Module, None] = None,
         padding_mode: str = 'zeros',
     ):
         """
