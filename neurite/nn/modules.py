@@ -374,6 +374,9 @@ class TransposedConv(nn.Module):
     """
     Dynamically construct a transposed convolution {`ConvTranspose1d`,
     `ConvTranspose2d`, `ConvTranspose3d`} based on the number of input dimensions.
+
+    TransposeConv can lead to checkerboard artifacts. Consider using linear interpolation instead.
+    https://distill.pub/2016/deconv-checkerboard/
     """
 
     def __init__(
@@ -501,9 +504,7 @@ class Pool(nn.Module):
         super(Pool, self).__init__()
 
         # Mapping of pooling operations
-        pool_map = {
-            'max': 'MaxPool', 'avg': 'AvgPool', 'lp': 'LPPool'
-            }
+        pool_map = {'max': 'MaxPool', 'avg': 'AvgPool', 'lp': 'LPPool'}
 
         # Determine if pooling operation is supported
         if pool_mode not in pool_map:
@@ -907,22 +908,24 @@ class ContextCrossConv(nn.Module):
         self.cross_conv = ConvBlock(
             ndim=ndim, in_channels=sum(in_channels), out_channels=out_channels,
             kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
-            groups=groups, bias=bias, normalization=normalization, activation=activation, order=order,
-            padding_mode=padding_mode,
+            groups=groups, bias=bias, normalization=normalization, activation=activation, 
+            order=order, padding_mode=padding_mode,
         )
 
         # Separate ConvBlock to further process the aggregated features
         self.query_conv_block = ConvBlock(
             ndim=ndim, in_channels=out_channels, out_channels=out_channels, kernel_size=kernel_size,
-            stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, normalization=normalization,
-            activation=activation, order=order, padding_mode=padding_mode,
+            stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, 
+            normalization=normalization, activation=activation, order=order,
+            padding_mode=padding_mode,
         )
 
         # Separate ConvBlock to further process the aggregated features
         self.context_conv_block = ConvBlock(
             ndim=ndim, in_channels=out_channels, out_channels=out_channels, kernel_size=kernel_size,
-            stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, normalization=normalization,
-            activation=activation, order=order, padding_mode=padding_mode,
+            stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, 
+            normalization=normalization, activation=activation, order=order, 
+            padding_mode=padding_mode,
         )
 
     def forward(
@@ -1925,4 +1928,3 @@ class MeanSquaredErrorProb(nn.Module):
         Performs the forward pass of the `CLASSNAME` module.
         """
         raise NotImplementedError("The `CLASSNAME` module isn't ready yet :(")
-
