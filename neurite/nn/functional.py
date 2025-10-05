@@ -882,6 +882,7 @@ def volshape_to_ndgrid(
     dtype: Union[str, torch.dtype] = torch.float32,
     normalize: bool = False,
     indexing: Literal["ij", "xy"] = "ij",
+    stack: bool = False,
 ) -> torch.Tensor:
     """
     Generate a grid of spatial coordinates.
@@ -900,13 +901,20 @@ def volshape_to_ndgrid(
     indexing : Literal["ij", "xy"], optional
         Indexing mode passed to ``torch.meshgrid``. Defaults to ``"ij"``.
     normalize : bool, optional
-        Normalize each dimension of the grid to the range [-1, 1]. Otherwise, the grid coords span
-        from 0 to `size[i] - 1` for each dimension.
+        Normalize each dimension of the grid to the range [-1, 1]. 
+        Otherwise, the grid coords span from 0 to `size[i] - 1` for each dimension.
+        Default is False
+    stack : bool, optional
+        If True, stack the grid tensors along the last dimension to return a single tensor of
+        shape `(*size, len(size))`. If False, return a tuple of tensors, each of shape
+        `(*size)`. Default is False.
 
     Returns
     -------
     torch.Tensor
-        A tensor of shape `1, *size, len(size)` representing the grid of spatial coordinates.
+        the meshgrid of spatial coordinates
+        if stack=False, a tuple of len(size) tensors of shape `*size` 
+        if stack=True, a tensor of shape `*size, len(size)`
 
     Examples
     --------
@@ -923,30 +931,18 @@ def volshape_to_ndgrid(
             [-1.,  1.]]]])
     """
 
-    # Define coordinate axes/vectors: for each dimension in `size`, create a 1D vector for the
-    # coord system
-    axes = []
-
-    for axis_length in size:
-
-        # Construct the axis for the ith spatial dimension
-        if normalize:
-            # Create the axis on [-1, 1], with the origin (ideally) at zero
-            axis = torch.linspace(-1, 1, steps=axis_length, device=device, dtype=dtype)
-
-        else:
-            # Create the axis to the `axis_length`
-            axis = torch.linspace(0, axis_length, steps=axis_length, device=device, dtype=dtype)
-        axes.append(axis)
+    # 1D grid along each dimension
+    if normalize:
+        axes = [torch.linspace(-1, 1, steps=sz, device=device, dtype=dtype) for sz in size]
+    else:
+        axes = [torch.arange(0, sz, device=device, dtype=dtype) for sz in size]
 
     # Make grid as a tuple of torch.Tensor
     grid = torch.meshgrid(*axes, indexing=indexing)
 
-    # Stack the grid tuples to make a tensor, and create new leading singleton dimension
-    grid = torch.stack(grid)
-
-    # Move the coordinate dim/axis to the back
-    grid = grid.moveaxis(0, -1).contiguous().unsqueeze(0)
+    # Stack tuples along last dimension [*size, len(size)]
+    if stack:
+        grid = torch.stack(grid, dim=-1).contiguous()
 
     return grid
 
