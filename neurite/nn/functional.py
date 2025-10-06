@@ -51,6 +51,7 @@ __all__ = [
     "soft_quantize",
     "mse",
     "gaussian_smoothing",
+    "gaussian_antialiasing",
     "apply_bernoulli_mask",
     "subsample",
     "subsample_tensor_random_dims",
@@ -194,8 +195,8 @@ def mse(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
 
 def gaussian_smoothing(
     input_tensor: torch.Tensor,
-    kernel_size: Union[int, Sampler] = 3,
-    sigma: Union[float, int, Sampler] = 1,
+    kernel_size: Union[int, List[int], Sampler] = 3,
+    sigma: Union[float, int, List[float], List[int], Sampler] = 1,
 ) -> torch.Tensor:
     """
     Apply Gaussian smoothing to the {1D, 2D, 3D} input tensor.
@@ -204,10 +205,13 @@ def gaussian_smoothing(
     ----------
     input_tensor : torch.Tensor
         The input tensor, assumed to be 1D, 2D, or 3D.
-    kernel_size : int, optional
-        Size of the Gaussian kernel, default is 3.
-    sigma : float or int, optional
-        Standard deviation of the Gaussian kernel, default is 1.
+    kernel_size : int, List[int], or Sampler, optional
+        Size of the Gaussian kernel. If int, same size is used for all dimensions.
+        If List[int], different sizes can be specified per dimension. Default is 3.
+    sigma : float, int, List[float], List[int], or Sampler, optional
+        Standard deviation of the Gaussian kernel. If float/int, same sigma is used
+        for all dimensions. If List, different sigmas can be specified per dimension.
+        Default is 1.
 
     Returns
     -------
@@ -217,10 +221,16 @@ def gaussian_smoothing(
     Examples
     --------
     >>> import torch
-    # Make an input tensor ~N(1, 0)
+    >>> # Make an input tensor ~N(1, 0)
     >>> input_tensor = torch.rand(1, 1, 16, 16, 16)
-    # Smooth it
+    >>> # Smooth it with uniform kernel
     >>> smoothed_tensor = gaussian_smoothing(input_tensor)
+    >>> # Smooth with per-dimension parameters
+    >>> smoothed_tensor = gaussian_smoothing(
+    ...     input_tensor,
+    ...     kernel_size=[3, 5, 7],
+    ...     sigma=[0.5, 1.0, 1.5]
+    ... )
     """
 
     # Infer dimensionality in voxel/pixel space. Squeeze to remove batch and/or channel dims.
@@ -234,13 +244,20 @@ def gaussian_smoothing(
         nchannels=input_tensor.shape[1]
     ).float()
 
-    # Calculate padding size
-    padding = torch.tensor(kernel_size) // 2
-    # Make the padding symmetric and
-    padding = padding.repeat(2)
+    # Calculate padding size - handle both single values and lists
+    if isinstance(kernel_size, list):
+        padding_per_dim = [ks // 2 for ks in kernel_size]
+    else:
+        padding_per_dim = [kernel_size // 2] * ndim
 
-    # Convert to tuple (F.pad takes a tuple of ints, not tensors)
-    padding = tuple(padding.tolist())
+    # F.pad expects padding in reverse order: [left, right, top, bottom, front, back]
+    # So for 3D: [dim2_left, dim2_right, dim1_left, dim1_right, dim0_left, dim0_right]
+    padding = []
+    for pad in reversed(padding_per_dim):
+        padding.extend([pad, pad])
+
+    # Convert to tuple (F.pad takes a tuple of ints)
+    padding = tuple(padding)
 
     # Pad `input_tensor`
     padded_input_tensor = F.pad(input_tensor, padding, mode='reflect')
@@ -248,14 +265,142 @@ def gaussian_smoothing(
     # Make dictionary for the different convolution dimensionalities
     conv_fn = {1: F.conv1d, 2: F.conv2d, 3: F.conv3d}[ndim]
 
-    # Apply the smoothig operation
+    # Apply the smoothig operation using depthwise convolution
+    # groups=nchannels ensures each channel is blurred independently
     smoothed_tensor = conv_fn(
         input=padded_input_tensor,
         weight=gaussian_kernel_,
         padding=0,
+        groups=input_tensor.shape[1],
     )
 
     return smoothed_tensor
+
+
+def gaussian_antialiasing(
+    input_tensor: torch.Tensor,
+    stride: Union[int, List[int]] = 2,
+    kernel_size: Union[int, List[int], Sampler] = None,
+    sigma: Union[float, int, List[float], List[int], Sampler] = None,
+    subsampling_dimension: Union[List[int], int, None] = None
+) -> torch.Tensor:
+    """
+    Apply Gaussian antialiasing by combining Gaussian blur with downsampling.
+
+    This function reduces aliasing artifacts when downsampling by first applying
+    a Gaussian blur filter followed by subsampling. This is particularly important
+    in medical imaging to preserve structural information during downsampling operations.
+
+    Parameters
+    ----------
+    input_tensor : torch.Tensor
+        The input tensor to be downsampled with antialiasing, assumed to be 1D, 2D, or 3D.
+    stride : int or List[int], optional
+        Downsampling stride. If int, the same stride is applied to all spatial dimensions.
+        If List[int], different strides can be specified per dimension. Default is 2.
+    kernel_size : int, List[int], or Sampler, optional
+        Size of the Gaussian kernel for antialiasing. If int, same size is used for all
+        dimensions. If List[int], different sizes can be specified per dimension.
+        If None, automatically computed as 2 * stride + 1 per dimension. Default is None.
+    sigma : float, int, List[float], List[int], or Sampler, optional
+        Standard deviation of the Gaussian kernel. If float/int, same sigma is used for
+        all dimensions. If List, different sigmas can be specified per dimension.
+        If None, automatically computed as stride / 2 per dimension. Default is None.
+    subsampling_dimension : List[int], int, or None, optional
+        Dimensions to apply antialiasing and subsampling. If None, applies to all
+        spatial dimensions. Default is None.
+
+    Returns
+    -------
+    torch.Tensor
+        Antialiased and downsampled tensor with reduced spatial dimensions.
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite.nn.functional as nef
+    >>> # Create a 3D medical image tensor
+    >>> input_tensor = torch.randn(1, 1, 64, 64, 64)
+    >>> # Apply Gaussian antialiasing with 2x downsampling
+    >>> antialiased_tensor = nef.gaussian_antialiasing(input_tensor, stride=2)
+    >>> print(antialiased_tensor.shape)
+    torch.Size([1, 1, 32, 32, 32])
+
+    >>> # Apply different strides per dimension
+    >>> antialiased_tensor = nef.gaussian_antialiasing(
+    ...     input_tensor, stride=[2, 2, 4], sigma=1.5
+    ... )
+    >>> print(antialiased_tensor.shape)
+    torch.Size([1, 1, 32, 32, 16])
+
+    >>> # Apply per-dimension antialiasing parameters
+    >>> antialiased_tensor = nef.gaussian_antialiasing(
+    ...     input_tensor,
+    ...     stride=[2, 2, 4],
+    ...     kernel_size=[5, 5, 9],
+    ...     sigma=[1.0, 1.0, 2.0]
+    ... )
+    >>> print(antialiased_tensor.shape)
+    torch.Size([1, 1, 32, 32, 16])
+    """
+    # Infer spatial dimensionality
+    ndim = input_tensor.dim() - 2
+    if ndim not in [1, 2, 3]:
+        raise ValueError(
+            f"Unsupported spatial dimensions: {ndim}. Only 1D, 2D, and 3D are supported.")
+
+    # Convert stride to list if it's a single int
+    if isinstance(stride, int):
+        if stride <= 0:
+            raise ValueError(f"Stride must be positive, got {stride}")
+        strides = [stride] * ndim
+    else:
+        strides = list(stride)
+        if len(strides) != ndim:
+            raise ValueError(
+                f"Stride list length {len(strides)} must match spatial dimensions {ndim}")
+        if any(s <= 0 for s in strides):
+            raise ValueError(f"All strides must be positive, got {strides}")
+
+    # Auto-compute kernel size if not provided
+    if kernel_size is None:
+        # Compute per-dimension kernel sizes: 2 * stride + 1 for each dimension
+        kernel_size = [2 * s + 1 for s in strides]
+
+    # Validate kernel_size if provided as list
+    elif isinstance(kernel_size, list):
+        if len(kernel_size) != ndim:
+            raise ValueError(f"kernel_size list length {len(kernel_size)} must match spatial dimensions {ndim}")
+        if any(ks <= 0 for ks in kernel_size):
+            raise ValueError(f"All kernel sizes must be positive, got {kernel_size}")
+
+    # Auto-compute sigma if not provided
+    if sigma is None:
+        # Compute per-dimension sigmas: stride / 2 for each dimension
+        sigma = [s / 2.0 for s in strides]
+
+    # Validate sigma if provided as list
+    elif isinstance(sigma, list):
+        if len(sigma) != ndim:
+            raise ValueError(f"sigma list length {len(sigma)} must match spatial dimensions {ndim}")
+        if any(s <= 0 for s in sigma):
+            raise ValueError(f"All sigma values must be positive, got {sigma}")
+
+    # Apply Gaussian smoothing first for antialiasing
+    smoothed_tensor = gaussian_smoothing(
+        input_tensor=input_tensor,
+        kernel_size=kernel_size,
+        sigma=sigma
+    )
+
+    # Apply subsampling to the smoothed tensor
+    antialiased_tensor = subsample(
+        input_tensor=smoothed_tensor,
+        stride=strides,
+        subsampling_dimension=subsampling_dimension
+    )
+
+    return antialiased_tensor
 
 
 def apply_bernoulli_mask(input_tensor, p: float = 0.5, returns: str = None) -> torch.Tensor:
@@ -290,25 +435,36 @@ def apply_bernoulli_mask(input_tensor, p: float = 0.5, returns: str = None) -> t
 
     Examples
     --------
-    ## Standard use case
-    >>> # Define input tensor. (Filled with ones for demonstration purposes)
-    >>> input_tensor = torch.ones((1, 32, 32, 32))
-    >>> # Mask the tensor.
-    >>> masked_tensor = apply_bernoulli_mask(input_tensor, p=0.9)
-    >>> # Return the average value of the tensor of ones, approximating the expectation of the mask
-    >>> # in this special case.
-    >>> masked_tensor.mean()
+    #### Standard use case
 
-    ## Returning successes only (as a flattened tensor representing elements from successful trials)
-    >>> Define input tensor. (Filled with ones for demonstration purposes)
-    >>> input_tensor = torch.ones((1, 32, 32, 32))
-    >>> # Get masked tensor
-    >>> masked_tensor = apply_bernoulli_mask(input_tensor, p=0.9, returns='successes')
-    >>> # Compute original shape and masked shape
-    >>> original_shape, masked_shape = input_tensor.flatten().shape[0], masked_tensor.shape[0]
-    >>> # Compute difference in size as a percent. Should be ~= `p`
-    >>> print((masked_shape/original_shape))
+    ```python
+    # Define input tensor.
+    input_tensor = torch.ones((1, 32, 32, 32))
+
+    # Mask the tensor.
+    masked_tensor = apply_bernoulli_mask(input_tensor, p=0.9)
+
+    # Return the average value of the tensor of ones, approximating the
+    # expectation of the mask in this special case.
+    masked_tensor.mean()
+    ```
+
+    #### Returning successes only (as a flattened tensor representing elements from successful trials)
+    ```python
+    # Define input tensor.
+    input_tensor = torch.ones((1, 32, 32, 32))
+
+    # Get masked tensor
+    masked_tensor = apply_bernoulli_mask(input_tensor, p=0.9, returns='successes')
+
+    # Compute original shape and masked shape
+    original_shape, masked_shape = input_tensor.flatten().shape[0], masked_tensor.shape[0]
+
+    # Compute difference in size as a percent. Should be ~= `p`
+    print((masked_shape/original_shape))
+    ```
     """
+
     # Sample the Bernoulli mask with parameter `p`
     bernoulli_mask = ne.utils.utils.bernoulli(p=p, shape=input_tensor.shape)
 
@@ -836,7 +992,7 @@ def affine_to_dense_shift(
 
     Examples
     --------
-    ### Dense displacement field for 2x scaled affines
+    >>> Dense displacement field for 2x scaled affines
     >>> # Make first affine with ones
     >>> aff_a_2d = torch.eye(2, 2 + 1).unsqueeze(0)
     >>> # Dilate original affine by 2
@@ -1403,14 +1559,14 @@ def dice(
 
     Examples
     --------
-    # Compute dice for 2 segmentation tensors (batch=2, classes=1, H=W=32) with no reduction
+    >>> # Compute dice for 2 segmentation tensors (batch=2, classes=1, H=W=32) with no reduction
     >>> seg1 = torch.rand((2, 1, 32, 32))
     >>> seg2 = torch.rand((2, 1, 32, 32))
     >>> score = dice(seg1, seg2, reduction=None)
     >>> print(score.shape)
     torch.Size([2, 1])
 
-    # Compute the dice for three classes (batch=2, classes=3)
+    >>> # Compute the dice for three classes (batch=2, classes=3)
     >>> segs = [torch.rand((2, 3, 64, 64)) for _ in range(3)]
     >>> per_class = dice(*segs, reduction='mean')
     >>> print(per_class.shape)
