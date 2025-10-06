@@ -1,28 +1,8 @@
 """
 Tensor operations and functions for Neurite.
 
-This module provides a collection of functions for manipulating and analyzing
-PyTorch tensors, with applications a focus on imaging. Functions include:
-
-- **Basic operations**: `identity`, `mse`, `reduce`
-- **Sampling and quantization**: `soft_quantize`, `subsample`,
-  `subsample_tensor_random_dims`, `apply_bernoulli_mask`
-- **Filtering and smoothing**: `gaussian_smoothing`, `filter_dim`
-- **Geometric transforms**: `upsample`, `resample`, `resize`,
-  `affine_to_dense_shift`, `volshape_to_ndgrid`
-- **Label/image utilities**: `random_clear_label`, `sample_image_from_labels`
-- **Evaluation metrics**: `dice`, `log_dice`
-
-These functions are written in PyTorch (optionally GPU-accelerated) and are
-designed to interoperate with Neurite’s samplers, layers, and models.
-
-Examples
---------
->>> import torch
->>> import neurite.nn.functional as nef
->>> x = torch.randn(1, 1, 32, 32, 32)
->>> qx = nef.soft_quantize(x, nb_bins=4, softness=0.5)
->>> sx = nef.gaussian_smoothing(x, kernel_size=5, sigma=1.2)
+A collection of functions for manipulating and analyzing PyTorch tensors, 
+with applications a focus on imaging. 
 
 Notes
 -----
