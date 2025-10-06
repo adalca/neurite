@@ -53,6 +53,7 @@ __all__ = [
     "SoftQuantize",
     "MSE",
     "GaussianBlur",
+    "GaussianAntialiasing",
     "Resample",
     "RandomCrop",
     "RandomClip",
@@ -907,8 +908,8 @@ class ContextCrossConv(nn.Module):
         self.cross_conv = ConvBlock(
             ndim=ndim, in_channels=sum(in_channels), out_channels=out_channels,
             kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
-            groups=groups, bias=bias, normalization=normalization, activation=activation, order=order,
-            padding_mode=padding_mode,
+            groups=groups, bias=bias, normalization=normalization, activation=activation,
+            order=order, padding_mode=padding_mode,
         )
 
         # Separate ConvBlock to further process the aggregated features
@@ -1299,10 +1300,102 @@ class GaussianBlur(nn.Module):
             The smoothed tensor.
         """
 
-        return ne.utils.gaussian_smoothing(
+        return nef.gaussian_smoothing(
             input_tensor=input_tensor,
             kernel_size=self.kernel_size,
             sigma=self.sigma
+        )
+
+
+class GaussianAntialiasing(nn.Module):
+    """
+    Apply Gaussian antialiasing by combining Gaussian blur with downsampling.
+
+    This module reduces aliasing artifacts when downsampling by first applying
+    a Gaussian blur filter followed by subsampling. This is particularly important
+    in medical imaging to preserve structural information during downsampling operations.
+    """
+
+    def __init__(
+        self,
+        stride: Union[int, List[int]] = 2,
+        kernel_size: Union[int, List[int], Sampler] = None,
+        sigma: Union[float, int, List[float], List[int], Sampler] = None,
+        subsampling_dimension: Union[List[int], int, None] = None
+    ):
+        """
+        Initialize `GaussianAntialiasing`.
+
+        Parameters
+        ----------
+        stride : int or List[int], optional
+            Downsampling stride. If int, the same stride is applied to all spatial dimensions.
+            If List[int], different strides can be specified per dimension. Default is 2.
+        kernel_size : int, List[int], or Sampler, optional
+            Size of the Gaussian kernel for antialiasing. If int, same size is used for all
+            dimensions. If List[int], different sizes can be specified per dimension.
+            If None, automatically computed as 2 * stride + 1 per dimension. Default is None.
+        sigma : float, int, List[float], List[int], or Sampler, optional
+            Standard deviation of the Gaussian kernel. If float/int, same sigma is used for
+            all dimensions. If List, different sigmas can be specified per dimension.
+            If None, automatically computed as stride / 2 per dimension. Default is None.
+        subsampling_dimension : List[int], int, or None, optional
+            Dimensions to apply antialiasing and subsampling. If None, applies to all
+            spatial dimensions. Default is None.
+
+        Examples
+        --------
+        >>> import torch
+        >>> # Create a 3D medical image tensor
+        >>> input_tensor = torch.randn(1, 1, 64, 64, 64)
+        >>> # Apply Gaussian antialiasing with 2x downsampling
+        >>> antialiasing_layer = GaussianAntialiasing(stride=2)
+        >>> antialiased_tensor = antialiasing_layer(input_tensor)
+        >>> print(antialiased_tensor.shape)
+        torch.Size([1, 1, 32, 32, 32])
+
+        >>> # Apply different strides per dimension with custom sigma
+        >>> antialiasing_layer = GaussianAntialiasing(stride=[2, 2, 4], sigma=1.5)
+        >>> antialiased_tensor = antialiasing_layer(input_tensor)
+        >>> print(antialiased_tensor.shape)
+        torch.Size([1, 1, 32, 32, 16])
+
+        >>> # Apply per-dimension antialiasing parameters
+        >>> antialiasing_layer = GaussianAntialiasing(
+        ...     stride=[2, 2, 4],
+        ...     kernel_size=[5, 5, 9],
+        ...     sigma=[1.0, 1.0, 2.0]
+        ... )
+        >>> antialiased_tensor = antialiasing_layer(input_tensor)
+        >>> print(antialiased_tensor.shape)
+        torch.Size([1, 1, 32, 32, 16])
+        """
+        super().__init__()
+        self.stride = stride
+        self.kernel_size = kernel_size
+        self.sigma = sigma
+        self.subsampling_dimension = subsampling_dimension
+
+    def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
+        """
+        Perform the forward pass of `GaussianAntialiasing`.
+
+        Parameters
+        ----------
+        input_tensor : torch.Tensor
+            The input tensor to be downsampled with antialiasing, assumed to be 1D, 2D, or 3D.
+
+        Returns
+        -------
+        torch.Tensor
+            Antialiased and downsampled tensor with reduced spatial dimensions.
+        """
+        return nef.gaussian_antialiasing(
+            input_tensor=input_tensor,
+            stride=self.stride,
+            kernel_size=self.kernel_size,
+            sigma=self.sigma,
+            subsampling_dimension=self.subsampling_dimension
         )
 
 
