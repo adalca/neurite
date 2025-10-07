@@ -122,9 +122,10 @@ def gaussian_kernel(
     # Reshape to 5D tensor for conv3d
     kernel = kernel.view(1, 1, *kernel_size)
 
-    # Repeat the kernel for each channel (depth-wise convolution)
+    # Repeat the kernel for each channel (depthwise convolution)
+    # For depthwise conv, kernel shape should be (nchannels, 1, *kernel_size)
     if nchannels > 1:
-        kernel = kernel.repeat(nchannels, nchannels, *([1] * ndim))
+        kernel = kernel.repeat(nchannels, 1, *([1] * ndim))
 
     return kernel
 
