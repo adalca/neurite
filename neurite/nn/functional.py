@@ -332,7 +332,8 @@ def gaussian_antialiasing(
     # Validate kernel_size if provided as list
     elif isinstance(kernel_size, list):
         if len(kernel_size) != ndim:
-            raise ValueError(f"kernel_size list length {len(kernel_size)} must match spatial dimensions {ndim}")
+            raise ValueError(
+                f"kernel_size list length {len(kernel_size)} must match spatial dimensions {ndim}")
         if any(ks <= 0 for ks in kernel_size):
             raise ValueError(f"All kernel sizes must be positive, got {kernel_size}")
 
@@ -407,7 +408,7 @@ def apply_bernoulli_mask(input_tensor, p: float = 0.5, returns: str = None) -> t
     masked_tensor.mean()
     ```
 
-    #### Returning successes only (as a flattened tensor representing elements from successful trials)
+    #### Return successes only (as a flattened tensor representing elements from successful trials)
     ```python
     # Define input tensor.
     input_tensor = torch.ones((1, 32, 32, 32))
@@ -1364,7 +1365,6 @@ def logistic(
     lower_asymptote: float = 0.0,
     upper_asymptote: float = 1.0,  # TODO: Maybe call these `min_output` and `max_output`
 ) -> torch.Tensor:
-
     """
     Apply a scaled and shifted logistic function to input logits.
 
@@ -1768,7 +1768,6 @@ def build_normalization(
     affine: bool = True,
     **kwargs
 ) -> nn.Module:
-
     """
     Factory for various normalization layers.
 
