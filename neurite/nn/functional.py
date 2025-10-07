@@ -1450,16 +1450,16 @@ def dice(
     tensor([[0.2487]])
     """
 
-    if len(segs) < 2:
+    nsegs = len(segs)
+
+    if nsegs < 2:
         raise ValueError(
             'Provide at least two segmentation tensors.'
         )
 
     if not all(segs[0].shape == seg.shape for seg in segs):
         shapes = {seg.shape for seg in segs}
-        raise ValueError(
-            f'All segmentations must share shape; got {shapes}'
-        )
+        raise ValueError(f'All segmentations must share shape; got {shapes}')
 
     for seg in segs:
         if seg.min() < 0 or seg.max() > 1:
@@ -1471,20 +1471,12 @@ def dice(
     # Flatten spatial dimensions while preserving batch and channel dims
     segs_flat = [seg.flatten(2) for seg in segs]
 
-    # Compute intersection: product across all segs, then sum spatially
-    intersection = segs_flat[0]
-    for seg in segs_flat[1:]:
-        intersection = intersection * seg
-    intersection = intersection.sum(dim=2)
-
-    # Compute union: sum of each seg over spatial dims
-    union = sum(seg.sum(dim=2) for seg in segs_flat)
+    # Compute intersection and union
+    intersection = torch.stack(segs_flat, dim=0).prod(dim=0).sum(dim=2)
+    union = torch.stack(segs_flat, dim=0).sum(dim=(0, 3))
 
     # Dice for N tensors: N * intersection / union
-    n = len(segs)
-    dice_score = (
-        n * intersection + smooth_numerator
-    ) / (union + smooth_denominator)
+    dice_score = (nsegs * intersection + smooth_numerator) / (union + smooth_denominator)
 
     if reduction is None:
         return dice_score
