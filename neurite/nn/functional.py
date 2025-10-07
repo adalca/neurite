@@ -1679,8 +1679,10 @@ def log_dice(
             "ne.utils.log_dice expects input tensors to represent log-probabilities (be entirely "
             f"negative) but got the following maximum values: {[seg.max().item() for seg in segs]}"
         )
-        assert all(torch.all(seg.exp() == 1.0) for seg in segs), (
-            "seg1 is not a valid probability distribution"
+        # Check that probs sum to 1.0
+        assert all(torch.allclose(seg.exp().sum(), 1.0) for seg in segs), (
+            "Input tensors are not valid probability distributions (probs don't sum to 1.0). Got "
+            f"the following sums: {[seg.exp().sum().item() for seg in segs]}"
         )
 
     # Flatten all spatial dims into one axis
