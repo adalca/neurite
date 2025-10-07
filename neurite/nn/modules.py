@@ -1354,7 +1354,7 @@ class MSE(nn.Module):
             The mean squared error between `input_tensor` and `target_tensor`.
         """
 
-        return ne.utils.mse(input_tensor=input_tensor, target_tensor=target_tensor)
+        return ne.nn.functional.mse(tensor1=input_tensor, tensor2=target_tensor)
 
 
 class GaussianBlur(nn.Module):
