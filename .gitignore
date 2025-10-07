@@ -97,3 +97,6 @@ sandbox/layers/report_dynamo_export.sarif
 sandbox/voxel_morph/traced_model.pt
 **/sandbox/**
 sandbox/
+.claude/*
+CLAUDE.md
+.cursor/*
