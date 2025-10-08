@@ -114,11 +114,7 @@ def soft_quantize(
     input_tensor.clip_(min_clip, max_clip)
 
     bin_centers = torch.linspace(
-        start=input_tensor.min(),
-        end=input_tensor.max(),
-        steps=nb_bins,
-        device=input_tensor.device
-    )
+        start=input_tensor.min(), end=input_tensor.max(), steps=nb_bins, device=input_tensor.device)
 
     # Compute distance to each bin center and apply soft assignment via softmax
     distances_to_bin_centers = torch.abs(input_tensor.unsqueeze(-1) - bin_centers)
@@ -207,11 +203,7 @@ def gaussian_smoothing(
     ndim = input_tensor.dim() - 2
 
     gaussian_kernel_ = ne.utils.utils.gaussian_kernel(
-        kernel_size=kernel_size,
-        sigma=sigma,
-        ndim=ndim,
-        nchannels=input_tensor.shape[1]
-    ).float()
+        kernel_size=kernel_size, sigma=sigma, ndim=ndim, nchannels=input_tensor.shape[1]).float()
 
     if isinstance(kernel_size, list):
         padding_per_dim = [ks // 2 for ks in kernel_size]
@@ -231,11 +223,7 @@ def gaussian_smoothing(
     # groups==nchannels ensures each channel is blurred independently
     conv_fn = {1: F.conv1d, 2: F.conv2d, 3: F.conv3d}[ndim]
     smoothed_tensor = conv_fn(
-        input=padded_input_tensor,
-        weight=gaussian_kernel_,
-        padding=0,
-        groups=input_tensor.shape[1],
-    )
+        input=padded_input_tensor, weight=gaussian_kernel_, padding=0, groups=input_tensor.shape[1])
 
     return smoothed_tensor
 
@@ -317,6 +305,7 @@ def gaussian_antialiasing(
         if stride <= 0:
             raise ValueError(f"Stride must be positive, got {stride}")
         strides = [stride] * ndim
+
     else:
         strides = list(stride)
         if len(strides) != ndim:
@@ -348,16 +337,10 @@ def gaussian_antialiasing(
 
     # Apply Gaussian smoothing first for antialiasing
     smoothed_tensor = gaussian_smoothing(
-        input_tensor=input_tensor,
-        kernel_size=kernel_size,
-        sigma=sigma
-    )
+        input_tensor=input_tensor, kernel_size=kernel_size, sigma=sigma)
 
     antialiased_tensor = subsample(
-        input_tensor=smoothed_tensor,
-        stride=strides,
-        subsampling_dimension=subsampling_dimension
-    )
+        input_tensor=smoothed_tensor, stride=strides, subsampling_dimension=subsampling_dimension)
 
     return antialiased_tensor
 
@@ -433,10 +416,8 @@ def apply_bernoulli_mask(input_tensor, p: float = 0.5, returns: str = None) -> t
         masked = masked[bernoulli_mask == 1]
     elif returns == 'failures':
         masked = masked[bernoulli_mask == 0]
-
     elif returns is None:
         masked[bernoulli_mask == 0] = 0
-
     else:
         raise ValueError(f"{returns} isn't supported!")
 
@@ -516,6 +497,7 @@ def subsample(
     if isinstance(subsampling_dimension, int):
         strides[subsampling_dimension] = stride
         slices[subsampling_dimension + 2] = slice(None, None, strides[subsampling_dimension])
+
     elif isinstance(subsampling_dimension, (list, tuple)):
         for dim in subsampling_dimension:
             strides[dim] = strides[dim]
@@ -593,13 +575,9 @@ def subsample_tensor_random_dims(
         pass
 
     elif max_concurrent_subsamplings > input_tensor.dim():
-        raise ValueError(
-            f"Your tensor doesn't have {max_concurrent_subsamplings} dimensions!"
-        )
+        raise ValueError(f"Your tensor doesn't have {max_concurrent_subsamplings} dimensions!")
 
-    dimensions_to_subsample = torch.randperm(
-        input_tensor.dim()
-    )[:max_concurrent_subsamplings]
+    dimensions_to_subsample = torch.randperm(input_tensor.dim())[:max_concurrent_subsamplings]
 
     if forbidden_dims is not None:
         forbidden_dims = torch.Tensor(forbidden_dims)
@@ -608,18 +586,12 @@ def subsample_tensor_random_dims(
 
     # Apply Bernoulli mask to vary the number of dimensions subsampled each time
     dimensions_to_subsample = apply_bernoulli_mask(
-        input_tensor=dimensions_to_subsample,
-        p=p,
-        returns='successes'
-    )
+        input_tensor=dimensions_to_subsample, p=p, returns='successes')
 
     for dimension in dimensions_to_subsample:
         # Adjust dimension index to account for batch and channel dims
         input_tensor = subsample(
-            input_tensor=input_tensor,
-            subsampling_dimension=int(dimension) - 2,
-            stride=stride
-        )
+            input_tensor=input_tensor, subsampling_dimension=int(dimension) - 2, stride=stride)
 
     return input_tensor
 
@@ -668,12 +640,7 @@ def upsample(
             "Only 1D, 2D, and 3D tensors are supported."
         )
 
-    upsampled = F.interpolate(
-        input=input_tensor,
-        size=shape,
-        mode=mode,
-        scale_factor=scale_factor,
-    )
+    upsampled = F.interpolate(input=input_tensor, size=shape, mode=mode, scale_factor=scale_factor)
 
     return upsampled
 
@@ -730,17 +697,9 @@ def resample(
     """
 
     resampled = subsample(
-        input_tensor,
-        subsampling_dimension=resample_dimension,
-        stride=downsample_stride
-    )
+        input_tensor, subsampling_dimension=resample_dimension, stride=downsample_stride)
 
-    resampled = upsample(
-        resampled,
-        shape=shape,
-        mode=mode,
-        scale_factor=upsample_scale_factor,
-    )
+    resampled = upsample(resampled, shape=shape, mode=mode, scale_factor=upsample_scale_factor)
 
     return resampled
 
@@ -864,9 +823,9 @@ def sample_image_from_labels(
     # Iteratevly texturize/sample intensities for each region as specified by a label
     for label in unique_labels:
         mean_region_intensity = mean_sampler()
+
         texturized_redion = noise_sampler(
-            mean_region_intensity, noise_variance()
-        )(label_tensor[label_tensor == label].shape)
+            mean_region_intensity, noise_variance())(label_tensor[label_tensor == label].shape)
         sampled_image[label_tensor == label] = texturized_redion
 
     return sampled_image
@@ -1010,11 +969,7 @@ def volshape_to_ndgrid(
     return grid
 
 
-def checkerboard(
-        image_shape: tuple = (1, 1, 16, 16),
-        square_size: int = 3,
-        device: str = "cpu"
-):
+def checkerboard(image_shape: tuple = (1, 1, 16, 16), square_size: int = 3, device: str = "cpu"):
     """
     Generate a checkerboard pattern in 2D or 3D.
 
@@ -1127,8 +1082,7 @@ def constant_shift_field(
         )
 
     assert shift_size.shape[0] == n_spatial_dims, (
-        f'shift_size must have {n_spatial_dims} elements. Got {shift_size.shape}: {shift_size}'
-    )
+        f'shift_size must have {n_spatial_dims} elements. Got {shift_size.shape}: {shift_size}')
 
     flow_field = torch.zeros(shape[0], n_spatial_dims, *spatial_dims, device=device)
 
@@ -1143,9 +1097,7 @@ def constant_shift_field(
 
 
 def cross_expand(
-    x1: torch.Tensor,
-    x2: torch.Tensor,
-    return_batched: bool = True,
+    x1: torch.Tensor, x2: torch.Tensor, return_batched: bool = True
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Expands `x1` and `x2` along new dimensions to create pairwise combinations.
@@ -1208,21 +1160,14 @@ def cross_expand(
         # Collect paired tensors into the batch dimension
         paired_tensors = torch.cat([x1_expanded, x2_expanded], dim=3)
         batched_paired_tensors = einops.rearrange(
-            paired_tensors, "B Sx1 Sx2 C ... -> (B Sx1 Sx2) C ..."
-        )
+            paired_tensors, "B Sx1 Sx2 C ... -> (B Sx1 Sx2) C ...")
 
         return batched_paired_tensors
-
     else:
-
         return x1_expanded, x2_expanded
 
 
-def filter_dim(
-    tensor: torch.Tensor,
-    dim: int = 0,
-    verbose: bool = False
-) -> torch.Tensor:
+def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> torch.Tensor:
     """
     Filters slices of a tensor that contain NaNs, infinite values, or are entirely zero.
 
@@ -1330,16 +1275,10 @@ def crop_to_nearest_multiple(tensor, multiple=128):
     spatial_dims = tensor.shape[2:]
 
     # Compute the new spatial shape (nearest multiple of `multiple`)
-    new_spatial_shape = [
-        dim - (dim % multiple) for dim in spatial_dims
-    ]
+    new_spatial_shape = [dim - (dim % multiple) for dim in spatial_dims]
 
     # Compute the starting indices to center the crop
-    start_indices = [
-        (dim - new_dim) // 2 for dim, new_dim in zip(
-            spatial_dims, new_spatial_shape
-        )
-    ]
+    start_indices = [(dim - new_dim) // 2 for dim, new_dim in zip(spatial_dims, new_spatial_shape)]
 
     # Compute the slices for cropping (batch and channel are untouched)
     slices = [slice(None), slice(None)] + [
@@ -1385,11 +1324,11 @@ def logistic(
     """
 
     assert upper_asymptote > lower_asymptote, (
-        "`upper_asymptote` must be greater than `lower_asymptote."
-    )
+        "`upper_asymptote` must be greater than `lower_asymptote.")
 
     numerator = upper_asymptote - lower_asymptote
     denominator = 1 + torch.exp(-slope * logits)
+
     return lower_asymptote + (numerator / denominator)
 
 
@@ -1587,11 +1526,7 @@ def log_dice(
     # Compute union in log space using logsumexp: log(e^(N*L_1) + e^(N*L_2) + ...)
     scaled_segs = [n_segs * seg for seg in segs_flat]
     denominator = torch.logsumexp(
-        torch.stack(
-            [*scaled_segs, log_smooth_denominator], dim=-1
-        ),
-        dim=-1
-    )
+        torch.stack([*scaled_segs, log_smooth_denominator], dim=-1), dim=-1)
 
     # Dice = numerator / denominator, computed as subtraction in log space
     log_dice_vals = numerator - denominator
@@ -1872,11 +1807,7 @@ def build_normalization(
     return normalization
 
 
-def random_flip(
-    dim: int,
-    *args,
-    prob: float = 0.5
-):
+def random_flip(dim: int, *args, prob: float = 0.5):
     """
     Randomly flips an image (or set of images) along the given dimension.
 
