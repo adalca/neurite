@@ -501,10 +501,7 @@ def subsample(
     if isinstance(subsampling_dimension, torch.Tensor):
         raise TypeError("subsampling_dimension must be an int, list, tuple, or None, not a Tensor")
 
-    # Infer the number of spatial dimensions
     n_spatial = input_tensor.dim() - 2
-
-    # Precompute list of (empty) slices
     slices = [slice(None)] * input_tensor.ndim
 
     if isinstance(stride, int):
@@ -813,7 +810,7 @@ def random_clear_label(
         torch.manual_seed(seed)
 
     unique_labels = torch.unique(label_tensor)
-    # Optionally exclude zero label (usually background)
+
     if exclude_zero:
         unique_labels = unique_labels[unique_labels != 0]
 
@@ -1134,6 +1131,7 @@ def constant_shift_field(
     )
 
     flow_field = torch.zeros(shape[0], n_spatial_dims, *spatial_dims, device=device)
+
     # Reshape shift_size for broadcasting across spatial dimensions
     shift_size = shift_size.view(1, -1, *[1] * n_spatial_dims)
     flow_field += shift_size
@@ -1188,7 +1186,6 @@ def cross_expand(
     torch.Size([1, 3, 7, 4, 5, 6]) torch.Size([1, 3, 7, 8, 9, 10])
     """
 
-    # Unpack shape to extract slice dimensions and spatial dims
     Bx1, Sx1, Cx1, *x1_spatial = x1.shape
     Bx2, Sx2, Cx2, *x2_spatial = x2.shape
 
@@ -1208,9 +1205,8 @@ def cross_expand(
                 f"x1.shape: {x1.shape}, x2.shape: {x2.shape}"
             )
 
+        # Collect paired tensors into the batch dimension
         paired_tensors = torch.cat([x1_expanded, x2_expanded], dim=3)
-
-        # Flatten pairwise combinations into batch dimension
         batched_paired_tensors = einops.rearrange(
             paired_tensors, "B Sx1 Sx2 C ... -> (B Sx1 Sx2) C ..."
         )
@@ -1326,13 +1322,11 @@ def crop_to_nearest_multiple(tensor, multiple=128):
     >>> cropped_3d.shape
     torch.Size([1, 3, 64, 192, 320])
     """
-    # Ensure the tensor has at least 3 dimensions (batch, channel, and spatial)
+
     if tensor.ndim < 3:
         raise ValueError(
             "Tensor must have at least 3 dimensions (B, C, *spatial_dims)."
         )
-
-    # Get the spatial dimensions (ignoring batch and channel dimensions)
     spatial_dims = tensor.shape[2:]
 
     # Compute the new spatial shape (nearest multiple of `multiple`)
@@ -1353,7 +1347,6 @@ def crop_to_nearest_multiple(tensor, multiple=128):
         for start, new_dim in zip(start_indices, new_spatial_shape)
     ]
 
-    # Apply the slices to crop the tensor
     cropped_tensor = tensor[tuple(slices)]
 
     return cropped_tensor
