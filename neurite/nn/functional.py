@@ -1531,9 +1531,6 @@ def log_dice(
     # Dice = numerator / denominator, computed as subtraction in log space
     log_dice_vals = numerator - denominator
 
-    if reduction is None:
-        return log_dice_vals
-
     return reduce(
         tensor=log_dice_vals,
         reduction=reduction,
