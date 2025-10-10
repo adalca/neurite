@@ -955,7 +955,6 @@ def volshape_to_ndgrid(
             [-1.,  1.],
             [-1.,  1.]]]])
     """
-
     if normalize:
         axes = [torch.linspace(-1, 1, steps=sz, device=device, dtype=dtype) for sz in size]
     else:
