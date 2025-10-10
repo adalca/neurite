@@ -399,30 +399,24 @@ class ConvBlock(nn.Sequential):
         self.out_channels = out_channels
 
         layers = nn.ModuleDict()
-        self.order = list(order)  # make string of letters into list of letters
+        self.order = list(order)
         valid_operations = ['c', 'n', 'a']
 
         # Get the number of activations to validate `activation` argument
         n_activations = order.count('a')
 
-        # If `activation` is a single object, make it into a list with `n_activation` elements
         if not isinstance(activation, (list, tuple)):
             activation = [activation] * n_activations
-
         else:
-            # Hmm. Not sure what the user passed!
             assert len(activation) == n_activations, (
                 "The total number of activations passed to `activation` must be the same number ",
                 f"defined in `order`. Got activation={activation}, order={order}"
             )
 
-        # Validate the operations
         if not set(order).issubset(valid_operations):
             raise ValueError(f"Invalid order. Must be a subset of {valid_operations}.")
 
-        # Validate the dimensions
         if ndim not in ConvBlock.conv_dim_map:
-            # This only supports 1, 2, and 3 dimensions!
             raise ValueError(f"Unsupported ndim={ndim}. Must be 1, 2, or 3.")
 
         # Dynamically retreive the appropriate `Conv*` class
@@ -436,14 +430,13 @@ class ConvBlock(nn.Sequential):
         for operation in self.order:
 
             if operation == 'c':
-                # Init the conv with appropriate params
                 layers[f"conv{conv_id}"] = conv_cls(
                     in_channels, out_channels, kernel_size, stride,
                     padding, dilation, groups, bias, padding_mode=padding_mode
                 )
 
                 in_channels = out_channels  # All future convs and stuff will have this many in
-                conv_id += 1  # Increment conv id for easy tracking/accessing
+                conv_id += 1
 
             # Dynamically construct the normalization and assign it to a named key in layers
             elif operation == 'n' and normalization is not None:
@@ -459,7 +452,6 @@ class ConvBlock(nn.Sequential):
                 layers[f'activation{act_id}'] = Activation(activation[act_id])
                 act_id += 1
 
-        # Add layers to `Sequential`
         for name, layer in layers.items():
             self.add_module(name, layer)
 
@@ -527,19 +519,14 @@ class TransposedConv(nn.Module):
         """
         super(TransposedConv, self).__init__()
 
-        # Mapping of spatial dimensions for convolutions
         conv_dim_map = {1: '1d', 2: '2d', 3: '3d'}
 
-        # Determine if `ndim` is valid
         if ndim not in conv_dim_map:
-            # This only supports 1, 2, and 3 dimensions!
             raise ValueError(f"Unsupported ndim={ndim}. Must be 1, 2, or 3.")
 
-        # Dynamically retreive nn.convXd
         conv_cls_name = f"ConvTranspose{conv_dim_map[ndim]}"
         conv_cls = getattr(nn, conv_cls_name)
 
-        # Construct the transposed convolution
         self.conv = conv_cls(
             in_channels,
             out_channels,
@@ -597,14 +584,10 @@ class Pool(nn.Module):
         """
         super(Pool, self).__init__()
 
-        # Mapping of pooling operations
         pool_map = {'max': 'MaxPool', 'avg': 'AvgPool', 'lp': 'LPPool'}
-
-        # Determine if pooling operation is supported
         if pool_mode not in pool_map:
             raise ValueError(f"Unsupported pool_mode={pool_mode}. Must be `max`, `avg`, or `lp`.")
 
-        # Mapping of spatial dimensions for pooling operation
         pool_dim_map = {1: '1d', 2: '2d', 3: '3d'}
         if ndim not in pool_dim_map:
             raise ValueError(f"Unsupported ndim={ndim}. Must be 1, 2, or 3.")
@@ -809,7 +792,6 @@ class UpsampleConvBlock(nn.Module):
 
         super().__init__()
 
-        # Choose upsampling strategy
         if upsample_mode == 'transposed':
             self.upsample = TransposedConv(
                 ndim=ndim,
@@ -819,13 +801,9 @@ class UpsampleConvBlock(nn.Module):
                 stride=upsample_stride,
                 padding=upsample_padding
             )
-
         else:
-
             if upsample_mode == 'linear':
                 upsample_mode = ne.utils.utils.infer_linear_interpolation_mode(ndim)
-
-            # align_corners only applies to non-nearest modes
             align = None if upsample_mode == 'nearest' else True
 
             self.upsample = nn.Upsample(
@@ -834,7 +812,7 @@ class UpsampleConvBlock(nn.Module):
                 align_corners=align
             )
 
-        # Double channels if there's a residual connection
+        # Double channels if there's a residual connection. Assumes symmetry.
         if accepts_residuals:
             in_channels += in_channels
 
@@ -1002,14 +980,14 @@ class ContextCrossConv(nn.Module):
         self.cross_conv = ConvBlock(
             ndim=ndim, in_channels=sum(in_channels), out_channels=out_channels,
             kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation,
-            groups=groups, bias=bias, normalization=normalization, activation=activation, 
+            groups=groups, bias=bias, normalization=normalization, activation=activation,
             order=order, padding_mode=padding_mode,
         )
 
         # Separate ConvBlock to further process the aggregated features
         self.query_conv_block = ConvBlock(
             ndim=ndim, in_channels=out_channels, out_channels=out_channels, kernel_size=kernel_size,
-            stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, 
+            stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias,
             normalization=normalization, activation=activation, order=order,
             padding_mode=padding_mode,
         )
@@ -1017,8 +995,8 @@ class ContextCrossConv(nn.Module):
         # Separate ConvBlock to further process the aggregated features
         self.context_conv_block = ConvBlock(
             ndim=ndim, in_channels=out_channels, out_channels=out_channels, kernel_size=kernel_size,
-            stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias, 
-            normalization=normalization, activation=activation, order=order, 
+            stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias,
+            normalization=normalization, activation=activation, order=order,
             padding_mode=padding_mode,
         )
 
@@ -1115,8 +1093,6 @@ class RescaleValues(nn.Module):
             Factor (or sampler) by which to rescale the values of the input tensor.
         """
         super().__init__()
-
-        # Declare the scale factor as a sampled quantity
         self.scale_factor = ne.samplers.make_sampler(ne.samplers.Fixed, scale_factor)
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
@@ -1199,13 +1175,9 @@ class Resize(nn.Module):
         - When defining `size` do not include batch or channel dimensions, only spatial dims.
         """
         super().__init__()
-
-        # Either scale factor or size must be defined. If neither is, make scale factor fixed @ 1.
         if size is None and scale_factor is None:
             scale_factor = 1
-
         elif scale_factor is not None:
-            # Make a fixed if passed a single number. Makes sampler if passed sampler.
             scale_factor = ne.samplers.make_sampler(ne.samplers.Fixed, scale_factor)
 
         self.size = size
@@ -1315,7 +1287,6 @@ class SoftQuantize(nn.Module):
         torch.Tensor
             Softly quantized tensor with the same dimensions as `input_tensor`.
         """
-
         return ne.utils.soft_quantize(
             input_tensor=input_tensor,
             nb_bins=self.nb_bins,
@@ -1353,7 +1324,6 @@ class MSE(nn.Module):
         torch.Tensor
             The mean squared error between `input_tensor` and `target_tensor`.
         """
-
         return ne.nn.functional.mse(tensor1=input_tensor, tensor2=target_tensor)
 
 
@@ -1395,7 +1365,6 @@ class GaussianBlur(nn.Module):
         torch.Tensor
             The smoothed tensor.
         """
-
         return nef.gaussian_smoothing(
             input_tensor=input_tensor,
             kernel_size=self.kernel_size,
@@ -1411,7 +1380,6 @@ class GaussianAntialiasing(nn.Module):
     a Gaussian blur filter followed by subsampling. This is particularly important
     in medical imaging to preserve structural information during downsampling operations.
     """
-
     def __init__(
         self,
         stride: Union[int, List[int]] = 2,
