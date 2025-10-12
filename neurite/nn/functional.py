@@ -52,6 +52,7 @@ __all__ = [
     "reduce",
     "random_flip",
     "resize",
+    "bw_grid",
 ]
 
 
@@ -1918,3 +1919,61 @@ def resize(
         image = image[tuple(slicing)]
 
     return image
+
+
+def bw_grid(
+    vol_shape: tuple[int, ...] | list[int],
+    spacing: int | list[int] | tuple[int, ...],
+    thickness: int = 1,
+    indexing: str = 'ij'
+) -> torch.Tensor:
+    """
+    Draw a black and white ND grid.
+
+    Parameters
+    ----------
+    vol_shape : tuple or list
+        Expected volume size (dimensions of the output grid).
+    spacing : int or list or tuple
+        Scalar or list the same size as vol_shape. Defines the spacing between grid lines in each
+        dimension.
+    thickness : int, optional
+        Line thickness in pixels. Default is 1.
+    indexing : {'ij', 'xy'}, optional
+        Cartesian ('xy') or matrix ('ij') indexing of output. Default is 'ij' to match NumPy's
+        default behavior and maintain compatibility with the original pystrum implementation.
+
+    Returns
+    -------
+    grid_vol : torch.Tensor
+        A volume with white lines (value=1) on black background (value=0).
+
+    Examples
+    --------
+    >>> # Create a 2D grid with default 'ij' indexing
+    >>> grid_2d = bw_grid((100, 100), spacing=10, thickness=2)
+    >>> # Create a 3D grid with 'xy' indexing
+    >>> grid_3d = bw_grid((50, 50, 50), spacing=[10, 10, 10], thickness=1, indexing='xy')
+    """
+    # Check inputs
+    if not isinstance(spacing, (list, tuple)):
+        spacing = [spacing] * len(vol_shape)
+    spacing = [f + 1 for f in spacing]
+    assert len(vol_shape) == len(spacing), (
+        f"vol_shape length ({len(vol_shape)}) must match spacing length ({len(spacing)})"
+    )
+
+    # Go through axes
+    grid_image = torch.zeros(vol_shape)
+
+    for d, v in enumerate(vol_shape):
+        rng = [torch.arange(0, f) for f in vol_shape]
+
+        for t in range(thickness):
+            grid_coords = torch.arange(0 + t, v, spacing[d])
+            grid_coords = torch.cat([grid_coords, torch.tensor([-1])])
+            rng[d] = grid_coords
+            mesh = torch.meshgrid(*rng, indexing=indexing)
+            grid_image[mesh] = 1
+
+    return grid_image
