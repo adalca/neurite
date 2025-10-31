@@ -1955,25 +1955,7 @@ def bw_grid(
     >>> # Create a 3D grid with 'xy' indexing
     >>> grid_3d = bw_grid((50, 50, 50), spacing=[10, 10, 10], thickness=1, indexing='xy')
     """
-    # Check inputs
-    if not isinstance(spacing, (list, tuple)):
-        spacing = [spacing] * len(vol_shape)
-    spacing = [f + 1 for f in spacing]
-    assert len(vol_shape) == len(spacing), (
-        f"vol_shape length ({len(vol_shape)}) must match spacing length ({len(spacing)})"
+    raise NotImplementedError(
+        "bw_grid() has been moved to neurite_sandbox. "
+        "Please use: from neurite_sandbox.etienne_chollet.nn.functional import bw_grid"
     )
-
-    # Go through axes
-    grid_image = torch.zeros(vol_shape)
-
-    for d, v in enumerate(vol_shape):
-        rng = [torch.arange(0, f) for f in vol_shape]
-
-        for t in range(thickness):
-            grid_coords = torch.arange(0 + t, v, spacing[d])
-            grid_coords = torch.cat([grid_coords, torch.tensor([-1])])
-            rng[d] = grid_coords
-            mesh = torch.meshgrid(*rng, indexing=indexing)
-            grid_image[mesh] = 1
-
-    return grid_image
