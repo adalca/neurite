@@ -776,8 +776,10 @@ def random_clear_label(
 
     labels_to_clear = apply_bernoulli_mask(unique_labels, prob, returns='successes')
 
-    for label in labels_to_clear:
-        input_tensor.masked_fill_(label_tensor == label, 0)
+    # Create single mask for all labels using torch.isin instead of looping
+    if len(labels_to_clear) > 0:
+        mask = torch.isin(label_tensor, labels_to_clear)
+        input_tensor.masked_fill_(mask, 0)
 
     return input_tensor
 
