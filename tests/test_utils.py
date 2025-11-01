@@ -70,9 +70,8 @@ def test_create_gaussian_kernel_sums_to_one():
 
 def test_create_gaussian_kernel_shape_and_symmetry():
     """
-    For nchannels>1, kernel shape should be
-    [nchannels, nchannels, *spatial_dims], and each channel
-    kernel should be identical.
+    For nchannels>1, kernel shape should be nchannels, 1, *spatial_dims] for depthwise convolution,
+    and each channel kernel should be identical.
     """
 
     nchannels = 3
@@ -84,15 +83,15 @@ def test_create_gaussian_kernel_shape_and_symmetry():
         nchannels=nchannels
     )
 
-    # shape check
-    expected = (nchannels, nchannels) + (kernel_size,) * ndim
+    # shape check for depthwise convolution
+    expected = (nchannels, 1) + (kernel_size,) * ndim
     assert kernel.shape == expected
 
-    # spatial kernels along the diagonal should match
-    spatial_00 = kernel[0, 0]
-    spatial_11 = kernel[1, 1]
+    # spatial kernels for each channel should be identical
+    spatial_0 = kernel[0, 0]
+    spatial_1 = kernel[1, 0]
 
-    assert torch.allclose(spatial_00, spatial_11)
+    assert torch.allclose(spatial_0, spatial_1)
 
 
 def test_subsample_tensor_magnitudes():
@@ -136,21 +135,22 @@ def test_subsample_tensor_strides(
 
 
 @pytest.mark.parametrize(
-        'grid_shape, expected_out_shape',
-        (
-            ((32,), (1, 32, 1)),
-            ((32, 32), (1, 32, 32, 2)),
-            ((32, 32, 32), (1, 32, 32, 32, 3)),
-        )
+    'grid_shape, expected_out_shape',
+    (
+        ((32,), (32, 1)),
+        ((32, 32), (32, 32, 2)),
+        ((32, 32, 32), (32, 32, 32, 3)),
+    )
 )
 def test_grid_shape(grid_shape, expected_out_shape):
 
-    coord_grid = nef.volshape_to_ndgrid(grid_shape)
+    # Must return stack!
+    coord_grid = nef.volshape_to_ndgrid(grid_shape, stack=True)
     assert coord_grid.shape == expected_out_shape
 
 
 @pytest.mark.parametrize(
-        "grid_shape", [(32,), (32, 32), (32, 32, 32)]
+    "grid_shape", [(32,), (32, 32), (32, 32, 32)]
 )
 def test_grid_normalized(grid_shape: tuple):
     """
@@ -158,7 +158,10 @@ def test_grid_normalized(grid_shape: tuple):
     generated coordinate grid has values exactly -1 or 1.
     """
 
-    coord_grid = ne.nn.functional.volshape_to_ndgrid(grid_shape, normalize=True, indexing='ij')
+    coord_grid = ne.nn.functional.volshape_to_ndgrid(
+        grid_shape, normalize=True, indexing='ij', stack=True
+    )
+
     corners = tuple(itertools.product(*[[0, s - 1] for s in grid_shape]))
 
     expected_corner_values = tuple(
@@ -167,7 +170,7 @@ def test_grid_normalized(grid_shape: tuple):
     )
 
     corner_vals = torch.stack([
-        coord_grid[(0, *corner)] for corner in corners
+        coord_grid[corner] for corner in corners
     ], dim=0)
 
     expected_corner_values = torch.tensor(expected_corner_values)
