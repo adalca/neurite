@@ -12,7 +12,7 @@ Notes
 """
 
 # Standard library imports
-from typing import Union, List, Tuple, Literal, Type, Optional
+from typing import Union, List, Tuple, Literal, Type, Optional, Sequence
 
 # Third party imports
 import einops
@@ -427,7 +427,7 @@ def apply_bernoulli_mask(input_tensor, p: float = 0.5, returns: str = None) -> t
 
 def subsample(
     input_tensor: torch.Tensor,
-    stride: Union[List, Tuple, int, None] = 2,
+    stride: Union[Sequence[int], int, None] = 2,
     subsampling_dimension: Union[List, Literal[0, 1, 2], int, None] = None,
 ) -> torch.Tensor:
     """
@@ -441,10 +441,10 @@ def subsample(
     ----------
     input_tensor : torch.Tensor
         The tensor to sample from.
-    subsampling_dimension : int, optional
-        The dimension (or axis) along which the subsampling will occur. By default 0.
     stride : int, optional
         Factor by which to subsample (interleave dropouts). By default 2.
+    subsampling_dimension : int, optional
+        The dimension (or axis) along which the subsampling will occur. By default 0.
 
     Returns
     -------
@@ -599,9 +599,9 @@ def subsample_tensor_random_dims(
 
 def upsample(
     input_tensor: torch.Tensor,
-    mode: Literal['linear', 'nearest', 'bicubic', 'area', 'nearest-exact'] = 'linear',
     scale_factor: float = 2,
-    shape: tuple = None,
+    shape: Union[Sequence[int], None] = None,
+    mode: Literal['linear', 'nearest', 'bicubic', 'area', 'nearest-exact'] = 'linear',
 ) -> torch.Tensor:
     """
     Upsamples 1D, 2D, or 3D tensors to a given `shape`.
@@ -610,6 +610,8 @@ def upsample(
     ----------
     input_tensor : torch.Tensor
         The input tensor to be upsampled. Assumed to have batch and channel dimensions.
+    scale_factor : float
+        The factor by which to upsample each spatial dimension. Default is 2.
     shape : tuple
         Spatial dimensions (without batch or channel dimensions) to upsample `input_tensor` into.
     mode : str, optional
@@ -648,11 +650,11 @@ def upsample(
 
 def resample(
     input_tensor: torch.Tensor,
-    resample_dimension: Union[int, List[int]] = None,
-    downsample_stride: Union[int, List[int]] = 2,
-    upsample_scale_factor: Union[Union[int, float], List[Union[int, float]]] = 2,
+    resample_dimension: Union[int, Sequence[int], None] = None,
+    downsample_stride: Union[int, Sequence[int]] = 2,
+    upsample_scale_factor: Union[Union[int, float], Sequence[Union[int, float]]] = 2,
     mode: Literal['linear', 'nearest', 'bicubic', 'area', 'nearest-exact'] = 'linear',
-    shape: tuple = None,
+    shape: Union[Sequence[int], None] = None,
 ) -> torch.Tensor:
     """
     Subsample `input_tensor` by a factor `stride`, then upsample it by `scale_factor`.
@@ -1177,14 +1179,27 @@ def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> tor
     ----------
     tensor : torch.Tensor
         An n-dimensional tensor.
+    dim : int, optional
+        The dimension along which to filter slices. Default is 0 (typically the batch dimension).
     verbose : bool, optional
-        If True, prints the number of elements filtered for each condition. Default is False.
+        If True, prints the number of elements filtered for each condition (NaNs, infinities,
+        all-zeros). Default is False.
 
     Returns
     -------
     torch.Tensor
-        The filtered tensor containing only slice elements without NaNs, infinite values, and not
-        entirely zeros.
+        The filtered tensor with problematic slices removed along the specified dimension.
+
+    Examples
+    --------
+    >>> # Create a tensor with some problematic slices along dim=0
+    >>> tensor = torch.tensor([[1.0, 2.0], [float('nan'), 3.0], [0.0, 0.0], [4.0, 5.0]])
+    >>> filtered = filter_dim(tensor, dim=0, verbose=True)
+    N Batches with NaNs:  1
+    N Batches with Inf:  0
+    N Batches with Zero:  1
+    >>> filtered.shape
+    torch.Size([2, 2])
     """
 
     dims_to_test = list(range(tensor.dim()))
