@@ -100,7 +100,8 @@ def gaussian_kernel(
             for ks in kernel_size
         ]
     else:
-        coords = [torch.arange(kernel_size, device=device, dtype=dtype).float() - (kernel_size - 1) / 2] * ndim
+        torch_range = torch.arange(kernel_size, device=device, dtype=dtype).float()
+        coords = [torch_range - (kernel_size - 1) / 2] * ndim
         kernel_size = [kernel_size] * ndim
 
     grid = torch.stack(
