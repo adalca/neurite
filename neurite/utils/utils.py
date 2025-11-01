@@ -67,6 +67,12 @@ def gaussian_kernel(
         Standard deviation of the Gaussian kernel. Default is 1.
     ndim : int
         Dimensionality of the gaussian kernel. Default is 3.
+    nchannels : int, optional
+        Number of channels for the kernel. Default is 1.
+    device : torch.device, optional
+        Device on which to create the kernel tensor. Default is None.
+    dtype : torch.dtype, optional
+        Data type of the kernel tensor. Default is torch.float32.
 
     Returns
     -------
