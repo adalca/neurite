@@ -103,7 +103,7 @@ class Dice(nn.Module):
         smooth_numerator: float = 1e-12,
         smooth_denominator: float = 1e-12,
         reduction: str = 'mean',
-        reduction_dim: int = (0, 1),
+        reduction_dim: Union[int, Tuple] = (0, 1),
         keepdims: bool = True,
     ) -> None:
 
@@ -658,6 +658,8 @@ class DownsampleConvBlock(nn.Module):
             Stride of the convolution. Default is 1.
         padding : int, optional
             Padding added to all sides of the input. Default is 1.
+        padding_mode : {'zeros', 'replicate', 'reflect'}, optional
+            Padding mode for the convolution. Default is 'zeros'.
         normalization : str, nn.Module, or None, optional
             Normalization type. Default is 'batch'.
         activation : str, nn.Module, or None, optional

@@ -6,7 +6,7 @@ components of the neurite for streamlined object construction.
 
 # Standard library imports
 from __future__ import annotations
-from typing import List, Union, Callable, Literal
+from typing import List, Union, Callable, Literal, Sequence
 
 # Third party imports
 import torch
@@ -62,7 +62,7 @@ class BasicUNet(nn.Module):
         out_channels: int,
         padding_mode: Literal['zeros', 'replicate', 'reflect'] = 'zeros',
         upsample_mode: Literal['linear', 'transposed', 'nearest'] = 'linear',
-        nb_features: List[int] = (16, 16, 16, 16, 16),
+        nb_features: Sequence[int] = (16, 16, 16, 16, 16),
         normalizations: Union[List[Union[Callable, str]], Callable, str, None] = None,
         activations: Union[List[Union[Callable, str]], Callable, str, None] = nn.ReLU,
         order: str = 'caca',

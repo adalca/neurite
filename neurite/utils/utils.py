@@ -24,7 +24,7 @@ the License.
 """
 
 # Standard library imports
-from typing import Union, List, Literal, Type, Optional, Collection
+from typing import Union, List, Literal, Type, Optional, Collection, Sequence
 import inspect
 
 # Third party imports
@@ -49,8 +49,8 @@ __all__ = [
 
 
 def gaussian_kernel(
-    kernel_size: int = 3,
-    sigma: Union[float, int] = 1,
+    kernel_size: Union[int, Sequence[int]] = 3,
+    sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
     ndim: int = 3,
     nchannels: int = 1,
     device: Optional[torch.device] = None,

@@ -528,6 +528,8 @@ class Uniform(Sampler):
         ----------
         shape : List[int]
             The shape of the samples to generate.
+        **backend : Any
+            Additional keyword arguments for backend configurations (e.g., device, dtype).
 
         Returns
         -------
@@ -605,6 +607,8 @@ class Fixed(Sampler):
         ----------
         shape : List[int]
             The shape of the samples to generate.
+        **backend : Any
+            Additional keyword arguments for backend configurations (e.g., device, dtype).
 
         Returns
         -------
@@ -699,6 +703,8 @@ class Normal(Sampler):
         ----------
         shape : List[int]
             The shape of the samples to generate.
+        **backend : Any
+            Additional keyword arguments for backend configurations (e.g., device, dtype).
 
         Returns
         -------
@@ -783,6 +789,8 @@ class Bernoulli(Sampler):
         ----------
         shape : List[int]
             The shape of the samples to generate.
+        **backend : Any
+            Additional keyword arguments for backend configurations (e.g., device, dtype).
 
         Returns
         -------
@@ -861,6 +869,8 @@ class Poisson(Sampler):
         ----------
         shape : List[int]
             The shape of the samples to generate.
+        **backend : Any
+            Additional keyword arguments for backend configurations (e.g., device, dtype).
 
         Returns
         -------
