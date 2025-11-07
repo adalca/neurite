@@ -650,6 +650,9 @@ def sample_image_from_labels(
     """
     Generate an image from a label map by sampling a random intensity for each label.
 
+    Wrapper around `neurite.functional.sample_image_from_labels()` that handles tensors
+    with shape (B, C, *spatial).
+
     Identify all unique integer labels in `label_tensor` and assigns each a mean intensity in the
     corresponding output image (`sampled_image`). The mean intensity serves as the mean for a noise
     distribution modeled by `noise_sampler`. The variance of the noise model may be a fixed quantity
@@ -658,8 +661,7 @@ def sample_image_from_labels(
     Parameters
     ----------
     label_tensor : torch.Tensor
-        A tensor with batch and channel dimensions containing integer labels defining distinct
-        regions.
+        A tensor with shape (B, C, *spatial) containing integer labels defining distinct regions.
     mean_sampler : Sampler
         A `Sampler` from which to draw the mean intensity for each region defined by each label in
         the `label_tensor`. By default, `Uniform(0, 1)`
@@ -676,19 +678,10 @@ def sample_image_from_labels(
     torch.Tensor
         A tensor of sampled image intensities with the same shape as `label_tensor`.
     """
-    noise_variance = ne.samplers.make_sampler(ne.samplers.Fixed, noise_variance)
-    unique_labels = torch.unique(label_tensor)
-    sampled_image = torch.zeros_like(label_tensor).float()
-
-    # Iteratevly texturize/sample intensities for each region as specified by a label
-    for label in unique_labels:
-        mean_region_intensity = mean_sampler()
-
-        texturized_redion = noise_sampler(
-            mean_region_intensity, noise_variance())(label_tensor[label_tensor == label].shape)
-        sampled_image[label_tensor == label] = texturized_redion
-
-    return sampled_image
+    return ne.functional.sample_image_from_labels(
+        label_tensor, mean_sampler=mean_sampler, noise_sampler=noise_sampler,
+        noise_variance=noise_variance
+    )
 
 
 def affine_to_dense_shift(
