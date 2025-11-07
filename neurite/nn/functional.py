@@ -813,60 +813,58 @@ def volshape_to_ndgrid(
     stack: bool = False,
 ) -> torch.Tensor:
     """
-    Generate a grid of spatial coordinates.
+    Generate a grid of spatial coordinates with (B, C, *spatial) format.
 
-    Define the coordinate axes by generating vectors for each spatial dimension represented by the
-    elements of `shape`, then creates a grid representing all spatial coords.
+    Wrapper around `neurite.functional.volshape_to_ndgrid()` that handles full tensor shapes
+    including batch and channel dimensions.
 
     Parameters
     ----------
     size : Tuple[int]
-        Size of the spatial dimensions of the input tensor. e.g. (H, W) or (D, W, H)
+        Full tensor size including batch and channel dimensions. e.g. (B, C, H, W) or (B, C, D, H, W)
     device : Union[str, torch.device], optional
         The device on which the grid will reside. By default "cpu"
     dtype : Union[str, torch.dtype], optional
         The data type of the tensor grid, by default ``torch.float32``
+    normalize : bool, optional
+        Normalize each dimension of the grid to the range [-1, 1]. Default is False
     indexing : Literal["ij", "xy"], optional
         Indexing mode passed to ``torch.meshgrid``. Defaults to ``"ij"``.
-    normalize : bool, optional
-        Normalize each dimension of the grid to the range [-1, 1]. 
-        Otherwise, the grid coords span from 0 to `size[i] - 1` for each dimension.
-        Default is False
     stack : bool, optional
-        If True, stack the grid tensors along the last dimension to return a single tensor of
-        shape `(*size, len(size))`. If False, return a tuple of tensors, each of shape
-        `(*size)`. Default is False.
+        If True, stack the grid tensors along dimension 1 (after B). Default is False.
 
     Returns
     -------
     torch.Tensor
-        the meshgrid of spatial coordinates
-        if stack=False, a tuple of len(size) tensors of shape `*size` 
-        if stack=True, a tensor of shape `*size, len(size)`
+        The meshgrid of spatial coordinates.
+        if stack=False, a tuple of len(spatial) tensors of shape (B, C, *spatial)
+        if stack=True, a tensor of shape (B, C, *spatial, len(spatial))
 
     Examples
     --------
-    ### Make a 2d grid of size (3, 2)
-    >>> the_grid = volshape_to_ndgrid(size=(3, 2))
+    >>> # Make a 2d grid for a (2, 3, 4, 5) tensor
+    >>> the_grid = volshape_to_ndgrid(size=(2, 3, 4, 5), stack=True)
     >>> print(the_grid.shape)
-    torch.Size([1, 2, 3, 2])
-    >>> print(the_grid)
-    tensor([[[[-1., -1.],
-            [ 0.,  0.],
-            [ 1.,  1.]],
-            [[-1.,  1.],
-            [-1.,  1.],
-            [-1.,  1.]]]])
+    torch.Size([2, 3, 4, 5, 2])
     """
-    if normalize:
-        axes = [torch.linspace(-1, 1, steps=sz, device=device, dtype=dtype) for sz in size]
-    else:
-        axes = [torch.arange(0, sz, device=device, dtype=dtype) for sz in size]
+    # Extract B, C, and spatial dimensions
+    B, C = size[0], size[1]
+    spatial_size = size[2:]
 
-    grid = torch.meshgrid(*axes, indexing=indexing)
+    # Get base grid (shape-agnostic)
+    grid = ne.functional.volshape_to_ndgrid(
+        size=spatial_size, device=device, dtype=dtype, normalize=normalize, indexing=indexing, stack=stack
+    )
 
     if stack:
-        grid = torch.stack(grid, dim=-1).contiguous()
+        # Grid is shape (*spatial, len(spatial))
+        # Add B and C dimensions: (B, C, *spatial, len(spatial))
+        ndim = len(spatial_size)
+        grid = grid.unsqueeze(0).unsqueeze(0).expand(B, C, *[-1]*(ndim+1))
+    else:
+        # Grid is tuple of tensors, each shape (*spatial) - add (B, C) to each
+        grid = tuple(
+            g.unsqueeze(0).unsqueeze(0).expand(B, C, *[-1]*len(spatial_size)) for g in grid)
 
     return grid
 

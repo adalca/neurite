@@ -3,7 +3,7 @@ Single tensor operations (no B, C dimension assumption)
 """
 
 # Standard library imports
-from typing import Union, Sequence
+from typing import Union, Sequence, Tuple, Literal
 
 # Third party imports
 import torch
@@ -259,3 +259,75 @@ def reduce(
             " are {'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean', 'argmin', "
             "'argmax'}"
         )
+
+
+def volshape_to_ndgrid(
+    size: Tuple[int],
+    device: Union[str, torch.device] = "cpu",
+    dtype: Union[str, torch.dtype] = torch.float32,
+    normalize: bool = False,
+    indexing: Literal["ij", "xy"] = "ij",
+    stack: bool = False,
+) -> torch.Tensor:
+    """
+    Generate a grid of spatial coordinates.
+
+    Define the coordinate axes by generating vectors for each spatial dimension represented by the
+    elements of `shape`, then creates a grid representing all spatial coords.
+
+    Parameters
+    ----------
+    size : Tuple[int]
+        Size of the spatial dimensions. e.g. (H, W) or (D, W, H)
+    device : Union[str, torch.device], optional
+        The device on which the grid will reside. By default "cpu"
+    dtype : Union[str, torch.dtype], optional
+        The data type of the tensor grid, by default `torch.float32`
+    indexing : Literal["ij", "xy"], optional
+        Indexing mode passed to `torch.meshgrid`. Defaults to `"ij"`.
+    normalize : bool, optional
+        Normalize each dimension of the grid to the range [-1, 1].
+        Otherwise, the grid coords span from 0 to `size[i] - 1` for each dimension.
+        Default is False
+    stack : bool, optional
+        If True, stack the grid tensors along the last dimension to return a single tensor of
+        shape `(*size, len(size))`. If False, return a tuple of tensors, each of shape
+        `(*size)`. Default is False.
+
+    Returns
+    -------
+    torch.Tensor
+        The meshgrid of spatial coordinates
+        if stack=False, a tuple of len(size) tensors of shape `*size`
+        if stack=True, a tensor of shape `*size, len(size)`
+
+    Examples
+    --------
+    >>> import torch
+    # Make a 2d grid of size (19, 32)
+    >>> the_grid = volshape_to_ndgrid(size=(19, 32))
+    >>> print(the_grid[0].shape)
+    torch.Size([19, 32])
+
+    >>> # Normalized grid
+    >>> the_grid = volshape_to_ndgrid(size=(3, 2), normalize=True)
+    >>> print(the_grid[0])
+    tensor([[-1., -1.],
+            [ 0.,  0.],
+            [ 1.,  1.]])
+    >>> # Stacked grid
+    >>> the_grid = volshape_to_ndgrid(size=(19, 32), stack=True)
+    >>> print(the_grid.shape)
+    torch.Size([19, 32, 2])
+    """
+    if normalize:
+        axes = [torch.linspace(-1, 1, steps=sz, device=device, dtype=dtype) for sz in size]
+    else:
+        axes = [torch.arange(0, sz, device=device, dtype=dtype) for sz in size]
+
+    grid = torch.meshgrid(*axes, indexing=indexing)
+
+    if stack:
+        grid = torch.stack(grid, dim=-1).contiguous()
+
+    return grid
