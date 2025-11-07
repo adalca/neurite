@@ -75,3 +75,35 @@ def soft_quantize(
         softly_quantized.log_()
 
     return softly_quantized
+
+
+def mse(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
+    """
+    Calculates the mean squared error (MSE) between the elements of `tensor1` and `tensor2`.
+
+    Parameters
+    ----------
+    tensor1 : torch.Tensor
+        An input tensor of any shape.
+    tensor2 : torch.Tensor
+        A tensor with the same shape as `tensor1`.
+
+    Returns
+    -------
+    torch.Tensor
+        The mean squared error between `tensor1` and `tensor2`.
+
+    Examples
+    --------
+    >>> import torch
+    # First tensor with zero mean, unit variance
+    >>> tensor1 = torch.randn(16, 16, 16)
+    # Other tensor with zero mean, unit variance, and same shape as `tensor1`
+    >>> tensor2 = torch.randn(16, 16, 16)
+    # Calculate mse
+    >>> mse_value = mse(tensor1, tensor2)
+    # Print `mse_value` (should be approximately 2.0)
+    >>> print(mse_value)
+    """
+
+    return torch.mean((tensor1 - tensor2) ** 2)
