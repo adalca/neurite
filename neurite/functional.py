@@ -669,3 +669,78 @@ def sample_image_from_labels(
         sampled_image[label_tensor == label] = texturized_redion
 
     return sampled_image
+
+
+def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> torch.Tensor:
+    """
+    Filter slices of a tensor that contain NaNs, infinite values, or are entirely zero.
+
+    Parameters
+    ----------
+    tensor : torch.Tensor
+        An n-dimensional tensor.
+    dim : int, optional
+        The dimension along which to filter slices. Default is 0.
+    verbose : bool, optional
+        If True, prints the number of elements filtered for each condition (NaNs, infinities,
+        all-zeros). Default is False.
+
+    Returns
+    -------
+    torch.Tensor
+        The filtered tensor with problematic slices removed along the specified dimension.
+
+    Examples
+    --------
+    >>> # Create a tensor with some problematic slices along dim=0
+    >>> tensor = torch.tensor([[1.0, 2.0], [float('nan'), 3.0], [0.0, 0.0], [4.0, 5.0]])
+    >>> filtered = filter_dim(tensor, dim=0, verbose=True)
+    N Batches with NaNs:  1
+    N Batches with Inf:  0
+    N Batches with Zero:  1
+    >>> filtered.shape
+    torch.Size([2, 2])
+    """
+    dims_to_test = list(range(tensor.dim()))
+    dims_to_test.remove(dim)
+
+    # Remove NaNs
+    nan_mask = ~torch.isnan(tensor).any(dim=dims_to_test)
+    nan_mask = torch.nonzero(nan_mask, as_tuple=True)[0]
+    filtered_tensor = torch.index_select(tensor, dim, nan_mask)
+
+    # Remove infs
+    inf_mask = ~torch.isinf(filtered_tensor).any(dim=dims_to_test)
+    inf_mask = torch.nonzero(inf_mask, as_tuple=True)[0]
+    filtered_tensor = torch.index_select(filtered_tensor, dim, inf_mask)
+
+    # Remove all zeros
+    zero_mask = ~torch.all(filtered_tensor == 0, dim=dims_to_test)
+    zero_mask = torch.nonzero(zero_mask, as_tuple=True)[0]
+    filtered_tensor = torch.index_select(filtered_tensor, dim, zero_mask)
+
+    if verbose:
+        n_nans = torch.sum(~nan_mask)
+        print("N Batches with NaNs: ", n_nans)
+
+        n_infs = torch.sum(~inf_mask)
+        print("N Batches with Inf: ", n_infs)
+
+        n_zeros = torch.sum(zero_mask)
+        print("N Batches with Zero: ", n_zeros)
+
+    has_zero_dim = torch.any(
+        torch.tensor(filtered_tensor.shape) == 0
+    )
+
+    if has_zero_dim:
+        zero_dims = []
+        for d, size in enumerate(tensor.shape):
+            if size == 0:
+                zero_dims.append(d)
+
+        raise ValueError(
+            f"Dimension {zero_dims} of the filtered tensor has shape == 0."
+        )
+
+    return filtered_tensor

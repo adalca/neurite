@@ -1026,14 +1026,18 @@ def cross_expand(
 
 def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> torch.Tensor:
     """
-    Filters slices of a tensor that contain NaNs, infinite values, or are entirely zero.
+    Filter slices of a tensor that contain NaNs, infinite values, or are entirely zero.
+
+    Wrapper around `neurite.functional.filter_dim()` that handles tensors
+    with shape (B, C, *spatial).
 
     Parameters
     ----------
     tensor : torch.Tensor
-        An n-dimensional tensor.
+        An n-dimensional tensor with shape (B, C, *spatial).
     dim : int, optional
-        The dimension along which to filter slices. Default is 0 (typically the batch dimension).
+        The dimension along which to filter slices. For tensors with shape (B, C, *spatial):
+        dim=0 is batch, dim=1 is channel, etc. Default is 0.
     verbose : bool, optional
         If True, prints the number of elements filtered for each condition (NaNs, infinities,
         all-zeros). Default is False.
@@ -1054,50 +1058,7 @@ def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> tor
     >>> filtered.shape
     torch.Size([2, 2])
     """
-
-    dims_to_test = list(range(tensor.dim()))
-    dims_to_test.remove(dim)
-
-    # Remove NaNs
-    nan_mask = ~torch.isnan(tensor).any(dim=dims_to_test)
-    nan_mask = torch.nonzero(nan_mask, as_tuple=True)[0]
-    filtered_tensor = torch.index_select(tensor, dim, nan_mask)
-
-    # Remove infs
-    inf_mask = ~torch.isinf(filtered_tensor).any(dim=dims_to_test)
-    inf_mask = torch.nonzero(inf_mask, as_tuple=True)[0]
-    filtered_tensor = torch.index_select(filtered_tensor, dim, inf_mask)
-
-    # Remove all zeros
-    zero_mask = ~torch.all(filtered_tensor == 0, dim=dims_to_test)
-    zero_mask = torch.nonzero(zero_mask, as_tuple=True)[0]
-    filtered_tensor = torch.index_select(filtered_tensor, dim, zero_mask)
-
-    if verbose:
-        n_nans = torch.sum(~nan_mask)
-        print("N Batches with NaNs: ", n_nans)
-
-        n_infs = torch.sum(~inf_mask)
-        print("N Batches with Inf: ", n_infs)
-
-        n_zeros = torch.sum(zero_mask)
-        print("N Batches with Zero: ", n_zeros)
-
-    has_zero_dim = torch.any(
-        torch.tensor(filtered_tensor.shape) == 0
-    )
-
-    if has_zero_dim:
-        zero_dims = []
-        for d, size in enumerate(tensor.shape):
-            if size == 0:
-                zero_dims.append(d)
-
-        raise ValueError(
-            f"Dimension {zero_dims} of the filtered tensor has shape == 0."
-        )
-
-    return filtered_tensor
+    return ne.functional.filter_dim(tensor, dim=dim, verbose=verbose)
 
 
 def crop_to_nearest_multiple(tensor, multiple=128):
