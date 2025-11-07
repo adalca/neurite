@@ -47,7 +47,6 @@ __all__ = [
     "logistic",
     "dice",
     "log_dice",
-    "reduce",
     "random_flip",
     "resize",
     "bw_grid",
@@ -1458,7 +1457,7 @@ def log_dice(
 def reduce(
     tensor: torch.Tensor,
     reduction: str = 'mean',
-    dim: Union[Tuple[int, ...], int] = None,
+    dim: Union[Tuple[int, ...], int, None] = None,
     keepdims: bool = False,
 ) -> torch.Tensor:
     """
@@ -1506,33 +1505,7 @@ def reduce(
     >>> reduce(input_tensor, reduction='amax', dim=(1, 2, 3))
     tensor([4.6618, 3.9218, 4.1831])
     """
-
-    # PyTorch multidimensional reductions (also work for single dimensions)
-    torch_multidim_reductions = [
-        'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean', None
-    ]
-
-    # PyTorch single-dimension-only reductions
-    torch_singledim_reductions = ['argmin', 'argmax']
-
-    if reduction in torch_multidim_reductions:
-        return getattr(torch, reduction)(tensor, dim=dim, keepdims=keepdims)
-
-    elif reduction in torch_singledim_reductions:
-
-        assert isinstance(dim, int), (
-            f"Reduction type {reduction} is only compatable with one reduction dimension. Got "
-            f"{dim}"
-        )
-
-        return getattr(torch, reduction)(tensor, dim=dim, keepdims=keepdims)
-
-    else:
-        raise ValueError(
-            f"ne.utils.reduce received an invaid `reduction`. Got {reduction}. Valid options"
-            " are {'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean', 'argmin', "
-            "'argmax'}"
-        )
+    return ne.functional.reduce(tensor, reduction=reduction, dim=dim, keepdims=keepdims)
 
 
 def infer_linear_interpolation_mode(

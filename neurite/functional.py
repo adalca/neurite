@@ -178,3 +178,84 @@ def dice(
     dice_score = (nsegs * intersection + smooth_numerator) / (union + smooth_denominator)
 
     return dice_score
+
+
+def reduce(
+    tensor: torch.Tensor,
+    reduction: str = 'mean',
+    dim: Union[int, tuple[int, ...], None] = None,
+    keepdims: bool = False,
+) -> torch.Tensor:
+    """
+    Apply any torch reduction on a tensor.
+
+    This function applies a reduction (e.g., mean, sum, median) on the input tensor across one or
+    more dimensions. For reductions that operate on multiple dimensions, the `dim` can be
+    a tuple of dimensions. For reductions that operate on a single dimension (e.g., argmin, argmax),
+    `dim` must be an integer.
+
+    Parameters
+    ----------
+    tensor : torch.Tensor
+        The input tensor of any shape to reduce.
+    reduction : str, optional
+        The type of reduction to apply. Supported values for multidimensional reductions are:
+        None, 'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'; for single
+        dimension reductions: 'argmin', 'argmax', and all multidimensionals. Default is 'mean'.
+    dim : int, tuple of ints, or None, optional
+        Dimension(s) over which to apply the reduction. For multidimensional reductions, pass a
+        tuple of dimensions; for single-dimension reductions, pass an integer. If None, reduces
+        over all dimensions. Default is None.
+    keepdims : bool, optional
+        Whether to retain reduced dimensions as a singleton. Default is False.
+
+    Returns
+    -------
+    torch.Tensor
+        The reduced tensor.
+
+    Raises
+    ------
+    AssertionError
+        If a single-dimension reduction (e.g., 'argmin', 'argmax') is requested with a
+        `dim` that is not an integer.
+
+    Examples
+    --------
+    >>> import torch
+    # Make a random tensor
+    >>> input_tensor = torch.randn(128, 128)
+    # Getting the mean over all dimensions
+    >>> reduce(input_tensor, reduction='mean')
+    tensor(-0.0021)
+    # Getting the largest value
+    >>> reduce(input_tensor, reduction='amax')
+    tensor(4.1831)
+    """
+
+    # PyTorch multidimensional reductions (also work for single dimensions)
+    torch_multidim_reductions = [
+        'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean', None
+    ]
+
+    # PyTorch single-dimension-only reductions
+    torch_singledim_reductions = ['argmin', 'argmax']
+
+    if reduction in torch_multidim_reductions:
+        return getattr(torch, reduction)(tensor, dim=dim, keepdims=keepdims)
+
+    elif reduction in torch_singledim_reductions:
+
+        assert isinstance(dim, int), (
+            f"Reduction type {reduction} is only compatable with one reduction dimension. Got "
+            f"{dim}"
+        )
+
+        return getattr(torch, reduction)(tensor, dim=dim, keepdims=keepdims)
+
+    else:
+        raise ValueError(
+            f"reduce received an invalid `reduction`. Got {reduction}. Valid options"
+            " are {'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean', 'argmin', "
+            "'argmax'}"
+        )
