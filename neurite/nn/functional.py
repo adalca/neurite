@@ -246,7 +246,9 @@ def gaussian_antialiasing(
 
 def apply_bernoulli_mask(input_tensor, p: float = 0.5, returns: str = None) -> torch.Tensor:
     """
-    Apply a Bernoulli mask to a tensor.
+    Apply a Bernoulli mask to a tensor in (B, C, *spatial) format.
+
+    Wrapper around `neurite.functional.apply_bernoulli_mask()` that handles (B, C, *spatial) format.
 
     Sample a Bernoulli mask with the parameter `p`, representing the probability of
     success (e.g. realizing a 1) and apply it to `input_tensor` via element-wise multiplcation. The
@@ -256,7 +258,7 @@ def apply_bernoulli_mask(input_tensor, p: float = 0.5, returns: str = None) -> t
     Parameters
     ----------
     input_tensor : torch.Tensor
-        The input tensor to be masked.
+        The input tensor to be masked with shape (B, C, *spatial).
     p : float, optional
         Probability of realizing a success (i.e., the probability of a 1) in the mask. Successes are
         preserved in the input tensor such that higher values of this parameter correspond to more
@@ -305,22 +307,7 @@ def apply_bernoulli_mask(input_tensor, p: float = 0.5, returns: str = None) -> t
     print((masked_shape/original_shape))
     ```
     """
-
-    # Sample the Bernoulli mask with parameter `p`
-    bernoulli_mask = ne.utils.utils.bernoulli(p=p, shape=input_tensor.shape)
-    masked = torch.clone(input_tensor)
-
-    # Get successes or failures
-    if returns == 'successes':
-        masked = masked[bernoulli_mask == 1]
-    elif returns == 'failures':
-        masked = masked[bernoulli_mask == 0]
-    elif returns is None:
-        masked[bernoulli_mask == 0] = 0
-    else:
-        raise ValueError(f"{returns} isn't supported!")
-
-    return masked
+    return ne.functional.apply_bernoulli_mask(input_tensor, p=p, returns=returns)
 
 
 def subsample(
