@@ -1657,27 +1657,33 @@ def build_normalization(
 
 def random_flip(dim: int, *args, prob: float = 0.5):
     """
-    Randomly flips an image (or set of images) along the given dimension.
+    Randomly flip tensor(s) along the given dimension.
+
+    Wrapper around `neurite.functional.random_flip()` that handles (B, C, *spatial) format.
 
     Parameters
     ----------
     dim : int
-        The dimension along which to flip. Note that the first dimension
-        is the channel dimension.
+        The dimension along which to flip (0-indexed). For tensors in (B, C, *spatial) format:
+        dim=0 is batch, dim=1 is channel, dim=2 is first spatial dimension, etc.
     *args : torch.Tensor
-        The image(s) to flip.
+        The tensor(s) to flip in (B, C, *spatial) format.
     prob : float
-        The probability of flipping the image(s).
+        The probability of flipping the tensor(s). By default 0.5.
 
     Returns
     -------
     torch.Tensor or tuple[torch.Tensor]
-        The flipped image(s).
+        The flipped tensor(s).
+
+    Examples
+    --------
+    >>> import torch
+    # Flip along spatial dimension (width) for (B, C, H, W) tensor
+    >>> x = torch.randn(1, 1, 4, 4)
+    >>> flipped = random_flip(dim=3, x, prob=1.0)  # dim=3 is width
     """
-    result = tuple([arg.flip([dim]) for arg in args]) if ne.utils.utils.bernoulli(prob) else args
-    if len(args) == 1:
-        return result[0]
-    return result
+    return ne.functional.random_flip(dim, *args, prob=prob)
 
 
 def resize(

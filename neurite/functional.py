@@ -576,3 +576,42 @@ def random_clear_label(
         input_tensor.masked_fill_(mask, 0)
 
     return input_tensor
+
+
+def random_flip(dim: int, *args, prob: float = 0.5):
+    """
+    Randomly flip tensor(s) along the given dimension.
+
+    Parameters
+    ----------
+    dim : int
+        The dimension along which to flip (0-indexed).
+    *args : torch.Tensor
+        The tensor(s) to flip.
+    prob : float
+        The probability of flipping the tensor(s). By default 0.5.
+
+    Returns
+    -------
+    torch.Tensor or tuple[torch.Tensor]
+        The flipped tensor(s).
+
+    Examples
+    --------
+    >>> import torch
+    # Single tensor
+    >>> x = torch.tensor([[1, 2, 3], [4, 5, 6]])
+    >>> flipped = random_flip(dim=1, x, prob=1.0)
+    >>> print(flipped)
+    tensor([[3, 2, 1],
+            [6, 5, 4]])
+
+    # Multiple tensors
+    >>> x = torch.tensor([[1, 2], [3, 4]])
+    >>> y = torch.tensor([[5, 6], [7, 8]])
+    >>> flipped_x, flipped_y = random_flip(dim=0, x, y, prob=1.0)
+    """
+    result = tuple([arg.flip([dim]) for arg in args]) if ne.utils.utils.bernoulli(prob) else args
+    if len(args) == 1:
+        return result[0]
+    return result
