@@ -10,7 +10,7 @@ import torch
 import torch.nn.functional as F
 
 # Custom imports
-import neurite.utils as neu
+import neurite as ne
 
 
 def soft_quantize(
@@ -482,7 +482,7 @@ def apply_bernoulli_mask(input_tensor, p: float = 0.5, returns: str = None) -> t
     ```
     """
     # Sample the Bernoulli mask with parameter `p`
-    bernoulli_mask = neu.utils.bernoulli(p=p, shape=input_tensor.shape)
+    bernoulli_mask = ne.utils.utils.bernoulli(p=p, shape=input_tensor.shape)
     masked = torch.clone(input_tensor)
 
     # Get successes or failures
