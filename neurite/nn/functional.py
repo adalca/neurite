@@ -1252,12 +1252,12 @@ def dice(
     *segs: torch.Tensor,
     smooth_numerator: float = 1e-12,
     smooth_denominator: float = 1e-12,
-    reduction: str = 'mean',
+    reduction: Union[str, None] = 'mean',
     reduction_dim: Union[int, Tuple[int, ...]] = (0, 1),
     keepdims: bool = True,
 ) -> torch.Tensor:
     """
-    Compute Dice score over multiple segmentation maps.
+    Compute Dice score over multiple segmentation maps with shape (B, C, *spatial_dims).
 
     Parameters
     ----------

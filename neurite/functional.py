@@ -3,7 +3,7 @@ Single tensor operations (no B, C dimension assumption)
 """
 
 # Standard library imports
-from typing import Union
+from typing import Union, Sequence
 
 # Third party imports
 import torch
@@ -107,3 +107,74 @@ def mse(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
     """
 
     return torch.mean((tensor1 - tensor2) ** 2)
+
+
+def dice(
+    *segs: Sequence[torch.Tensor],
+    smooth_numerator: float = 1e-12,
+    smooth_denominator: float = 1e-12,
+) -> torch.Tensor:
+    """
+    Compute Dice score over multiple segmentation maps.
+
+    Shape-agnostic implementation that flattens all dimensions and computes
+    a single Dice score over the entire tensors.
+
+    Parameters
+    ----------
+    *segs : torch.Tensor
+        Two or more segmentation tensors with the same shape and values in [0, 1].
+    smooth_numerator : float, optional
+        Smoothing constant added to the numerator. Default is 1e-12.
+    smooth_denominator : float, optional
+        Smoothing constant added to the denominator. Default is 1e-12.
+
+    Returns
+    -------
+    torch.Tensor
+        Scalar Dice score between 0 and 1.
+
+    Examples
+    --------
+    >>> import torch
+    # Compute dice for 2 segmentation tensors
+    >>> seg1 = torch.rand(32, 32)
+    >>> seg2 = torch.rand(32, 32)
+    >>> score = dice(seg1, seg2)
+    >>> print(score)
+    tensor(0.4523)
+
+    # Works with any shape
+    >>> seg1 = torch.rand(64, 64, 64)
+    >>> seg2 = torch.rand(64, 64, 64)
+    >>> score = dice(seg1, seg2)
+    >>> print(score)
+    tensor(0.3891)
+    """
+
+    nsegs = len(segs)
+
+    if nsegs < 2:
+        raise ValueError('Provide at least two segmentation tensors.')
+
+    if not all(segs[0].shape == seg.shape for seg in segs):
+        shapes = {seg.shape for seg in segs}
+        raise ValueError(f'All segmentations must share shape; got {shapes}')
+
+    for seg in segs:
+        if seg.min() < 0 or seg.max() > 1:
+            raise AssertionError(
+                f'Segmentations must be in [0,1]; got min {seg.min()}, max {seg.max()}'
+            )
+
+    # Flatten all dimensions
+    segs_flat = [seg.flatten() for seg in segs]
+
+    # Compute intersection and union
+    intersection = torch.stack(segs_flat, dim=0).prod(dim=0).sum()
+    union = torch.stack(segs_flat, dim=0).sum()
+
+    # Dice for N tensors: N * intersection / union
+    dice_score = (nsegs * intersection + smooth_numerator) / (union + smooth_denominator)
+
+    return dice_score
