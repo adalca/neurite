@@ -329,20 +329,24 @@ def subsample(
     subsampling_dimension: Union[List, Literal[0, 1, 2], int, None] = None,
 ) -> torch.Tensor:
     """
-    Subsamples `input_tensor` by a factor `stride` along the specified dimension.
+    Subsamples `input_tensor` by a factor `stride` along spatial dimensions.
 
-    Downsample a specified dimension of a PyTorch tensor by a given stride. This is achieved by
-    interleaving dropouts, meaning that every `stride`-th element along the selected dimension is
-    kept, while the others are discarded.
+    Wrapper around `neurite.functional.subsample()` that handles (B, C, *spatial) format.
+    The `subsampling_dimension` parameter references spatial dimensions (0-indexed).
+
+    Downsample a specified spatial dimension of a PyTorch tensor by a given stride. This is
+    achieved by interleaving dropouts, meaning that every `stride`-th element along the
+    selected dimension is kept, while the others are discarded.
 
     Parameters
     ----------
     input_tensor : torch.Tensor
-        The tensor to sample from.
+        The tensor to sample from in (B, C, *spatial) format.
     stride : int, optional
         Factor by which to subsample (interleave dropouts). By default 2.
     subsampling_dimension : int, optional
-        The dimension (or axis) along which the subsampling will occur. By default 0.
+        The spatial dimension (0-indexed) along which subsampling will occur.
+        By default None (subsample all spatial dimensions).
 
     Returns
     -------
@@ -352,57 +356,32 @@ def subsample(
     Examples
     --------
     >>> import torch
-    # Define 2D tensor of shape (5, 5)
-    >>> input_tensor = torch.arange(25).view(5, 5)
-    # Visualize the tensor
-    >>> print(input_tensor)
-    tensor([[ 0,  1,  2,  3,  4],
-            [ 5,  6,  7,  8,  9],
-            [10, 11, 12, 13, 14],
-            [15, 16, 17, 18, 19],
-            [20, 21, 22, 23, 24]])
-    # Subsample along the first dimension (the columns)
-    >>> subsampled_tensor = subsample(input_tensor, subsampling_dimension=1)
-    # With the default stride (of 2), every other column should have been dropped out.
-    >>> print(subsampled_tensor)
-    tensor([[ 0,  2,  4],
-            [ 5,  7,  9],
-            [10, 12, 14],
-            [15, 17, 19],
-            [20, 22, 24]])
-    # We could, of course, keep the default `subsampling_dimension=0` and subsample the rows:
-    >>> subsampled_tensor = subsample(input_tensor, subsampling_dimension=1)
-    >>> print(subsampled_tensor)
-    tensor([[ 0,  1,  2,  3,  4],
-            [10, 11, 12, 13, 14],
-            [20, 21, 22, 23, 24]])
+    # Define tensor of shape (1, 1, 5, 5)
+    >>> input_tensor = torch.arange(25).view(1, 1, 5, 5)
+    # Subsample along spatial dimension 1 (width)
+    >>> subsampled = subsample(input_tensor, stride=2, subsampling_dimension=1)
+    >>> print(subsampled.shape)
+    torch.Size([1, 1, 5, 3])
     """
-
     if isinstance(subsampling_dimension, torch.Tensor):
-        raise TypeError("subsampling_dimension must be an int, list, tuple, or None, not a Tensor")
+        raise TypeError(
+            "subsampling_dimension must be an int, list, tuple, or None, not a Tensor"
+        )
 
-    n_spatial = input_tensor.dim() - 2
-    slices = [slice(None)] * input_tensor.ndim
-
-    if isinstance(stride, int):
-        strides = [stride] * n_spatial
-    elif isinstance(stride, (tuple, list)):
-        strides = list(stride)
-
-    # If `None` is passed, subsample all dimensions
+    # Convert spatial dimension indices to tensor dimension indices
     if subsampling_dimension is None:
-        subsampling_dimension = list(range(n_spatial))
-
-    if isinstance(subsampling_dimension, int):
-        strides[subsampling_dimension] = stride
-        slices[subsampling_dimension + 2] = slice(None, None, strides[subsampling_dimension])
-
+        # Subsample all spatial dimensions
+        tensor_dims = list(range(2, input_tensor.ndim))
+    elif isinstance(subsampling_dimension, int):
+        # Single spatial dimension
+        tensor_dims = subsampling_dimension + 2
     elif isinstance(subsampling_dimension, (list, tuple)):
-        for dim in subsampling_dimension:
-            strides[dim] = strides[dim]
-            slices[dim + 2] = slice(None, None, strides[dim])
+        # Multiple spatial dimensions
+        tensor_dims = [dim + 2 for dim in subsampling_dimension]
+    else:
+        tensor_dims = subsampling_dimension
 
-    return input_tensor[tuple(slices)]
+    return ne.functional.subsample(input_tensor, stride=stride, subsampling_dimension=tensor_dims)
 
 
 def subsample_tensor_random_dims(
@@ -821,7 +800,8 @@ def volshape_to_ndgrid(
     Parameters
     ----------
     size : Tuple[int]
-        Full tensor size including batch and channel dimensions. e.g. (B, C, H, W) or (B, C, D, H, W)
+        Full tensor size including batch and channel dimensions.
+        e.g. (B, C, H, W) or (B, C, D, H, W)
     device : Union[str, torch.device], optional
         The device on which the grid will reside. By default "cpu"
     dtype : Union[str, torch.dtype], optional
@@ -853,18 +833,24 @@ def volshape_to_ndgrid(
 
     # Get base grid (shape-agnostic)
     grid = ne.functional.volshape_to_ndgrid(
-        size=spatial_size, device=device, dtype=dtype, normalize=normalize, indexing=indexing, stack=stack
+        size=spatial_size,
+        device=device,
+        dtype=dtype,
+        normalize=normalize,
+        indexing=indexing,
+        stack=stack
     )
 
     if stack:
         # Grid is shape (*spatial, len(spatial))
         # Add B and C dimensions: (B, C, *spatial, len(spatial))
         ndim = len(spatial_size)
-        grid = grid.unsqueeze(0).unsqueeze(0).expand(B, C, *[-1]*(ndim+1))
+        grid = grid.unsqueeze(0).unsqueeze(0).expand(B, C, *[-1] * (ndim + 1))
     else:
         # Grid is tuple of tensors, each shape (*spatial) - add (B, C) to each
         grid = tuple(
-            g.unsqueeze(0).unsqueeze(0).expand(B, C, *[-1]*len(spatial_size)) for g in grid)
+            g.unsqueeze(0).unsqueeze(0).expand(B, C, *[-1] * len(spatial_size)) for g in grid
+        )
 
     return grid
 

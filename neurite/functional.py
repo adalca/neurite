@@ -331,3 +331,87 @@ def volshape_to_ndgrid(
         grid = torch.stack(grid, dim=-1).contiguous()
 
     return grid
+
+
+def subsample(
+    input_tensor: torch.Tensor,
+    stride: Union[Sequence[int], int, None] = 2,
+    subsampling_dimension: Union[list, int, None] = None,
+) -> torch.Tensor:
+    """
+    Subsamples `input_tensor` by a factor `stride` along the specified dimension.
+
+    Downsample a specified dimension of a PyTorch tensor by a given stride. This is achieved by
+    interleaving dropouts, meaning that every `stride`-th element along the selected dimension is
+    kept, while the others are discarded.
+
+    Parameters
+    ----------
+    input_tensor : torch.Tensor
+        The tensor to sample from.
+    stride : int, optional
+        Factor by which to subsample (interleave dropouts). By default 2.
+    subsampling_dimension : int, optional
+        The dimension (or axis) along which the subsampling will occur. By default None.
+
+    Returns
+    -------
+    subsampled_tensor : torch.Tensor
+        Tensor that has been subsampled.
+
+    Examples
+    --------
+    >>> import torch
+    # Define 2D tensor of shape (5, 5)
+    >>> input_tensor = torch.arange(25).view(5, 5)
+    # Visualize the tensor
+    >>> print(input_tensor)
+    tensor([[ 0,  1,  2,  3,  4],
+            [ 5,  6,  7,  8,  9],
+            [10, 11, 12, 13, 14],
+            [15, 16, 17, 18, 19],
+            [20, 21, 22, 23, 24]])
+    # Subsample along the first dimension (the columns)
+    >>> subsampled_tensor = subsample(input_tensor, subsampling_dimension=1)
+    # With the default stride (of 2), every other column should have been dropped out.
+    >>> print(subsampled_tensor)
+    tensor([[ 0,  2,  4],
+            [ 5,  7,  9],
+            [10, 12, 14],
+            [15, 17, 19],
+            [20, 22, 24]])
+    # We could, of course, subsample the rows:
+    >>> subsampled_tensor = subsample(input_tensor, subsampling_dimension=0)
+    >>> print(subsampled_tensor)
+    tensor([[ 0,  1,  2,  3,  4],
+            [10, 11, 12, 13, 14],
+            [20, 21, 22, 23, 24]])
+    """
+    if isinstance(subsampling_dimension, torch.Tensor):
+        raise TypeError(
+            "subsampling_dimension must be an int, list, tuple, or None, not a Tensor"
+        )
+
+    ndim = input_tensor.ndim
+    slices = [slice(None)] * ndim
+
+    # If `None` is passed, subsample all dimensions
+    if subsampling_dimension is None:
+        subsampling_dimension = list(range(ndim))
+
+    # Handle stride specification
+    if isinstance(stride, int):
+        strides = [stride] * ndim
+    elif isinstance(stride, (tuple, list)):
+        strides = list(stride)
+    else:
+        strides = [2] * ndim  # Default stride
+
+    if isinstance(subsampling_dimension, int):
+        slices[subsampling_dimension] = slice(None, None, strides[subsampling_dimension])
+
+    elif isinstance(subsampling_dimension, (list, tuple)):
+        for dim in subsampling_dimension:
+            slices[dim] = slice(None, None, strides[dim])
+
+    return input_tensor[tuple(slices)]
