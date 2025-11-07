@@ -244,7 +244,11 @@ def gaussian_antialiasing(
     return antialiased_tensor
 
 
-def apply_bernoulli_mask(input_tensor, p: float = 0.5, returns: str = None) -> torch.Tensor:
+def apply_bernoulli_mask(
+    input_tensor: torch.Tensor,
+    p: Union[float, int, Sampler] = 0.5,
+    returns: Union[str, None] = None
+) -> torch.Tensor:
     """
     Apply a Bernoulli mask to a tensor in (B, C, *spatial) format.
 
@@ -581,13 +585,15 @@ def random_clear_label(
     """
     Erase regions of an image from randomly selected regions in a label map.
 
+    Wrapper around `neurite.functional.random_clear_label()` that handles (B, C, *spatial) format.
+
     Identify unique labels within the `label_tensor` and, based on a specified probability,
     designate regions of the `input_tensor` to be erased (set to zero).
 
     Parameters
     ----------
     input_tensor : torch.Tensor
-        Image or tensor to clear.
+        Image or tensor to clear with shape (B, C, *spatial).
     label_tensor : torch.Tensor
         Label map corresponding to sampling domain from which to select regions for clearing.
     prob : Union[float, int, Sampler], optional
@@ -630,24 +636,9 @@ def random_clear_label(
     >>> print(torch.equal(cleared_tensor1, cleared_tensor2))
     True
     """
-    if seed is not None:
-        if isinstance(seed, Sampler):
-            seed = seed()
-        torch.manual_seed(seed)
-
-    unique_labels = torch.unique(label_tensor)
-
-    if exclude_zero:
-        unique_labels = unique_labels[unique_labels != 0]
-
-    labels_to_clear = apply_bernoulli_mask(unique_labels, prob, returns='successes')
-
-    # Create single mask for all labels using torch.isin instead of looping
-    if len(labels_to_clear) > 0:
-        mask = torch.isin(label_tensor, labels_to_clear)
-        input_tensor.masked_fill_(mask, 0)
-
-    return input_tensor
+    return ne.functional.random_clear_label(
+        input_tensor, label_tensor, prob=prob, exclude_zero=exclude_zero, seed=seed
+    )
 
 
 def sample_image_from_labels(
