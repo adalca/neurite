@@ -275,7 +275,7 @@ def is_instantiated_normalization(obj: object) -> bool:
 
 def infer_linear_interpolation_mode(
     num_spatial: Literal[1, 2, 3]
-):
+) -> Literal['linear', 'bilinear', 'trilinear']:
     """
     Infer the interpolation mode for `F.interpolate()` from tensor dimensions.
 

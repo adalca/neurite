@@ -231,8 +231,18 @@ def test_volshape_to_ndgrid_sizes():
     assert tuple(the_grid.shape) == (19, 32, 2)
 
 
-def test_nn_functional_volshape_to_ndgrid_sizes():
+def test_functional_volshape_to_ndgrid_sizes():
     B, C = 2, 3
     size = (B, C, 43, 9, 10)
     the_grid = ne.nn.functional.volshape_to_ndgrid(size=size, stack=True)
     assert tuple(the_grid.shape) == (B, C, 43, 9, 10, 3) 
+
+
+def test_gaussian():
+    tensor = torch.ones(1, 1, 128, 128, 128)
+    smoothed = ne.nn.functional.gaussian_smoothing(tensor)
+
+    print(tensor.std())
+    print(smoothed.std())
+
+test_gaussian()
