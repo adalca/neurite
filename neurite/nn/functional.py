@@ -44,6 +44,7 @@ __all__ = [
     "filter_dim",
     "crop_to_nearest_multiple",
     "logistic",
+    "mse",
     "dice",
     "log_dice",
     "random_flip",
@@ -318,27 +319,24 @@ def subsample(
     subsampling_dimension: Union[Sequence[int], Literal[0, 1, 2], int, None] = None,
 ) -> torch.Tensor:
     """
-    Subsamples `input_tensor` by a factor `stride` along spatial dimensions.
+    Subsamples `input_tensor` by a factor `stride` along the specified dimension.
 
-    Wrapper around `neurite.functional.subsample()` that handles (B, C, *spatial) format.
+    Wrapper around `neurite.functional.subsample()` that assumes (B, C, *spatial).
     The `subsampling_dimension` parameter references spatial dimensions (0-indexed).
-
-    Downsample a specified spatial dimension of a PyTorch tensor by a given stride. This is
-    achieved by interleaving dropouts, meaning that every `stride`-th element along the
-    selected dimension is kept, while the others are discarded.
 
     Parameters
     ----------
     input_tensor : torch.Tensor
-        The tensor to sample from.
+        The tensor to sample from, with shape (B, C, *spatial).
     stride : Sequence[int], int, or None, default=2
         Factor by which to subsample (interleave dropouts).
     subsampling_dimension : Sequence[int], Literal[0, 1, 2], int, or None, default=None
-        The dimension (or axis) along which the subsampling will occur.
+        The spatial dimension(s) to subsample (0-indexed among spatial dims). If None, subsamples
+        all spatial dimensions.
 
     Returns
     -------
-    subsampled_tensor : torch.Tensor
+    torch.Tensor
         Tensor that has been subsampled.
 
     Examples
@@ -350,26 +348,19 @@ def subsample(
     >>> subsampled = subsample(input_tensor, stride=2, subsampling_dimension=1)
     >>> print(subsampled.shape)
     torch.Size([1, 1, 5, 3])
+
+    # Subsample all spatial dimensions
+    >>> input_tensor = torch.randn(2, 3, 32, 32)
+    >>> subsampled = subsample(input_tensor, stride=2)
+    >>> print(subsampled.shape)
+    torch.Size([2, 3, 16, 16])
     """
-    if isinstance(subsampling_dimension, torch.Tensor):
-        raise TypeError(
-            "subsampling_dimension must be an int, list, tuple, or None, not a Tensor"
-        )
-
-    # Convert spatial dimension indices to tensor dimension indices
-    if subsampling_dimension is None:
-        # Subsample all spatial dimensions
-        tensor_dims = list(range(2, input_tensor.ndim))
-    elif isinstance(subsampling_dimension, int):
-        # Single spatial dimension
-        tensor_dims = subsampling_dimension + 2
-    elif isinstance(subsampling_dimension, (list, tuple)):
-        # Multiple spatial dimensions
-        tensor_dims = [dim + 2 for dim in subsampling_dimension]
-    else:
-        tensor_dims = subsampling_dimension
-
-    return ne.functional.subsample(input_tensor, stride=stride, subsampling_dimension=tensor_dims)
+    return ne.functional.subsample(
+        input_tensor=input_tensor,
+        stride=stride,
+        subsampling_dimension=subsampling_dimension,
+        non_spatial_dims=(0, 1)
+    )
 
 
 def subsample_random_dims(
@@ -1056,6 +1047,38 @@ def logistic(
     )
 
 
+def mse(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
+    """
+    Calculate mean squared error (MSE) between two tensors.
+
+    Wrapper around `neurite.functional.mse()` that works on tensors with any shape.
+
+    Parameters
+    ----------
+    tensor1 : torch.Tensor
+        An input tensor of any shape.
+    tensor2 : torch.Tensor
+        A tensor with the same shape as `tensor1`.
+
+    Returns
+    -------
+    torch.Tensor
+        Scalar mean squared error between `tensor1` and `tensor2`.
+
+    Examples
+    --------
+    >>> import torch
+    # Tensors with shape (B, C, H, W)
+    >>> tensor1 = torch.randn(2, 3, 16, 16)
+    >>> tensor2 = torch.randn(2, 3, 16, 16)
+    # Calculate MSE
+    >>> mse_value = mse(tensor1, tensor2)
+    >>> print(mse_value.shape)
+    torch.Size([])
+    """
+    return ne.functional.mse(tensor1, tensor2)
+
+
 def dice(
     *segs: torch.Tensor,
     smooth_numerator: float = 1e-12,
@@ -1067,6 +1090,8 @@ def dice(
     """
     Compute Dice score over multiple segmentation maps with shape (B, C, *spatial_dims).
 
+    Wrapper around `neurite.functional.dice()` that assumes (B, C, *spatial) format.
+
     Parameters
     ----------
     *segs : torch.Tensor
@@ -1075,7 +1100,7 @@ def dice(
         Smoothing constant added to the numerator.
     smooth_denominator : float, default=1e-12
         Smoothing constant added to the denominator.
-    reduction : str, default='mean'
+    reduction : str or None, default='mean'
         The type of reduction to apply. Supported values for multidimensional reductions are:
         'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'; for single-dimension
         reductions: 'argmin', 'argmax', and all multidimensionals.
@@ -1088,7 +1113,7 @@ def dice(
     Returns
     -------
     torch.Tensor
-        Tensor of shape (B, C) whose entries represent the dice score for each batch and class.
+        Dice score. If reduction=None, returns shape (B, C). Otherwise, reduced as specified.
 
     Examples
     --------
@@ -1099,40 +1124,19 @@ def dice(
     >>> print(score.shape)
     torch.Size([2, 1])
 
-    >>> # Compute the dice for three classes (batch=2, classes=3)
+    >>> # Compute the dice for three classes (batch=2, classes=3) with mean reduction
     >>> segs = [torch.rand((2, 3, 64, 64)) for _ in range(3)]
     >>> per_class = dice(*segs, reduction='mean')
     >>> print(per_class.shape)
-    tensor([[0.2487]])
+    torch.Size([1, 1])
     """
-
-    nsegs = len(segs)
-
-    if nsegs < 2:
-        raise ValueError(
-            'Provide at least two segmentation tensors.'
-        )
-
-    if not all(segs[0].shape == seg.shape for seg in segs):
-        shapes = {seg.shape for seg in segs}
-        raise ValueError(f'All segmentations must share shape; got {shapes}')
-
-    for seg in segs:
-        if seg.min() < 0 or seg.max() > 1:
-            raise AssertionError(
-                f'Segmentations must be in [0,1]; '
-                f'got min {seg.min()}, max {seg.max()}'
-            )
-
-    # Flatten spatial dimensions while preserving batch and channel dims
-    segs_flat = [seg.flatten(2) for seg in segs]
-
-    # Compute intersection and union
-    intersection = torch.stack(segs_flat, dim=0).prod(dim=0).sum(dim=2)
-    union = torch.stack(segs_flat, dim=0).sum(dim=(0, 3))
-
-    # Dice for N tensors: N * intersection / union
-    dice_score = (nsegs * intersection + smooth_numerator) / (union + smooth_denominator)
+    # Compute Dice using base implementation with (B, C) preserved
+    dice_score = ne.functional.dice(
+        *segs,
+        smooth_numerator=smooth_numerator,
+        smooth_denominator=smooth_denominator,
+        non_spatial_dims=(0, 1)
+    )
 
     if reduction is None:
         return dice_score

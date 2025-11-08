@@ -117,12 +117,13 @@ def dice(
     *segs: torch.Tensor,
     smooth_numerator: float = 1e-12,
     smooth_denominator: float = 1e-12,
+    non_spatial_dims: Union[Tuple[int, ...], None] = None
 ) -> torch.Tensor:
     """
     Compute Dice score over multiple segmentation maps.
 
-    Shape-agnostic implementation that flattens all dimensions and computes
-    a single Dice score over the entire tensors.
+    Shape-agnostic implementation that can either compute a global Dice score
+    (when non_spatial_dims=None) or preserve batch/channel structure.
 
     Parameters
     ----------
@@ -132,30 +133,43 @@ def dice(
         Smoothing constant added to the numerator. Default is 1e-12.
     smooth_denominator : float, optional
         Smoothing constant added to the denominator. Default is 1e-12.
+    non_spatial_dims : Tuple[int, ...] or None, optional
+        Indices of non-spatial dimensions. Must be a contiguous sequence starting from 0.
+        Valid values: `None`, `(0,)`, or `(0, 1)`. If None, assumes all dimensions are spatial
+        and computes a single scalar Dice score. Default is None.
 
     Returns
     -------
     torch.Tensor
-        Scalar Dice score between 0 and 1.
+        Dice score. Shape depends on non_spatial_dims:
+        - If None: scalar
+        - If (0,): shape (B,)
+        - If (0, 1): shape (B, C)
 
     Examples
     --------
     >>> import torch
-    # Compute dice for 2 segmentation tensors
+    # Compute global dice for 2 segmentation tensors
     >>> seg1 = torch.rand(32, 32)
     >>> seg2 = torch.rand(32, 32)
     >>> score = dice(seg1, seg2)
-    >>> print(score)
-    tensor(0.4523)
+    >>> print(score.shape)
+    torch.Size([])
 
-    # Works with any shape
-    >>> seg1 = torch.rand(64, 64, 64)
-    >>> seg2 = torch.rand(64, 64, 64)
-    >>> score = dice(seg1, seg2)
-    >>> print(score)
-    tensor(0.3891)
+    # Compute per-batch dice
+    >>> seg1 = torch.rand(4, 64, 64)
+    >>> seg2 = torch.rand(4, 64, 64)
+    >>> score = dice(seg1, seg2, non_spatial_dims=(0,))
+    >>> print(score.shape)
+    torch.Size([4])
+
+    # Compute per-batch-and-channel dice
+    >>> seg1 = torch.rand(2, 3, 64, 64)
+    >>> seg2 = torch.rand(2, 3, 64, 64)
+    >>> score = dice(seg1, seg2, non_spatial_dims=(0, 1))
+    >>> print(score.shape)
+    torch.Size([2, 3])
     """
-
     nsegs = len(segs)
 
     if nsegs < 2:
@@ -171,12 +185,20 @@ def dice(
                 f'Segmentations must be in [0,1]; got min {seg.min()}, max {seg.max()}'
             )
 
-    # Flatten all dimensions
-    segs_flat = [seg.flatten() for seg in segs]
+    # Parse and validate non_spatial_dims (handles None by setting num_non_spatial=0)
+    num_non_spatial, num_spatial = _parse_non_spatial_dims(non_spatial_dims, segs[0].ndim)
 
-    # Compute intersection and union
-    intersection = torch.stack(segs_flat, dim=0).prod(dim=0).sum()
-    union = torch.stack(segs_flat, dim=0).sum()
+    # Flatten spatial dimensions (when num_non_spatial=0, this flattens all dims)
+    segs_flat = [seg.flatten(num_non_spatial) for seg in segs]
+
+    # Stack segmentations: (nsegs, *non_spatial_dims, spatial_flat)
+    stacked = torch.stack(segs_flat, dim=0)
+
+    # Intersection: product across segs, sum over spatial
+    intersection = stacked.prod(dim=0).sum(dim=-1)
+
+    # Union: sum across segs and spatial
+    union = stacked.sum(dim=(0, -1))
 
     # Dice for N tensors: N * intersection / union
     dice_score = (nsegs * intersection + smooth_numerator) / (union + smooth_denominator)
@@ -344,6 +366,7 @@ def subsample(
     input_tensor: torch.Tensor,
     stride: Union[Sequence[int], int, None] = 2,
     subsampling_dimension: Union[list, int, None] = None,
+    non_spatial_dims: Union[Tuple[int, ...], None] = None
 ) -> torch.Tensor:
     """
     Subsamples `input_tensor` by a factor `stride` along the specified dimension.
@@ -356,70 +379,74 @@ def subsample(
     ----------
     input_tensor : torch.Tensor
         The tensor to sample from.
-    stride : int, optional
-        Factor by which to subsample (interleave dropouts). By default 2.
-    subsampling_dimension : int, optional
-        The dimension (or axis) along which the subsampling will occur. By default None.
+    stride : int, Sequence[int], or None, default=2
+        Factor by which to subsample (interleave dropouts). If int, same stride is used for all
+        subsampled dimensions. If Sequence, must match the number of spatial dimensions.
+    subsampling_dimension : int, Sequence[int], or None, default=None
+        The spatial dimension(s) to subsample (0-indexed among spatial dims). If None, subsamples
+        all spatial dimensions.
+    non_spatial_dims : Tuple[int, ...] or None, default=None
+        Indices of non-spatial dimensions. Must be a contiguous sequence starting from 0.
+        Valid values: `()`, `(0,)`, or `(0, 1)`. If None, assumes all dimensions are spatial.
 
     Returns
     -------
-    subsampled_tensor : torch.Tensor
+    torch.Tensor
         Tensor that has been subsampled.
 
     Examples
     --------
     >>> import torch
-    # Define 2D tensor of shape (5, 5)
+    # Subsample a 2D tensor (no batch/channel dims)
     >>> input_tensor = torch.arange(25).view(5, 5)
-    # Visualize the tensor
-    >>> print(input_tensor)
-    tensor([[ 0,  1,  2,  3,  4],
-            [ 5,  6,  7,  8,  9],
-            [10, 11, 12, 13, 14],
-            [15, 16, 17, 18, 19],
-            [20, 21, 22, 23, 24]])
-    # Subsample along the first dimension (the columns)
-    >>> subsampled_tensor = subsample(input_tensor, subsampling_dimension=1)
-    # With the default stride (of 2), every other column should have been dropped out.
-    >>> print(subsampled_tensor)
-    tensor([[ 0,  2,  4],
-            [ 5,  7,  9],
-            [10, 12, 14],
-            [15, 17, 19],
-            [20, 22, 24]])
-    # We could, of course, subsample the rows:
-    >>> subsampled_tensor = subsample(input_tensor, subsampling_dimension=0)
-    >>> print(subsampled_tensor)
-    tensor([[ 0,  1,  2,  3,  4],
-            [10, 11, 12, 13, 14],
-            [20, 21, 22, 23, 24]])
+    >>> subsampled = subsample(input_tensor, stride=2, subsampling_dimension=1)
+    >>> print(subsampled.shape)
+    torch.Size([5, 3])
+
+    # Subsample with batch and channel dims
+    >>> input_tensor = torch.randn(2, 3, 32, 32)
+    >>> subsampled = subsample(input_tensor, stride=2, non_spatial_dims=(0, 1))
+    >>> print(subsampled.shape)
+    torch.Size([2, 3, 16, 16])
     """
     if isinstance(subsampling_dimension, torch.Tensor):
         raise TypeError(
             "subsampling_dimension must be an int, list, tuple, or None, not a Tensor"
         )
 
+    num_non_spatial, num_spatial = _parse_non_spatial_dims(non_spatial_dims, input_tensor.ndim)
     ndim = input_tensor.ndim
     slices = [slice(None)] * ndim
 
-    # If `None` is passed, subsample all dimensions
+    # Dimensions to subsample
     if subsampling_dimension is None:
-        subsampling_dimension = list(range(ndim))
+        spatial_dims_to_subsample = list(range(num_spatial))
+    elif isinstance(subsampling_dimension, int):
+        spatial_dims_to_subsample = [subsampling_dimension]
+    else:
+        spatial_dims_to_subsample = list(subsampling_dimension)
 
-    # Handle stride specification
     if isinstance(stride, int):
-        strides = [stride] * ndim
+        strides = [stride] * num_spatial
     elif isinstance(stride, (tuple, list)):
         strides = list(stride)
+        if len(strides) != num_spatial:
+            raise ValueError(
+                f"stride length {len(strides)} must match number of spatial dimensions "
+                f"{num_spatial}"
+            )
     else:
-        strides = [2] * ndim  # Default stride
+        strides = [2] * num_spatial  # Default stride
 
-    if isinstance(subsampling_dimension, int):
-        slices[subsampling_dimension] = slice(None, None, strides[subsampling_dimension])
-
-    elif isinstance(subsampling_dimension, (list, tuple)):
-        for dim in subsampling_dimension:
-            slices[dim] = slice(None, None, strides[dim])
+    # Convert spatial dimension indices to absolute tensor indices and apply subsampling
+    for spatial_idx in spatial_dims_to_subsample:
+        if spatial_idx < 0 or spatial_idx >= num_spatial:
+            raise ValueError(
+                f"subsampling_dimension index {spatial_idx} out of range for {num_spatial} "
+                "spatial dims"
+            )
+        absolute_idx = num_non_spatial + spatial_idx
+        slices[absolute_idx] = slice(None, None, strides[spatial_idx])
 
     return input_tensor[tuple(slices)]
 
@@ -732,16 +759,8 @@ def upsample(
     >>> print(upsampled.shape)
     torch.Size([20, 60])
     """
-    # Validate and handle non_spatial_dims
-    non_spatial_dims = () if non_spatial_dims is None else tuple(non_spatial_dims)
-    valid_values = {(): 2, (0,): 1, (0, 1): 0}
-
-    if non_spatial_dims not in valid_values:
-        raise ValueError(
-            f"non_spatial_dims must be (), (0,), or (0, 1), got {non_spatial_dims}"
-        )
-
-    dims_to_add = valid_values[non_spatial_dims]
+    num_non_spatial, _ = _parse_non_spatial_dims(non_spatial_dims, input_tensor.ndim)
+    dims_to_add = 2 - num_non_spatial
 
     # Add batch and/or channel dimensions if needed
     for _ in range(dims_to_add):
@@ -844,3 +863,42 @@ def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> tor
         )
 
     return filtered_tensor
+
+
+def _parse_non_spatial_dims(
+    non_spatial_dims: Union[Tuple[int, ...], None],
+    tensor_ndim: int
+) -> Tuple[int, int]:
+    """
+    Validate and parse non_spatial_dims parameter.
+
+    Parameters
+    ----------
+    non_spatial_dims : Tuple[int, ...] or None
+        Indices of non-spatial dimensions. Must be None, (0,), or (0, 1).
+    tensor_ndim : int
+        Total number of dimensions in the tensor.
+
+    Returns
+    -------
+    num_non_spatial : int
+        Number of non-spatial dimensions.
+    num_spatial : int
+        Number of spatial dimensions.
+
+    Raises
+    ------
+    ValueError
+        If non_spatial_dims is not valid.
+    """
+    valid_values = {None: 0, (0,): 1, (0, 1): 2}
+
+    if non_spatial_dims not in valid_values:
+        raise ValueError(
+            f"non_spatial_dims must be None, (0,), or (0, 1), got {non_spatial_dims}"
+        )
+
+    num_non_spatial = valid_values[non_spatial_dims]
+    num_spatial = tensor_ndim - num_non_spatial
+
+    return num_non_spatial, num_spatial
