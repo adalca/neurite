@@ -114,7 +114,8 @@ def mse(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
 
 
 def dice(
-    *segs: Sequence[torch.Tensor],
+
+    *segs: torch.Tensor,
     smooth_numerator: float = 1e-12,
     smooth_denominator: float = 1e-12,
 ) -> torch.Tensor:
@@ -266,13 +267,13 @@ def reduce(
 
 
 def volshape_to_ndgrid(
-    size: Tuple[int],
+    size: Sequence[int],
     device: Union[str, torch.device] = "cpu",
     dtype: Union[str, torch.dtype] = torch.float32,
     normalize: bool = False,
     indexing: Literal["ij", "xy"] = "ij",
     stack: bool = False,
-) -> torch.Tensor:
+) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
     """
     Generate a grid of spatial coordinates.
 
@@ -324,10 +325,13 @@ def volshape_to_ndgrid(
     >>> print(the_grid.shape)
     torch.Size([19, 32, 2])
     """
+    normalized_dtype = dtype if isinstance(dtype, torch.dtype) else getattr(torch, dtype)
+
     if normalize:
-        axes = [torch.linspace(-1, 1, steps=sz, device=device, dtype=dtype) for sz in size]
+        axes = [
+            torch.linspace(-1, 1, steps=sz, device=device, dtype=normalized_dtype) for sz in size]
     else:
-        axes = [torch.arange(0, sz, device=device, dtype=dtype) for sz in size]
+        axes = [torch.arange(0, sz, device=device, dtype=normalized_dtype) for sz in size]
 
     grid = torch.meshgrid(*axes, indexing=indexing)
 
@@ -421,7 +425,11 @@ def subsample(
     return input_tensor[tuple(slices)]
 
 
-def apply_bernoulli_mask(input_tensor, p: float = 0.5, returns: str = None) -> torch.Tensor:
+def apply_bernoulli_mask(
+    input_tensor,
+    p: Union[float, int] = 0.5,
+    returns: Union[str, None] = None
+) -> torch.Tensor:
     """
     Apply a Bernoulli mask to a tensor.
 
@@ -502,9 +510,9 @@ def apply_bernoulli_mask(input_tensor, p: float = 0.5, returns: str = None) -> t
 def random_clear_label(
     input_tensor: torch.Tensor,
     label_tensor: torch.Tensor,
-    prob: Union[float, int, Sampler] = 0.5,
+    prob: Union[float, int] = 0.5,
     exclude_zero: bool = True,
-    seed: int = None
+    seed: Union[int, None] = None
 ) -> torch.Tensor:
     """
     Erase regions of an image from randomly selected regions in a label map.
@@ -619,8 +627,8 @@ def random_flip(dim: int, *args, prob: float = 0.5):
 
 def sample_image_from_labels(
     label_tensor: torch.Tensor,
-    mean_sampler: Sampler = None,
-    noise_sampler: Sampler = None,
+    mean_sampler: Union[float, int, None] = None,
+    noise_sampler: Union[float, int, None] = None,
     noise_variance: Union[float, int, Sampler] = 0.25
 ) -> torch.Tensor:
     """
@@ -652,7 +660,7 @@ def sample_image_from_labels(
         A tensor of sampled image intensities with the same shape as `label_tensor`.
     """
     if mean_sampler is None:
-        mean_sampler = ne.samplers.Uniform(0, 1)
+        mean_sampler: Sampler = ne.samplers.Uniform(0, 1)
     if noise_sampler is None:
         noise_sampler = ne.samplers.Normal
 
