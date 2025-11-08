@@ -62,10 +62,10 @@ def test_random_clear_label_exclude_zero():
 
 
 # =============================================================================
-# Tests for subsample_tensor_random_dims()
+# Tests for subsample_random_dims()
 # =============================================================================
 
-def test_subsample_tensor_random_dims_all_dims():
+def test_subsample_random_dims_all_dims():
     """Test subsampling when all dimensions are selected."""
     input_tensor = torch.arange(1, 65).reshape(1, 1, 8, 8).float()
 
@@ -73,7 +73,7 @@ def test_subsample_tensor_random_dims_all_dims():
     # With forbidden_dims=(0, 1), only spatial dims 2 and 3 can be subsampled
     # Both will be subsampled with stride=2, resulting in 4x4 output
     torch.manual_seed(42)
-    result = nef.subsample_tensor_random_dims(input_tensor, stride=2, p=1.0)
+    result = nef.subsample_random_dims(input_tensor, stride=2, p=1.0)
 
     # Should be downsampled by 2 in both spatial dims
     assert result.shape == (1, 1, 4, 4)
@@ -98,38 +98,38 @@ def test_subsample_tensor_random_dims_all_dims():
     )
 
 
-def test_subsample_tensor_random_dims_no_dims():
+def test_subsample_random_dims_no_dims():
     """Test subsampling when no dimensions are selected."""
     input_tensor = torch.randn(1, 1, 8, 8)
 
     # Force no dimensions to be subsampled (p=0.0)
-    result = nef.subsample_tensor_random_dims(input_tensor, stride=2, p=0.0)
+    result = nef.subsample_random_dims(input_tensor, stride=2, p=0.0)
 
     # Should remain unchanged
     assert result.shape == input_tensor.shape
     assert torch.equal(result, input_tensor)
 
 
-def test_subsample_tensor_random_dims_3d():
+def test_subsample_random_dims_3d():
     """Test 3D subsampling."""
     input_tensor = torch.randn(1, 2, 16, 16, 16)
 
     # Subsample with p=1.0 (all dims)
-    result = nef.subsample_tensor_random_dims(input_tensor, stride=2, p=1.0)
+    result = nef.subsample_random_dims(input_tensor, stride=2, p=1.0)
 
     # All spatial dims should be halved
     assert result.shape == (1, 2, 8, 8, 8)
 
 
-def test_subsample_tensor_random_dims_deterministic():
+def test_subsample_random_dims_deterministic():
     """Test that same seed produces same result."""
     input_tensor = torch.randn(1, 1, 16, 16)
 
     torch.manual_seed(42)
-    result1 = nef.subsample_tensor_random_dims(input_tensor, stride=2, p=0.5)
+    result1 = nef.subsample_random_dims(input_tensor, stride=2, p=0.5)
 
     torch.manual_seed(42)
-    result2 = nef.subsample_tensor_random_dims(input_tensor, stride=2, p=0.5)
+    result2 = nef.subsample_random_dims(input_tensor, stride=2, p=0.5)
 
     assert torch.equal(result1, result2)
 
@@ -244,5 +244,3 @@ def test_gaussian():
 
     print(tensor.std())
     print(smoothed.std())
-
-test_gaussian()

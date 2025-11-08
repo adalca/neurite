@@ -32,14 +32,13 @@ __all__ = [
     "gaussian_antialiasing",
     "apply_bernoulli_mask",
     "subsample",
-    "subsample_tensor_random_dims",
+    "subsample_random_dims",
     "upsample",
     "resample",
     "random_clear_label",
     "sample_image_from_labels",
     "affine_to_dense_shift",
     "volshape_to_ndgrid",
-    "checkerboard",
     "constant_shift_field",
     "cross_expand",
     "filter_dim",
@@ -373,7 +372,7 @@ def subsample(
     return ne.functional.subsample(input_tensor, stride=stride, subsampling_dimension=tensor_dims)
 
 
-def subsample_tensor_random_dims(
+def subsample_random_dims(
     input_tensor: torch.Tensor,
     stride: int = 2,
     forbidden_dims: Sequence[int] = (0, 1),
@@ -423,13 +422,13 @@ def subsample_tensor_random_dims(
               [15, 16, 17, 18, 19],
               [20, 21, 22, 23, 24]]]])
     >>> # Subsample the tensor. This may now (randomly) subsample more than one dimension.
-    >>> subsampled_tensor = subsample_tensor_random_dims(input_tensor)
+    >>> subsampled_tensor = subsample_random_dims(input_tensor)
     >>> print(subsampled_tensor)
     tensor([[[[ 0,  3],
               [10, 13],
               [20, 23]]]])
     >>> # Subsample by defining the stride range.
-    >>> subsampled_tensor = subsample_tensor_random_dims(input_tensor, stride=4)
+    >>> subsampled_tensor = subsample_random_dims(input_tensor, stride=4)
     >>> print(subsampled_tensor)
     tensor([[[[ 0,  4],
               [20, 24]]]])
