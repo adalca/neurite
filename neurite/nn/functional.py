@@ -247,7 +247,7 @@ def gaussian_antialiasing(
 
 def apply_bernoulli_mask(
     input_tensor: torch.Tensor,
-    p: Union[float, int, Sampler] = 0.5,
+    p: Union[float, int] = 0.5,
     returns: Union[str, None] = None
 ) -> torch.Tensor:
     """
@@ -379,9 +379,9 @@ def subsample(
 def subsample_tensor_random_dims(
     input_tensor: torch.Tensor,
     stride: int = 2,
-    forbidden_dims: list = (0, 1),
+    forbidden_dims: Sequence[int] = (0, 1),
     p: float = 0.5,
-    max_concurrent_subsamplings: int = None
+    max_concurrent_subsamplings: Union[int, None] = None
 ) -> torch.Tensor:
     """
     Subsample the input tensor along randomly selected dimensions
@@ -450,7 +450,7 @@ def subsample_tensor_random_dims(
     dimensions_to_subsample = torch.randperm(input_tensor.dim())[:max_concurrent_subsamplings]
 
     if forbidden_dims is not None:
-        forbidden_dims = torch.Tensor(forbidden_dims)
+        forbidden_dims: torch.Tensor = torch.Tensor(forbidden_dims)
         mask = torch.isin(dimensions_to_subsample, forbidden_dims)
         dimensions_to_subsample = dimensions_to_subsample[~mask]
 
@@ -1272,61 +1272,9 @@ def log_dice(
     >>> torch.exp(log_dice)
     tensor([[0.4981]])
     """
-
-    if len(segs) < 2:
-        raise ValueError(
-            'Provide at least two segmentation tensors.'
-        )
-
-    if not all(segs[0].shape == seg.shape for seg in segs):
-        shapes = {seg.shape for seg in segs}
-        raise ValueError(
-            f'All segmentations must share shape; got {shapes}'
-        )
-
-    if enforce_valid_probabilities:
-        assert all(torch.all(seg <= 0) for seg in segs), (
-            "ne.utils.log_dice expects input tensors to represent log-probabilities (be entirely "
-            f"negative) but got the following maximum values: {[seg.max().item() for seg in segs]}"
-        )
-        assert all(torch.allclose(seg.exp().sum(), 1.0) for seg in segs), (
-            "Input tensors are not valid probability distributions (probs don't sum to 1.0). Got "
-            f"the following sums: {[seg.exp().sum().item() for seg in segs]}"
-        )
-
-    segs_flat = [seg.flatten(2) for seg in segs]
-    n_segs = len(segs_flat)
-
-    # Convert smoothing constants to log domain for numerical stability with logsumexp
-    log_smooth_numerator = torch.tensor(
-        smooth_numerator,
-        device=segs_flat[0].device
-    ).expand(segs_flat[0].shape).log()
-
-    log_smooth_denominator = torch.tensor(
-        smooth_denominator,
-        device=segs_flat[0].device
-    ).expand(segs_flat[0].shape).log()
-
-    # Compute N * intersection in log space: log(N) + L_1 + L_2 + ...
-    numerator = segs_flat[0] + torch.log(torch.tensor(n_segs, device=segs_flat[0].device))
-    for seg in segs_flat[1:]:
-        numerator = numerator + seg
-    numerator = torch.logsumexp(torch.stack([numerator, log_smooth_numerator], dim=-1), dim=-1)
-
-    # Compute union in log space using logsumexp: log(e^(N*L_1) + e^(N*L_2) + ...)
-    scaled_segs = [n_segs * seg for seg in segs_flat]
-    denominator = torch.logsumexp(
-        torch.stack([*scaled_segs, log_smooth_denominator], dim=-1), dim=-1)
-
-    # Dice = numerator / denominator, computed as subtraction in log space
-    log_dice_vals = numerator - denominator
-
-    return reduce(
-        tensor=log_dice_vals,
-        reduction=reduction,
-        dim=reduction_dim,
-        keepdims=keepdims,
+    raise NotImplementedError(
+        "log_dice() has been moved to neurite_sandbox. "
+        "Please use: from neurite_sandbox.etienne_chollet.nn.functional import log_dice"
     )
 
 
