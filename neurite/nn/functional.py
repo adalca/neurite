@@ -469,47 +469,48 @@ def upsample(
     mode: Literal['linear', 'nearest', 'bicubic', 'area', 'nearest-exact'] = 'linear',
 ) -> torch.Tensor:
     """
-    Upsamples 1D, 2D, or 3D tensors to a given `shape`.
+    Upsample 1D, 2D, or 3D tensors to a given `shape`.
+
+    Wrapper around `neurite.functional.upsample()` that assumes (B, C, *spatial).
 
     Parameters
     ----------
     input_tensor : torch.Tensor
-        The input tensor to be upsampled. Assumed to have batch and channel dimensions.
-    scale_factor : float, default=2
+        The input tensor to be upsampled, with shape (B, C, *spatial).
+    scale_factor : int, float, Sequence[int], or Sequence[float], default=2
         The factor by which to upsample each spatial dimension.
     shape : Sequence[int] or None, default=None
         Spatial dimensions (without batch or channel dimensions) to upsample `input_tensor` into.
     mode : {'linear', 'nearest', 'bicubic', 'area', 'nearest-exact'}, default='linear'
         Interpolation mode for upsampling.
 
+    Returns
+    -------
+    torch.Tensor
+        The upsampled tensor with shape (B, C, *upsampled_spatial).
+
     Examples
     --------
-    >>> # 2D Upsampling
+    >>> import torch
+    # 2D Upsampling
     >>> input_tensor = torch.randn(1, 3, 32, 32)  # (B, C, H, W)
-    >>> upsampled_tensor = upsample(input_tensor, shape=(64, 64), mode='bilinear')
+    >>> upsampled_tensor = upsample(input_tensor, shape=(64, 64))
     >>> print(upsampled_tensor.shape)
     torch.Size([1, 3, 64, 64])
-    >>> # 3D Upsampling
+
+    # 3D Upsampling
     >>> input_tensor = torch.randn(1, 3, 32, 32, 32)  # (B, C, D, H, W)
-    >>> upsampled_tensor = upsample(input_tensor, shape=(64, 64, 64), mode='bilinear')
+    >>> upsampled_tensor = upsample(input_tensor, shape=(64, 64, 64))
     >>> print(upsampled_tensor.shape)
     torch.Size([1, 3, 64, 64, 64])
     """
-
-    # Get the correct {'linear', 'bilinear', 'trilinear'} interpolation mode
-    if mode == 'linear':
-        mode = ne.utils.utils.infer_linear_interpolation_mode(input_tensor.dim() - 2)
-
-    spatial_dims = input_tensor.dim() - 2
-    if spatial_dims not in [1, 2, 3]:
-        raise ValueError(
-            f"Unsupported tensor dimensionality: {spatial_dims} spatial dimensions. "
-            "Only 1D, 2D, and 3D tensors are supported."
-        )
-
-    upsampled = F.interpolate(input=input_tensor, size=shape, mode=mode, scale_factor=scale_factor)
-
-    return upsampled
+    return ne.functional.upsample(
+        input_tensor=input_tensor,
+        scale_factor=scale_factor,
+        size=shape,
+        mode=mode,
+        non_spatial_dims=(0, 1)
+    )
 
 
 def resample(

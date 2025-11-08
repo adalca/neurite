@@ -114,7 +114,6 @@ def mse(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
 
 
 def dice(
-
     *segs: torch.Tensor,
     smooth_numerator: float = 1e-12,
     smooth_denominator: float = 1e-12,
@@ -677,6 +676,99 @@ def sample_image_from_labels(
         sampled_image[label_tensor == label] = texturized_redion
 
     return sampled_image
+
+
+def upsample(
+    input_tensor: torch.Tensor,
+    scale_factor: Union[int, float, Sequence[Union[int, float]], None] = 2,
+    size: Union[Sequence[int], None] = None,
+    mode: Literal['linear', 'nearest', 'bicubic', 'area', 'nearest-exact'] = 'linear',
+    non_spatial_dims: Union[Tuple[int, ...], None] = None
+) -> torch.Tensor:
+    """
+    Upsample a tensor to a given size or scale factor.
+
+    Shape-agnostic upsampling that works on tensors with any dimensionality. The `non_spatial_dims`
+    parameter specifies which leading dimensions are non-spatial (e.g., batch and channel).
+
+    Parameters
+    ----------
+    input_tensor : torch.Tensor
+        The input tensor to be upsampled.
+    scale_factor : int, float, Sequence[int], Sequence[float], or None, default=2
+        The factor by which to upsample each spatial dimension. If None, `size` must be specified.
+    size : Sequence[int] or None, default=None
+        Target size for the spatial dimensions. If None, `scale_factor` is used.
+    mode : {'linear', 'nearest', 'bicubic', 'area', 'nearest-exact'}, default='linear'
+        Interpolation mode for upsampling. 'linear' will be automatically converted to the
+        appropriate mode ('linear', 'bilinear', or 'trilinear') based on spatial dimensionality.
+    non_spatial_dims : Tuple[int, ...] or None, default=None
+        Indices of non-spatial dimensions. Must be a contiguous sequence starting from 0.
+        Valid values: `()`, `(0,)`, or `(0, 1)`. If None, assumes all dimensions are spatial
+        and will add 2 leading dimensions for batch and channel.
+
+    Returns
+    -------
+    torch.Tensor
+        The upsampled tensor with the same number of dimensions as the input.
+
+    Examples
+    --------
+    # Upsample a 3D tensor to specific size
+    >>> tensor_3d = torch.randn(16, 16, 16)
+    >>> upsampled = upsample(tensor_3d, size=(32, 32, 32))
+    >>> print(upsampled.shape)
+    torch.Size([32, 32, 32])
+
+    # Upsample tensor with batch and channel dims
+    >>> tensor_with_bc = torch.randn(2, 3, 32, 32)
+    >>> upsampled = upsample(tensor_with_bc, scale_factor=2, non_spatial_dims=(0, 1))
+    >>> print(upsampled.shape)
+    torch.Size([2, 3, 64, 64])
+
+    # Upsample with different scale factors per dimension
+    >>> tensor_2d = torch.randn(10, 20)
+    >>> upsampled = upsample(tensor_2d, scale_factor=(2, 3))
+    >>> print(upsampled.shape)
+    torch.Size([20, 60])
+    """
+    # Validate and handle non_spatial_dims
+    non_spatial_dims = () if non_spatial_dims is None else tuple(non_spatial_dims)
+    valid_values = {(): 2, (0,): 1, (0, 1): 0}
+
+    if non_spatial_dims not in valid_values:
+        raise ValueError(
+            f"non_spatial_dims must be (), (0,), or (0, 1), got {non_spatial_dims}"
+        )
+
+    dims_to_add = valid_values[non_spatial_dims]
+
+    # Add batch and/or channel dimensions if needed
+    for _ in range(dims_to_add):
+        input_tensor = input_tensor.unsqueeze(0)
+
+    spatial_ndim = input_tensor.ndim - 2
+    if spatial_ndim not in {1, 2, 3}:
+        raise ValueError(
+            f"Unsupported spatial dimensionality: {spatial_ndim} spatial dimensions. "
+            "Only 1D, 2D, and 3D are supported."
+        )
+
+    # Infer interpolation mode for linear interpolation
+    if mode == 'linear':
+        mode = ne.utils.utils.infer_linear_interpolation_mode(spatial_ndim)
+
+    # F.interpolate requires exactly one of size or scale_factor
+    if size is not None:
+        upsampled = F.interpolate(input=input_tensor, size=size, mode=mode)
+    else:
+        upsampled = F.interpolate(input=input_tensor, scale_factor=scale_factor, mode=mode)
+
+    # Remove added dimensions to match original tensor shape
+    for _ in range(dims_to_add):
+        upsampled = upsampled.squeeze(0)
+
+    return upsampled
 
 
 def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> torch.Tensor:
