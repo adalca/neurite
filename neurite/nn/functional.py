@@ -318,7 +318,7 @@ def apply_bernoulli_mask(
 def subsample(
     input_tensor: torch.Tensor,
     stride: Union[Sequence[int], int, None] = 2,
-    subsampling_dimension: Union[List, Literal[0, 1, 2], int, None] = None,
+    subsampling_dimension: Union[Sequence[int], Literal[0, 1, 2], int, None] = None,
 ) -> torch.Tensor:
     """
     Subsamples `input_tensor` by a factor `stride` along spatial dimensions.
@@ -468,7 +468,7 @@ def subsample_tensor_random_dims(
 
 def upsample(
     input_tensor: torch.Tensor,
-    scale_factor: float = 2,
+    scale_factor: Union[int, float, Sequence[Union[int, float]]] = 2,
     shape: Union[Sequence[int], None] = None,
     mode: Literal['linear', 'nearest', 'bicubic', 'area', 'nearest-exact'] = 'linear',
 ) -> torch.Tensor:
@@ -503,7 +503,7 @@ def upsample(
 
     # Get the correct {'linear', 'bilinear', 'trilinear'} interpolation mode
     if mode == 'linear':
-        mode = ne.utils.util.infer_linear_interpolation_mode(input_tensor.dim() - 2)
+        mode = ne.utils.utils.infer_linear_interpolation_mode(input_tensor.dim() - 2)
 
     spatial_dims = input_tensor.dim() - 2
     if spatial_dims not in [1, 2, 3]:
@@ -1113,14 +1113,10 @@ def logistic(
     torch.Tensor
         Result of the logistic function which can be interpreted as probabilities/normalized scores.
     """
-
-    assert upper_asymptote > lower_asymptote, (
-        "`upper_asymptote` must be greater than `lower_asymptote.")
-
-    numerator = upper_asymptote - lower_asymptote
-    denominator = 1 + torch.exp(-slope * logits)
-
-    return lower_asymptote + (numerator / denominator)
+    raise NotImplementedError(
+        "logistic() has been moved to neurite_sandbox. "
+        "Please use: from neurite_sandbox.etienne_chollet.nn.functional import logistic"
+    )
 
 
 def dice(
