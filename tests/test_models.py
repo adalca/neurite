@@ -56,10 +56,10 @@ def test_basicunet_forward_shapes(ndim, spatial_size):
     assert y.shape == (batch_size, out_ch, *spatial_size)
 
 
-@pytest.mark.parametrize("residual", [True, False])
-def test_basicunet_residual_option(residual):
+@pytest.mark.parametrize("skip_connections", [True, False])
+def test_basicunet_skip_option(skip_connections):
     """
-    Test that the residual_connections flag toggles skip connections
+    Test that the skip_connections flag toggles skip connections
     without changing output shape.
 
     Parameters
@@ -81,7 +81,43 @@ def test_basicunet_residual_option(residual):
         in_channels=in_ch,
         out_channels=out_ch,
         nb_features=[4, 8],
-        residual_connections=residual,
+        skip_connections=skip_connections,
+    )
+    model.eval()
+
+    x = torch.randn((1, in_ch, *size))
+    y = model(x)
+
+    # Even without residuals, output dims stay the same
+    assert y.shape == (1, out_ch, *size)
+
+
+@pytest.mark.parametrize("skip_connections", [True, False])
+def test_basicunet_asymmetric_skip_option(skip_connections):
+    """
+    Test that the skip_connections flag toggles skip connections
+    without changing output shape.
+
+    Parameters
+    ----------
+    residual : bool
+        Whether to use residual connections.
+
+    Returns
+    -------
+    None
+    """
+    ndim = 2
+    in_ch = 1
+    out_ch = 1
+    size = (16, 16)
+
+    model = ne.nn.models.BasicUNet(
+        ndim=ndim,
+        in_channels=in_ch,
+        out_channels=out_ch,
+        nb_features=[[9, 2], [12, 4]],
+        skip_connections=skip_connections,
     )
     model.eval()
 

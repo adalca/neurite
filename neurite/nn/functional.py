@@ -72,11 +72,10 @@ def gaussian_smoothing(
         The input tensor, assumed to be 1D, 2D, or 3D.
     kernel_size : int, List[int], or optional
         Size of the Gaussian kernel. If int, same size is used for all dimensions.
-        If List[int], different sizes can be specified per dimension. Default is 3.
-    sigma : float, int, List[float], List[int], or Sampler, optional
+        If Sequence[int], different sizes can be specified per dimension.
+    sigma : float, int, Sequence[float], Sequence[int], or Sampler, default=1
         Standard deviation of the Gaussian kernel. If float/int, same sigma is used
-        for all dimensions. If List, different sigmas can be specified per dimension.
-        Default is 1.
+        for all dimensions. If Sequence, different sigmas can be specified per dimension.
 
     Returns
     -------
@@ -129,9 +128,9 @@ def gaussian_smoothing(
 
 def gaussian_antialiasing(
     input_tensor: torch.Tensor,
-    stride: Union[int, List[int]] = 2,
-    kernel_size: Union[int, Sequence[int], None] = None,
-    sigma: Union[float, int, Sequence[Union[float, int]], None] = None,
+    stride: Union[int, Sequence[int]] = 2,
+    kernel_size: Union[int, Sequence[int], Sampler, None] = None,
+    sigma: Union[float, int, Sequence[float], Sequence[int], Sampler, None] = None,
     subsampling_dimension: Union[List[int], int, None] = None
 ) -> torch.Tensor:
     """
@@ -145,20 +144,20 @@ def gaussian_antialiasing(
     ----------
     input_tensor : torch.Tensor
         The input tensor to be downsampled with antialiasing, assumed to be 1D, 2D, or 3D.
-    stride : int or List[int], optional
+    stride : int or Sequence[int], default=2
         Downsampling stride. If int, the same stride is applied to all spatial dimensions.
-        If List[int], different strides can be specified per dimension. Default is 2.
-    kernel_size : int, List[int], or Sampler, optional
+        If Sequence[int], different strides can be specified per dimension.
+    kernel_size : int, Sequence[int], or Sampler, default=None
         Size of the Gaussian kernel for antialiasing. If int, same size is used for all
-        dimensions. If List[int], different sizes can be specified per dimension.
-        If None, automatically computed as 2 * stride + 1 per dimension. Default is None.
-    sigma : float, int, List[float], List[int], or Sampler, optional
+        dimensions. If Sequence[int], different sizes can be specified per dimension.
+        If None, automatically computed as 2 * stride + 1 per dimension.
+    sigma : float, int, Sequence[float], Sequence[int], or Sampler, default=None
         Standard deviation of the Gaussian kernel. If float/int, same sigma is used for
-        all dimensions. If List, different sigmas can be specified per dimension.
-        If None, automatically computed as stride / 2 per dimension. Default is None.
-    subsampling_dimension : List[int], int, or None, optional
+        all dimensions. If Sequence, different sigmas can be specified per dimension.
+        If None, automatically computed as stride / 2 per dimension.
+    subsampling_dimension : Sequence[int], int, or None, default=None
         Dimensions to apply antialiasing and subsampling. If None, applies to all
-        spatial dimensions. Default is None.
+        spatial dimensions.
 
     Returns
     -------
@@ -262,15 +261,15 @@ def apply_bernoulli_mask(
     Parameters
     ----------
     input_tensor : torch.Tensor
-        The input tensor to be masked with shape (B, C, *spatial).
-    p : float, optional
+        The input tensor to be masked.
+    p : float, default=0.5
         Probability of realizing a success (i.e., the probability of a 1) in the mask. Successes are
         preserved in the input tensor such that higher values of this parameter correspond to more
-        elements of the input tensor being preserved. By default 0.5. Must be in the range [0, 1].
-    returns : str, {None, 'successes', 'failures'}
+        elements of the input tensor being preserved. Must be in the range [0, 1].
+    returns : {None, 'successes', 'failures'}, default=None
         Optionally return the subset of the input tensor corresponding to Bernoulli {'successes',
-        'failures'}. By default None (returns the original tensor with failures set to zero)
-        - Setting `returns = 'successes'` might be useful in sampling a subset of a large tensor to
+        'failures'}. If None, returns the original tensor with failures set to zero.
+        Setting `returns = 'successes'` might be useful in sampling a subset of a large tensor to
         estimate the statistics of it. Such operations such as `torch.quantile()` are especially
         unfriendly to a large sample size.
 
@@ -332,12 +331,11 @@ def subsample(
     Parameters
     ----------
     input_tensor : torch.Tensor
-        The tensor to sample from in (B, C, *spatial) format.
-    stride : int, optional
-        Factor by which to subsample (interleave dropouts). By default 2.
-    subsampling_dimension : int, optional
-        The spatial dimension (0-indexed) along which subsampling will occur.
-        By default None (subsample all spatial dimensions).
+        The tensor to sample from.
+    stride : Sequence[int], int, or None, default=2
+        Factor by which to subsample (interleave dropouts).
+    subsampling_dimension : Sequence[int], Literal[0, 1, 2], int, or None, default=None
+        The dimension (or axis) along which the subsampling will occur.
 
     Returns
     -------
@@ -392,20 +390,20 @@ def subsample_tensor_random_dims(
     ----------
     input_tensor : torch.Tensor
         The input tensor to be subsampled. Assumed to have batch and channel dimensions.
-    stride : int,  optional
-        The stride value to use when subsampling a given dimension. By default, 2.
-            - A stride of 1 does not result in any subsampling.
-            - A stride of 2 will reduce the elements of the selected dimension by 1/2.
-    forbidden_dims : list, optional
-        A list of dimensions that should not be subsampled. If None, no dimensions
-        are forbidden from subsampling. Default is (0, 1) to ignore batch and channel dimensions.
-    p : float, optional
+    stride : int, default=2
+        The stride value to use when subsampling a given dimension.
+        - A stride of 1 does not result in any subsampling.
+        - A stride of 2 will reduce the elements of the selected dimension by 1/2.
+    forbidden_dims : Sequence[int], default=(0, 1)
+        A sequence of dimensions that should not be subsampled. If None, no dimensions
+        are forbidden from subsampling.
+    p : float, default=0.5
         The probability of selecting each dimension for subsampling. This probability
-        is applied as an independent Bernoulli trial for each dimension. By default, 0.5.
-    max_concurrent_subsamplings : int, optional
+        is applied as an independent Bernoulli trial for each dimension.
+    max_concurrent_subsamplings : int, default=None
         The maximum number of dimensions that can be subsampled simultaneously. If
         None, the number of concurrent subsamplings is set to the number of dimensions
-        in `input_tensor`. Default is None.
+        in `input_tensor`.
 
     Returns
     -------
@@ -478,13 +476,12 @@ def upsample(
     ----------
     input_tensor : torch.Tensor
         The input tensor to be upsampled. Assumed to have batch and channel dimensions.
-    scale_factor : float
-        The factor by which to upsample each spatial dimension. Default is 2.
-    shape : tuple
+    scale_factor : float, default=2
+        The factor by which to upsample each spatial dimension.
+    shape : Sequence[int] or None, default=None
         Spatial dimensions (without batch or channel dimensions) to upsample `input_tensor` into.
-    mode : str, optional
-        Interpolation mode for upsampling. Options include 'nearest', 'linear',
-        'bicubic', 'area', and 'nearest-exact'. Default is 'linear'.
+    mode : {'linear', 'nearest', 'bicubic', 'area', 'nearest-exact'}, default='linear'
+        Interpolation mode for upsampling.
 
     Examples
     --------
@@ -534,17 +531,15 @@ def resample(
     ----------
     input_tensor : torch.Tensor
         The tensor to resample.
-    resample_dimension : int or list of ints, optional
+    resample_dimension : int, Sequence[int], or None, default=None
         The dimension(s) that should be resampled. If None, all dimensions are resampled.
-        Default is None.
-    downsample_stride : int or list of ints, optional
-        Factor by which to subsample. Default is 2.
-    upsample_scale_factor : int, float or list of ints or floats, optional
-        Factor by which to upsample. Default is 2.
-    mode : str, optional
-        Interpolation mode for upsampling. Options include 'nearest', 'linear',
-        'bicubic', 'area', and 'nearest-exact'. Default is 'linear'.
-    shape : tuple
+    downsample_stride : int or Sequence[int], default=2
+        Factor by which to subsample.
+    upsample_scale_factor : int, float, or Sequence[int or float], default=2
+        Factor by which to upsample.
+    mode : {'linear', 'nearest', 'bicubic', 'area', 'nearest-exact'}, default='linear'
+        Interpolation mode for upsampling.
+    shape : Sequence[int] or None, default=None
         Spatial dimensions (without batch or channel dims) to upsample the subsampled tensor into.
 
     Returns
@@ -596,15 +591,15 @@ def random_clear_label(
         Image or tensor to clear with shape (B, C, *spatial).
     label_tensor : torch.Tensor
         Label map corresponding to sampling domain from which to select regions for clearing.
-    prob : Union[float, int, Sampler], optional
+    prob : float, int, or Sampler, default=0.5
         Probability of any label/region being selected for erasure as determined by iid Bernoulli
-        trials, by default 0.5.
-    exclude_zero : bool, optional
-        Optionally exclude zero (uaually background) from the list of potential regions to clear
-        (never clear zero labels), by default True.
-    seed : int, optional
+        trials.
+    exclude_zero : bool, default=True
+        Optionally exclude zero (usually background) from the list of potential regions to clear
+        (never clear zero labels).
+    seed : int, default=None
         A random seed or sampler to control the randomness of label clearing operations. If
-        provided, it ensures reproducibility of the clearing process. By default, None.
+        provided, it ensures reproducibility of the clearing process.
 
     Returns
     -------
@@ -661,17 +656,17 @@ def sample_image_from_labels(
     Parameters
     ----------
     label_tensor : torch.Tensor
-        A tensor with shape (B, C, *spatial) containing integer labels defining distinct regions.
-    mean_sampler : Sampler
+        A tensor with batch and channel dimensions containing integer labels defining distinct
+        regions.
+    mean_sampler : Sampler, default=ne.samplers.Uniform(0, 1)
         A `Sampler` from which to draw the mean intensity for each region defined by each label in
-        the `label_tensor`. By default, `Uniform(0, 1)`
-    noise_sampler : Sampler
+        the `label_tensor`.
+    noise_sampler : Sampler, default=ne.samplers.Normal
         A `Sampler` that is used to model the noise within a particular label/region. The mean for
         the sampler is defined by the mean region intensity (sampled from `mean_sampler`).
-        By default, `Normal`.
-    noise_variance : float, int, or Sampler
+    noise_variance : float, int, or Sampler, default=0.25
         The variance of the noise model. It can be a fixed quantity (int or float), or a sampled
-        quantity in the case a `Sampler` is passed. By default, 0.25.
+        quantity in the case a `Sampler` is passed.
 
     Returns
     -------
@@ -687,7 +682,7 @@ def sample_image_from_labels(
 def affine_to_dense_shift(
     affine_a: torch.Tensor,
     affine_b: torch.Tensor,
-    grid_size: tuple,
+    grid_size: Sequence[int],
     device: str = 'cpu',
     dtype: torch.dtype = torch.float32,
     normalize: bool = True
@@ -701,14 +696,14 @@ def affine_to_dense_shift(
         Affine matrix A of shape (batch_size, ndim, ndim + 1), where ndim is 2 or 3.
     affine_b : torch.Tensor
         Affine matrix B of shape (batch_size, ndim, ndim + 1), same shape as affine_A.
-    grid_size : tuple
+    grid_size : Sequence[int]
         Spatial size of the grid, e.g., (H, W) for 2D or (D, H, W) for 3D.
-    device : torch.device, optional
-        Device for computations, default is 'cpu'.
-    dtype : torch.dtype, optional
-        Data type for computations, default is torch.float32.
-    normalize : bool, optional
-        If True, grid coordinates are normalized to [-1, 1]. Default is True.
+    device : str, default='cpu'
+        Device for computations.
+    dtype : torch.dtype, default=torch.float32
+        Data type for computations.
+    normalize : bool, default=True
+        If True, grid coordinates are normalized to [-1, 1].
 
     Returns
     -------
@@ -770,19 +765,21 @@ def volshape_to_ndgrid(
 
     Parameters
     ----------
-    size : Tuple[int]
-        Full tensor size including batch and channel dimensions.
-        e.g. (B, C, H, W) or (B, C, D, H, W)
-    device : Union[str, torch.device], optional
-        The device on which the grid will reside. By default "cpu"
-    dtype : Union[str, torch.dtype], optional
-        The data type of the tensor grid, by default ``torch.float32``
-    normalize : bool, optional
-        Normalize each dimension of the grid to the range [-1, 1]. Default is False
-    indexing : Literal["ij", "xy"], optional
-        Indexing mode passed to ``torch.meshgrid``. Defaults to ``"ij"``.
-    stack : bool, optional
-        If True, stack the grid tensors along dimension 1 (after B). Default is False.
+    size : Sequence[int]
+        Size of the spatial dimensions of the input tensor. e.g. (H, W) or (D, W, H)
+    device : str or torch.device, default="cpu"
+        The device on which the grid will reside.
+    dtype : str or torch.dtype, default=torch.float32
+        The data type of the tensor grid.
+    normalize : bool, default=False
+        Normalize each dimension of the grid to the range [-1, 1].
+        Otherwise, the grid coords span from 0 to `size[i] - 1` for each dimension.
+    indexing : {'ij', 'xy'}, default="ij"
+        Indexing mode passed to ``torch.meshgrid``.
+    stack : bool, default=False
+        If True, stack the grid tensors along the last dimension to return a single tensor of
+        shape `(*size, len(size))`. If False, return a tuple of tensors, each of shape
+        `(*size)`.
 
     Returns
     -------
@@ -841,15 +838,16 @@ def constant_shift_field(
 
     Parameters
     ----------
-    shape : tuple, optional
-        Shape of the input tensor, expected as (B, C, *spatial_dims). Default is (1, 1, 4, 4) for a
-        2D case.
-    shift_size : int, list of int, or torch.Tensor, optional
-        Shift magnitude for each axis. If int, same shift on all axes. If list/tuple, length must
-        equal number of spatial dims. If Tensor, must have shape (n_spatial_dims,). Default is 1.
-    normalize : bool, optional
+    shape : Sequence[int], default=(1, 1, 16, 16)
+        Shape of the input tensor, expected as (B, C, *spatial_dims).
+    shift_size : int, Sequence[int], or torch.Tensor, default=1
+        Shift magnitude for each axis. If int, same shift on all axes. If Sequence[int], length must
+        equal number of spatial dims. If Tensor, must have shape (n_spatial_dims,).
+    normalize : bool, default=False
         If True, normalize the first spatial channel by (size - 1), where
-        size is the extent of that axis. Default is False.
+        size is the extent of that axis.
+    device : str, default='cpu'
+        Device on which to create the tensor.
 
     Returns
     -------
@@ -910,7 +908,7 @@ def cross_expand(
         Input tensor of shape (B, Sx1, Cx1, ...), where Sx1 is the number of slices or subimages.
     x2 : torch.Tensor
         Input tensor of shape (B, Sx2, Cx2, ...), where Sx2 is the number of slices or subimages.
-    return_batched : bool, optional
+    return_batched : bool, default=True
         Return paired expanded tensors patched into the batch dimension.
 
     Returns
@@ -952,13 +950,12 @@ def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> tor
     Parameters
     ----------
     tensor : torch.Tensor
-        An n-dimensional tensor with shape (B, C, *spatial).
-    dim : int, optional
-        The dimension along which to filter slices. For tensors with shape (B, C, *spatial):
-        dim=0 is batch, dim=1 is channel, etc. Default is 0.
-    verbose : bool, optional
+        An n-dimensional tensor.
+    dim : int, default=0
+        The dimension along which to filter slices.
+    verbose : bool, default=False
         If True, prints the number of elements filtered for each condition (NaNs, infinities,
-        all-zeros). Default is False.
+        all-zeros).
 
     Returns
     -------
@@ -989,8 +986,8 @@ def crop_to_nearest_multiple(tensor, multiple=128):
     tensor : torch.Tensor
         The input tensor with shape (B, C, *spatial_dims), where `spatial_dims`
         can represent 1D, 2D, or 3D spatial dimensions.
-    multiple : int, optional
-        The multiple to which spatial dimensions are cropped. Default is 128.
+    multiple : int, default=128
+        The multiple to which spatial dimensions are cropped.
 
     Returns
     -------
@@ -1040,14 +1037,13 @@ def logistic(
     ----------
     logits : torch.Tensor
         Unnormalized output (score), such as the outputs of a segmentation model.
-    slope : float
+    slope : float, default=1.0
         The slope of the logistic function. A higher value results in a steeper transition between
-        the asymptotic bounds. Default is 1.0.
-    lower_asymptote : float, optional
-        The lower bound of output values (asymptote) as logits tend to infinity. Default is 0.0.
-    upper_asymptote : float, optional
+        the asymptotic bounds.
+    lower_asymptote : float, default=0.0
+        The lower bound of output values (asymptote) as logits tend to infinity.
+    upper_asymptote : float, default=1.0
         The maximum bound output values (asymptote) as logits tend to negative infinity.
-        Default is 1.0.
 
     Returns
     -------
@@ -1075,19 +1071,19 @@ def dice(
     ----------
     *segs : torch.Tensor
         Two or more segmentation tensors of shape (B, C, *spatial_dims) with values in [0, 1].
-    smooth_numerator : float, optional
+    smooth_numerator : float, default=1e-12
         Smoothing constant added to the numerator.
-    smooth_denominator : float, optional
+    smooth_denominator : float, default=1e-12
         Smoothing constant added to the denominator.
-    reduction : str, optional
+    reduction : str, default='mean'
         The type of reduction to apply. Supported values for multidimensional reductions are:
         'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'; for single-dimension
-        reductions: 'argmin', 'argmax', and all multidimensionals. Default is 'mean'.
-    reduction_dim : int or tuple of ints, optional
+        reductions: 'argmin', 'argmax', and all multidimensionals.
+    reduction_dim : int or tuple of ints, default=(0, 1)
         Dimension(s) over which to apply the reduction. For multidimensional reductions, pass a
-        tuple of dimensions; for single-dimension reductions, pass an integer. Default is (0, 1)
-    keepdims : bool, optional
-        Whether to retain reduced dimensions as a singleton. Default is True.
+        tuple of dimensions; for single-dimension reductions, pass an integer.
+    keepdims : bool, default=True
+        Whether to retain reduced dimensions as a singleton.
 
     Returns
     -------
@@ -1166,20 +1162,20 @@ def log_dice(
     *segs : torch.Tensor
         Two or more segmentation tensors of shape (B, C, *spatial_dims) representing
         log-probabilities.
-    smooth_numerator : float, optional
-        Smoothing constant added to the numerator to avoid log(0). By default, 1e-12.
-    smooth_denominator : float, optional
-        Smoothing constant added to the denominator to avoid log(0). By default, 1e-12.
-    reduction : str, optional
+    smooth_numerator : float, default=1e-12
+        Smoothing constant added to the numerator to avoid log(0).
+    smooth_denominator : float, default=1e-12
+        Smoothing constant added to the denominator to avoid log(0).
+    reduction : str, default='mean'
         The type of reduction to apply. Supported values for multidimensional reductions are:
         'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'; for single-dimension
-        reductions: 'argmin', 'argmax', and all multidimensionals. Default is 'mean'.
-    reduction_dim : int or tuple of ints, optional
+        reductions: 'argmin', 'argmax', and all multidimensionals.
+    reduction_dim : int or tuple of ints, default=(0, 1)
         Dimension(s) over which to apply the reduction. For multidimensional reductions, pass a
-        tuple of dimensions; for single-dimension reductions, pass an integer. Default is (0, 1)
-    keepdims : bool, optional
-        Whether to retain reduced dimensions as a singleton. Default is True.
-    enforce_valid_probabilities : bool, optional
+        tuple of dimensions; for single-dimension reductions, pass an integer.
+    keepdims : bool, default=True
+        Whether to retain reduced dimensions as a singleton.
+    enforce_valid_probabilities : bool, default=False
         Ensure input segmentations represent valid probabilities by checking that ensuring
         exp(seg1) and exp(seg2) sum to 1.
 
@@ -1233,16 +1229,15 @@ def reduce(
     ----------
     tensor : torch.Tensor
         The input tensor to reduce.
-    reduction : str, optional
+    reduction : str, default='mean'
         The type of reduction to apply. Supported values for multidimensional reductions are:
         None, 'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'; for single
-        dimension reductions: 'argmin', 'argmax', and all multidimensionals. Default is None; all
-        dimensions are reduced to return a scalar.
-    dim : int or tuple of ints, optional
+        dimension reductions: 'argmin', 'argmax', and all multidimensionals.
+    dim : int or tuple of ints, default=None
         Dimension(s) over which to apply the reduction. For multidimensional reductions, pass a
-        tuple of dimensions; for single-dimension reductions, pass an integer. Default is (0, 1).
-    keepdims : bool, optional
-        Whether to retain reduced dimensions as a singleton. Default is False.
+        tuple of dimensions; for single-dimension reductions, pass an integer.
+    keepdims : bool, default=False
+        Whether to retain reduced dimensions as a singleton.
 
     Returns
     -------
@@ -1322,12 +1317,7 @@ NORMALIZATION_MAP = {
 
 
 def build_normalization(
-    normalization_type: Union[
-        str,
-        Type[nn.Module],
-        nn.Module,
-        None
-    ],
+    normalization_type: Union[str, Type[nn.Module], nn.Module, None],
     ndim: Optional[int] = None,
     num_features: Optional[int] = None,
     num_groups: Optional[int] = None,
@@ -1340,28 +1330,28 @@ def build_normalization(
 
     Parameters
     ----------
-    normalization_type : str or nn.Module
+    normalization_type : str, Type[nn.Module], nn.Module, or None
         Type of normalization. Must be one of 'batch', 'instance', 'layer', 'group', or a custom
         `nn.Module` class.
-            - `batch` performs normalization per channel. The mean and variance are calculated
-            across the B, and *spatial dimensions for each channel C.
-    ndim : int, optional
+        `batch` performs normalization per channel. The mean and variance are calculated
+        across the B, and *spatial dimensions for each channel C.
+    ndim : int, default=None
         Dimensionality for batch/instance normalization:
         - 1 -> *Norm1d
         - 2 -> *Norm2d
         - 3 -> *Norm3d
         Required for 'batch' or 'instance' normalizations.
-    num_features : int, optional
+    num_features : int, default=None
         Number of input features or channels. Required for 'batch', 'instance', 'layer', and 'group'
         normalizations. For layer normalization, this is the size of the normalized dimension. For
         batch and instance normalizations, this is typically the number of channels/features.
-    num_groups : int, optional
+    num_groups : int, default=None
         Number of groups for GroupNorm. Required for 'group' normalization.
-    eps : float, optional
-        A value added to the denominator for numerical stability. Default is 1e-5.
-    affine : bool, optional
-        If True, the layer has learnable affine parameters. Default is True.
-    **kwargs : dict, optional
+    eps : float, default=1e-5
+        A value added to the denominator for numerical stability.
+    affine : bool, default=True
+        If True, the layer has learnable affine parameters.
+    **kwargs : dict
         Additional keyword arguments are passed directly to the normalization class constructor.
         This enables further customization without modifying this class.
 
@@ -1466,9 +1456,9 @@ def random_flip(dim: int, *args, prob: float = 0.5):
         The dimension along which to flip (0-indexed). For tensors in (B, C, *spatial) format:
         dim=0 is batch, dim=1 is channel, dim=2 is first spatial dimension, etc.
     *args : torch.Tensor
-        The tensor(s) to flip in (B, C, *spatial) format.
-    prob : float
-        The probability of flipping the tensor(s). By default 0.5.
+        The image(s) to flip.
+    prob : float, default=0.5
+        The probability of flipping the image(s).
 
     Returns
     -------
@@ -1487,8 +1477,8 @@ def random_flip(dim: int, *args, prob: float = 0.5):
 
 def resize(
     image: torch.Tensor,
-    scale_factor: Union[float, Sequence[float], None] = None,
-    shape: Union[Sequence[int], None] = None,
+    scale_factor: Union[float, Sequence[float]] = None,
+    shape: Sequence[int] = None,
     nearest: bool = False
 ) -> torch.Tensor:
     """
@@ -1496,15 +1486,15 @@ def resize(
 
     Parameters
     ----------
-    image: torch.Tensor
+    image : torch.Tensor
         An input tensor with shape (C, H, W[, D]) to resize.
-    scale_factor: float or List[float], optional
+    scale_factor : float or Sequence[float], default=None
         Multiplicative factor(s) for scaling the input tensor. If a float, then the same
-        scale factor is applied to all spatial dimensions. If a tuple, then the scaling
+        scale factor is applied to all spatial dimensions. If a Sequence, then the scaling
         factor for each dimension should be provided.
-    shape: List[int], optional
+    shape : Sequence[int], default=None
         Target shape of the output tensor.
-    nearest: bool, optional
+    nearest : bool, default=False
         If True, use nearest neighbor interpolation. Otherwise, use linear interpolation.
 
     Returns:
@@ -1578,8 +1568,8 @@ def resize(
 
 
 def bw_grid(
-    vol_shape: tuple[int, ...] | list[int],
-    spacing: int | list[int] | tuple[int, ...],
+    vol_shape: Sequence[int],
+    spacing: Union[int, Sequence[int]],
     thickness: int = 1,
     indexing: str = 'ij'
 ) -> torch.Tensor:
@@ -1588,16 +1578,15 @@ def bw_grid(
 
     Parameters
     ----------
-    vol_shape : tuple or list
+    vol_shape : Sequence[int]
         Expected volume size (dimensions of the output grid).
-    spacing : int or list or tuple
-        Scalar or list the same size as vol_shape. Defines the spacing between grid lines in each
-        dimension.
-    thickness : int, optional
-        Line thickness in pixels. Default is 1.
-    indexing : {'ij', 'xy'}, optional
-        Cartesian ('xy') or matrix ('ij') indexing of output. Default is 'ij' to match NumPy's
-        default behavior and maintain compatibility with the original pystrum implementation.
+    spacing : int or Sequence[int]
+        Scalar or sequence the same size as vol_shape. Defines the spacing between grid lines in
+        each dimension.
+    thickness : int, default=1
+        Line thickness in pixels.
+    indexing : {'ij', 'xy'}, default='ij'
+        Cartesian ('xy') or matrix ('ij') indexing of output.
 
     Returns
     -------

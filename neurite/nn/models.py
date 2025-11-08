@@ -60,14 +60,14 @@ class BasicUNet(nn.Module):
         ndim: int,
         in_channels: int,
         out_channels: int,
+        nb_features: Union[Sequence[int], Sequence[Sequence[int]]] = (16, 16, 16, 16, 16),
         padding_mode: Literal['zeros', 'replicate', 'reflect'] = 'zeros',
         upsample_mode: Literal['linear', 'transposed', 'nearest'] = 'linear',
-        nb_features: Sequence[int] = (16, 16, 16, 16, 16),
         normalizations: Union[List[Union[Callable, str]], Callable, str, None] = None,
         activations: Union[List[Union[Callable, str]], Callable, str, None] = nn.ReLU,
         order: str = 'caca',
         final_activation: Union[str, nn.Module, None] = None,
-        residual_connections: bool = True,
+        skip_connections: bool = True,
     ):
 
         """
@@ -81,20 +81,45 @@ class BasicUNet(nn.Module):
             Number of input channels.
         out_channels : int
             Number of output channels.
-        nb_features : List[int]
-            Number of features at each level of the unet. Must be a list of
-            positive integers.
-        normalizations : Union[List[str], str, None], optional
+        nb_features : Union[Sequence[int], Sequence[Sequence[int]]], default=(16, 16, 16, 16, 16)
+            Number of features at each level of the unet. Can be:
+            - Single sequence: [16, 32, 64] (symmetric - downsampling uses [16, 32, 64],
+              upsampling uses [64, 32, 16])
+            - Sequence of sequences: [[downsampling_features], [upsampling_features]] for complete
+              asymmetry
+        padding_mode : {'zeros', 'replicate', 'reflect'}, default='zeros'
+            Padding mode for convolutional layers.
+        upsample_mode : {'linear', 'transposed', 'nearest'}, default='linear'
+            Upsampling mode for decoder path.
+        normalizations : Union[List[Union[Callable, str]], Callable, str, None], default=None
             Normalization layers to use in each block. Can be a string or a list
             of strings specifying normalizations for each layer, or `None` for no normalization.
-        activations : Union[List[str], str, Callable], optional
+        activations : Union[List[Union[Callable, str]], Callable, str, None], default=nn.ReLU
             Activation functions to use in each block. Can be a callable,
             a string, or a list of strings/callables.
-        order : str, optional
+        order : str, default='caca'
             Order of operations in each convolutional block (e.g., 'ncaca').
-        residual_connections : bool
-            Enable residual connections to communicate information between levels of the
-            downsampling and upsampling paths.
+        final_activation : Union[str, nn.Module, None], default=None
+            Activation function applied after the final output layer.
+        skip_connections : bool, default=True
+            Enable skip connections to concatenate features from downsampling path with upsampling
+            path at matching resolutions.
+
+        Examples
+        --------
+        >>> # Symmetric UNet (default behavior)
+        >>> model = BasicUNet(
+        ...     ndim=2, in_channels=1, out_channels=1,
+        ...     nb_features=[16, 32, 64],
+        ...     activations=nn.ReLU
+        ... )
+        >>> # Asymmetric UNet with different downsampling/upsampling features
+        >>> model = BasicUNet(
+        ...     ndim=2, in_channels=1, out_channels=1,
+        ...     nb_features=[[16, 32, 64], [128, 64, 32]],  # Lowest resolution: 64 → 128
+        ...     skip_connections=True,  # Fully supports asymmetric architectures!
+        ...     activations=nn.ReLU
+        ... )
         """
 
         super().__init__()
@@ -104,22 +129,43 @@ class BasicUNet(nn.Module):
         self.in_channels = in_channels
         self.out_channels = out_channels
 
-        # Make `residual_connections` an attribute as we will need it later in forward pass
-        self.residual_connections = residual_connections
+        # Make `skip_connections` an attribute as we will need it later in forward pass
+        self.skip_connections = skip_connections
+
+        # Asymmetric: [[downsampling_features], [upsampling_features]]
+        if isinstance(nb_features[0], (list, tuple)):
+
+            if len(nb_features) != 2:
+                raise ValueError(
+                    f"Asymmetric nb_features must have exactly 2 lists "
+                    f"(downsampling and upsampling), got {len(nb_features)}"
+                )
+
+            downsampling_features = list(nb_features[0])
+            upsampling_features = list(nb_features[1])
+
+        else:
+            # Symmetric: [features] used for both downsampling and upsampling
+            downsampling_features = list(nb_features)
+            upsampling_features = list(reversed(nb_features))
+
+        # Store feature specifications as immutable attributes
+        self.downsampling_features = tuple(downsampling_features)
+        self.upsampling_features = tuple(upsampling_features)
 
         # Normalization layers
         if not isinstance(normalizations, list):
-            self.normalizations = [normalizations] * len(nb_features)
+            self.normalizations = [normalizations] * len(downsampling_features)
 
         # Activation layers
         if not isinstance(activations, list):
-            self.activations = [activations] * len(nb_features)
+            self.activations = [activations] * len(downsampling_features)
 
         # Original sequence for downsampling conv blocks
-        self.nb_features = [in_channels, *nb_features]
+        self.nb_features = [in_channels, *downsampling_features]
 
         # Inverted sequence for upsampling conv blocks
-        self.reversed_features = list(reversed(nb_features))
+        self.reversed_features = upsampling_features
 
         # Downsampling convolutional blocks
         self.downsampling_conv_blocks = ne.utils.downsampling_conv_blocks(
@@ -128,18 +174,21 @@ class BasicUNet(nn.Module):
             normalizations=self.normalizations,
             activations=self.activations,
             order=order,
-            return_residual=residual_connections,
+            return_skip=skip_connections,
             padding_mode=padding_mode,
         )
 
         # Convolutional block between downsampling and upsampling arms (lowest resolution)
         self.lowest_resolution_conv_block = ne.nn.modules.ConvBlock(
             ndim=ndim,
-            in_channels=self.nb_features[-1],
-            out_channels=self.nb_features[-1],
+            in_channels=downsampling_features[-1],
+            out_channels=upsampling_features[0],
             order=order,
             padding_mode=padding_mode,
         )
+
+        # Compute skip connection channel counts (downsampling features in reverse order)
+        skip_channels_list = list(reversed(downsampling_features)) if skip_connections else None
 
         # Upsampling convolutional blocks
         self.upsampling_conv_blocks = ne.utils.upsampling_conv_blocks(
@@ -151,7 +200,8 @@ class BasicUNet(nn.Module):
             upsample_kernel_size=2,
             upsample_stride=2,
             upsample_padding=0,
-            accepts_residuals=residual_connections,
+            accepts_skip=skip_connections,
+            skip_channels=skip_channels_list,
             padding_mode=padding_mode,
             upsample_mode=upsample_mode
         )
@@ -159,7 +209,7 @@ class BasicUNet(nn.Module):
         # Final convolutional block
         self.out_layer = ne.nn.modules.ConvBlock(
             ndim=ndim,
-            in_channels=nb_features[0],
+            in_channels=upsampling_features[-1],
             out_channels=out_channels,
             kernel_size=1,
             padding=0,
@@ -186,9 +236,9 @@ class BasicUNet(nn.Module):
         skip_connections = []
 
         for downsampling_conv_block in self.downsampling_conv_blocks:
-            if self.residual_connections:
-                feature_tensor, residual = downsampling_conv_block(feature_tensor)
-                skip_connections.append(residual)  # Save for skip connection
+            if self.skip_connections:
+                feature_tensor, skip = downsampling_conv_block(feature_tensor)
+                skip_connections.append(skip)  # Save for skip connection
             else:
                 feature_tensor = downsampling_conv_block(feature_tensor)
 
@@ -197,7 +247,7 @@ class BasicUNet(nn.Module):
 
         # Upsampling path
         for i, upsampling_conv_block in enumerate(self.upsampling_conv_blocks):
-            if self.residual_connections:
+            if self.skip_connections:
                 skip = skip_connections[-(i + 1)]
                 feature_tensor = upsampling_conv_block(feature_tensor, skip)
             else:
@@ -264,18 +314,20 @@ class BasicAutoencoder(nn.Module):
             Number of features/channels in the latent space.
         out_channels : int
             Number of output channels.
-        nb_features : List[int]
+        nb_features : List[int], default=[16, 16, 16, 16, 16]
             Number of features at each level of the unet. Must be a list of positive integers.
-        normalizations : Union[List[str], str, None], optional
+        normalizations : Union[List[Union[Callable, str]], Callable, str, None], default=None
             Normalization layers to use in each block. Can be a string or a list
             of strings specifying normalizations for each layer, or `None` for no normalization.
-        activations : Union[List[str], str, Callable], optional
+        activations : Union[List[Union[Callable, str]], Callable, str, None], default=nn.ReLU
             Activation functions to use in each block. Can be a callable,
             a string, or a list of strings/callables.
-        order : str, optional
+        order : str, default='caca'
             Order of operations in each convolutional block (e.g., 'ncaca').
-        final_activation : Union[str, nn.Module, None], optional
+        final_activation : Union[str, nn.Module, None], default=None
             Activation function applied after the last convolution.
+        padding_mode : str, default='zeros'
+            Padding mode for convolutional layers.
         """
 
         super().__init__()
@@ -295,11 +347,11 @@ class BasicAutoencoder(nn.Module):
             normalizations=self.normalizations,
             activations=self.activations,
             order=order,
-            return_residual=False,
+            return_skip=False,
         )
 
-        # Bottleneck layer (latent space)
-        bottleneck = ne.nn.modules.ConvBlock(
+        # Latent space layer (lowest resolution, highest feature dimension)
+        latent_layer = ne.nn.modules.ConvBlock(
             ndim=ndim,
             in_channels=nb_features[-1],
             out_channels=latent_features,
@@ -310,8 +362,8 @@ class BasicAutoencoder(nn.Module):
             padding_mode=padding_mode,
         )
 
-        # Add bottleneck to downsampling_conv_blocks so users can easily predict the latent space.
-        self.downsampling_conv_blocks.append(bottleneck)
+        # Add latent layer to downsampling_conv_blocks so users can easily predict the latent space.
+        self.downsampling_conv_blocks.append(latent_layer)
 
         # Decoder network
         self.upsampling_conv_blocks = ne.utils.upsampling_conv_blocks(
@@ -319,7 +371,7 @@ class BasicAutoencoder(nn.Module):
             nb_features=[latent_features, *reversed(nb_features[1:])],
             normalizations=self.normalizations,
             activations=self.activations,
-            accepts_residuals=False,
+            accepts_skip=False,
             order=order,
         )
 
