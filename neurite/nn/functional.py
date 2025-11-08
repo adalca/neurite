@@ -1075,28 +1075,11 @@ def crop_to_nearest_multiple(tensor, multiple=128):
     >>> cropped_3d.shape
     torch.Size([1, 3, 64, 192, 320])
     """
-
-    if tensor.ndim < 3:
-        raise ValueError(
-            "Tensor must have at least 3 dimensions (B, C, *spatial_dims)."
-        )
-    spatial_dims = tensor.shape[2:]
-
-    # Compute the new spatial shape (nearest multiple of `multiple`)
-    new_spatial_shape = [dim - (dim % multiple) for dim in spatial_dims]
-
-    # Compute the starting indices to center the crop
-    start_indices = [(dim - new_dim) // 2 for dim, new_dim in zip(spatial_dims, new_spatial_shape)]
-
-    # Compute the slices for cropping (batch and channel are untouched)
-    slices = [slice(None), slice(None)] + [
-        slice(start, start + new_dim)
-        for start, new_dim in zip(start_indices, new_spatial_shape)
-    ]
-
-    cropped_tensor = tensor[tuple(slices)]
-
-    return cropped_tensor
+    raise NotImplementedError(
+        "crop_to_nearest_multiple() has been moved to neurite_sandbox. "
+        "Please use: from neurite_sandbox.etienne_chollet.nn.functional "
+        "import crop_to_nearest_multiple"
+    )
 
 
 def logistic(
