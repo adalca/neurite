@@ -639,10 +639,10 @@ class DownsampleConvBlock(nn.Module):
         pool_mode: str = "max",
         pool_kernel_size: int = 2,
         order='nca',
-        return_residual: bool = False,
+        return_skip: bool = False,
     ):
-        """the
-        Initialize  `DownsampleConvBlock`.
+        """
+        Initialize `DownsampleConvBlock`.
 
         Parameters
         ----------
@@ -675,11 +675,12 @@ class DownsampleConvBlock(nn.Module):
             - `'c'`: Convolution
             - `'n'`: Normalization
             - `'a'`: Activation
-        return_residual : bool
-            Optionally return a residual (skip connection) from the output of the forward pass.
+        return_skip : bool
+            If True, return skip connection features from the forward pass for use in UNet-style
+            architectures. Default is False.
         """
         super().__init__()
-        self.return_residual = return_residual
+        self.return_skip = return_skip
 
         self.conv_block = ConvBlock(
             ndim=ndim,
@@ -711,9 +712,9 @@ class DownsampleConvBlock(nn.Module):
             Downsampled tensor after applying convolution and pooling.
         """
 
-        if self.return_residual:
-            conv_resultant = self.conv_block(input_tensor)
-            return self.pool(conv_resultant), conv_resultant
+        if self.return_skip:
+            conv_result = self.conv_block(input_tensor)
+            return self.pool(conv_result), conv_result
         else:
             return self.pool(self.conv_block(input_tensor))
 
@@ -750,7 +751,8 @@ class UpsampleConvBlock(nn.Module):
         normalization: Union[str, nn.Module, None] = None,
         activation: Union[str, nn.Module, None] = "relu",
         order: str = 'nca',
-        accepts_residuals: bool = True,
+        accepts_skip: bool = True,
+        skip_channels: Union[int, None] = None,
     ):
         """
         Initialize `UpsampleConvBlock`.
@@ -786,10 +788,13 @@ class UpsampleConvBlock(nn.Module):
             - `'c'`: Convolution
             - `'n'`: Normalization
             - `'a'`: Activation
-        accepts_residuals : bool
-            If True, the block is configured to accept residual connections. This doubles the
-            expected number of input channels, allowing the block to concatenate skip features with
-            the main input.
+        accepts_skip : bool
+            If True, the block is configured to accept skip connections (UNet-style). This allows
+            the block to concatenate skip features with the main input. Default is True.
+        skip_channels : int or None, optional
+            Number of channels in the skip connection. If provided and accepts_skip=True,
+            the actual concatenated input will be in_channels + skip_channels. If None and
+            accepts_skip=True, defaults to in_channels (symmetric assumption). Default is None.
         """
 
         super().__init__()
@@ -803,6 +808,7 @@ class UpsampleConvBlock(nn.Module):
                 stride=upsample_stride,
                 padding=upsample_padding
             )
+
         else:
             if upsample_mode == 'linear':
                 upsample_mode = ne.utils.utils.infer_linear_interpolation_mode(ndim)
@@ -814,9 +820,14 @@ class UpsampleConvBlock(nn.Module):
                 align_corners=align
             )
 
-        # Double channels if there's a residual connection. Assumes symmetry.
-        if accepts_residuals:
-            in_channels += in_channels
+        # Add skip connection channels to input if skip connections are accepted
+        if accepts_skip:
+            if skip_channels is not None:
+                # Use explicit skip channel count for asymmetric architectures
+                in_channels += skip_channels
+            else:
+                # Fall back to doubling for symmetric architectures (backward compatibility)
+                in_channels += in_channels
 
         self.conv_block = ConvBlock(
             ndim=ndim,
@@ -831,7 +842,7 @@ class UpsampleConvBlock(nn.Module):
             padding_mode=padding_mode,
         )
 
-    def forward(self, input_tensor: torch.Tensor, residual: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, input_tensor: torch.Tensor, skip: torch.Tensor = None) -> torch.Tensor:
         """
         Forward pass of the upsampling convolutional block.
 
@@ -839,16 +850,18 @@ class UpsampleConvBlock(nn.Module):
         ----------
         input_tensor : torch.Tensor
             Input tensor.
+        skip : torch.Tensor, optional
+            Skip connection features from downsampling path to concatenate with upsampled input.
 
         Returns
         -------
         torch.Tensor
             Upsampled tensor after applying upsampling operation and conv blocks.
         """
-        if isinstance(residual, torch.Tensor):
+        if isinstance(skip, torch.Tensor):
 
             features = self.upsample(input_tensor)
-            features = torch.cat([features, residual], dim=1)
+            features = torch.cat([features, skip], dim=1)
 
             return self.conv_block(features)
         else:

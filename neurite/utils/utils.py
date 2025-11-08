@@ -477,7 +477,7 @@ def downsampling_conv_blocks(
     pool_mode: str = "max",
     pool_kernel_size: int = 2,
     order: str = 'nca',
-    return_residual: bool = False,
+    return_skip: bool = False,
 ) -> nn.ModuleList:
     """
     Create an `nn.ModuleList` of downsampling conv blocks based the number of features per layer.
@@ -509,8 +509,9 @@ def downsampling_conv_blocks(
         - `'c'`: Convolution
         - `'n'`: Normalization
         - `'a'`: Activation
-    return_residual : bool
-        Optionally return a residual (skip connection) from the output of the forward pass.
+    return_skip : bool
+        If True, return skip connection features from each block's forward pass for use in
+        UNet-style architectures. Default is False.
 
     Returns
     -------
@@ -557,7 +558,7 @@ def downsampling_conv_blocks(
             pool_mode=pool_mode,
             pool_kernel_size=pool_kernel_size,
             order=order,
-            return_residual=return_residual,
+            return_skip=return_skip,
         )
 
         downsampling_conv_blocks.append(downsampling_conv_block)
@@ -579,7 +580,8 @@ def upsampling_conv_blocks(
     normalizations: List[Union[str, nn.Module, None]] = None,
     activations: List[Union[str, nn.Module, None]] = None,
     order: str = 'nca',
-    accepts_residuals: bool = True,
+    accepts_skip: bool = True,
+    skip_channels: Union[List[int], None] = None,
 ) -> nn.ModuleList:
     """
     Create an `nn.ModuleList` of upsampling conv blocks based the number of features per layer/
@@ -616,10 +618,14 @@ def upsampling_conv_blocks(
         - `'c'`: Convolution
         - `'n'`: Normalization
         - `'a'`: Activation
-    accepts_residuals : bool
-        If True, the blocks are configured to accept residual connections. This doubles the
-        expected number of input channels, allowing the blocks to concatenate skip features with
-        the main input.
+    accepts_skip : bool
+        If True, the blocks are configured to accept skip connections (UNet-style). This allows
+        the blocks to concatenate skip features with the main input. Default is True.
+    skip_channels : List[int] or None, optional
+        List of channel counts for skip connections, one per upsampling block. If provided and
+        accepts_skip=True, enables asymmetric downsampling/upsampling architectures. If None and
+        accepts_skip=True, assumes symmetric architecture (skip channels equal upsampled
+        channels). Default is None.
 
     Returns
     -------
@@ -658,6 +664,13 @@ def upsampling_conv_blocks(
     # make the number of features for the upsampling conv blocks
     nb_features = [*nb_features, nb_features[-1]]
 
+    # Validate skip_channels length if provided
+    if skip_channels is not None and len(skip_channels) != len(nb_features) - 1:
+        raise ValueError(
+            f"skip_channels must have length {len(nb_features) - 1} "
+            f"(one per upsampling block), got {len(skip_channels)}"
+        )
+
     # Make upsampling conv block and append to list of them
     for i in range(len(nb_features) - 1):
 
@@ -676,7 +689,8 @@ def upsampling_conv_blocks(
             normalization=normalizations[-i],
             activation=activations[-i],
             order=order,
-            accepts_residuals=accepts_residuals,
+            accepts_skip=accepts_skip,
+            skip_channels=skip_channels[i] if skip_channels is not None else None,
         )
 
         upsampling_conv_blocks.append(upsampling_conv_block)
