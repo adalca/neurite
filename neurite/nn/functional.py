@@ -16,7 +16,6 @@ from collections.abc import Sequence
 from typing import Union, List, Tuple, Literal, Type, Optional
 
 # Third party imports
-import einops
 import torch
 import numpy as np
 from torch import nn
@@ -579,9 +578,9 @@ def resample(
 def random_clear_label(
     input_tensor: torch.Tensor,
     label_tensor: torch.Tensor,
-    prob: Union[float, int, Sampler] = 0.5,
+    prob: Union[float, int] = 0.5,
     exclude_zero: bool = True,
-    seed: int = None
+    seed: Union[int, None] = None
 ) -> torch.Tensor:
     """
     Erase regions of an image from randomly selected regions in a label map.
@@ -827,65 +826,9 @@ def volshape_to_ndgrid(
     return grid
 
 
-def checkerboard(image_shape: tuple = (1, 1, 16, 16), square_size: int = 3, device: str = "cpu"):
-    """
-    Generate a checkerboard pattern in 2D or 3D.
-
-    This function creates an image with a checkerboard pattern where alternating
-    squares of size `square_size` are filled with ones, while the rest remain zero.
-
-    Parameters
-    ----------
-    image_shape : tuple, optional
-        Shape of the output image tensor. The expected format is:
-        - (B, C, H, W) for 2D images
-        - (B, C, D, H, W) for 3D images
-        Default is (1, 1, 16, 16) for a single-channel 2D image.
-    square_size : int, optional
-        The size of each square in the checkerboard pattern.
-        The default value is 3.
-
-    Returns
-    -------
-    torch.Tensor
-        A tensor of shape `image_shape` containing a checkerboard pattern.
-        Alternating squares are set to 1.
-
-    Example
-    -------
-    >>> img = checkerboard((1, 1, 6, 6), square_size=2)
-    >>> img[0, 0]
-    tensor([[1., 1., 0., 0., 1., 1.],
-            [1., 1., 0., 0., 1., 1.],
-            [0., 0., 1., 1., 0., 0.],
-            [0., 0., 1., 1., 0., 0.],
-            [1., 1., 0., 0., 1., 1.],
-            [1., 1., 0., 0., 1., 1.]])
-    """
-
-    spatial_dims = image_shape[2:]
-    checkerboard_image = torch.zeros(image_shape, device=device)
-
-    # Generate grid of square starting positions
-    checkerboard_startpoints_for_axes = []
-    for dim in spatial_dims:
-        startpoints_for_axis = torch.arange(0, dim, square_size)
-        checkerboard_startpoints_for_axes.append(startpoints_for_axis)
-
-    checkerboard_start_coords = torch.cartesian_prod(*checkerboard_startpoints_for_axes)
-
-    # Fill alternating squares based on coordinate sum parity
-    for start_coord in checkerboard_start_coords:
-        if start_coord.sum().item() % (2 * square_size) == 0:
-            slices = tuple(slice(i, i + square_size) for i in start_coord)
-            checkerboard_image[(..., *slices)] = 1
-
-    return checkerboard_image
-
-
 def constant_shift_field(
     shape: tuple = (1, 1, 16, 16),
-    shift_size: int = 1,
+    shift_size: Union[int, Sequence[Union[int, float]], torch.Tensor] = 1,
     normalize: bool = False,
     device: str = 'cpu',
 ) -> torch.Tensor:
@@ -929,15 +872,13 @@ def constant_shift_field(
     n_spatial_dims = len(spatial_dims)
 
     if isinstance(shift_size, int):
-        shift_size = torch.tensor([shift_size] * n_spatial_dims)
-    elif isinstance(shift_size, (list, tuple)):
+        shift_size: torch.Tensor = torch.tensor([shift_size] * n_spatial_dims)
+    elif isinstance(shift_size, (Sequence)):
         shift_size = torch.tensor(shift_size)
     elif isinstance(shift_size, torch.Tensor):
         pass
     else:
-        raise ValueError(
-            f'shift_size must be a tensor, got {type(shift_size)}: {shift_size}'
-        )
+        raise ValueError(f'shift_size must be a tensor, got {type(shift_size)}: {shift_size}')
 
     assert shift_size.shape[0] == n_spatial_dims, (
         f'shift_size must have {n_spatial_dims} elements. Got {shift_size.shape}: {shift_size}')
