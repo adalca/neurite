@@ -12,7 +12,8 @@ Notes
 """
 
 # Standard library imports
-from typing import Union, List, Tuple, Literal, Type, Optional, Sequence
+from collections.abc import Sequence
+from typing import Union, List, Tuple, Literal, Type, Optional
 
 # Third party imports
 import einops
@@ -60,8 +61,8 @@ def identity(input_argument):
 
 def gaussian_smoothing(
     input_tensor: torch.Tensor,
-    kernel_size: Union[int, List[int], Sampler] = 3,
-    sigma: Union[float, int, List[float], List[int], Sampler] = 1,
+    kernel_size: Union[int, Sequence[int]] = 3,
+    sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
 ) -> torch.Tensor:
     """
     Apply Gaussian smoothing to the {1D, 2D, 3D} input tensor.
@@ -70,7 +71,7 @@ def gaussian_smoothing(
     ----------
     input_tensor : torch.Tensor
         The input tensor, assumed to be 1D, 2D, or 3D.
-    kernel_size : int, List[int], or Sampler, optional
+    kernel_size : int, List[int], or optional
         Size of the Gaussian kernel. If int, same size is used for all dimensions.
         If List[int], different sizes can be specified per dimension. Default is 3.
     sigma : float, int, List[float], List[int], or Sampler, optional
@@ -104,7 +105,7 @@ def gaussian_smoothing(
     gaussian_kernel_ = ne.utils.utils.gaussian_kernel(
         kernel_size=kernel_size, sigma=sigma, ndim=ndim, nchannels=input_tensor.shape[1]).float()
 
-    if isinstance(kernel_size, list):
+    if isinstance(kernel_size, Sequence):
         padding_per_dim = [ks // 2 for ks in kernel_size]
     else:
         padding_per_dim = [kernel_size // 2] * ndim
@@ -130,8 +131,8 @@ def gaussian_smoothing(
 def gaussian_antialiasing(
     input_tensor: torch.Tensor,
     stride: Union[int, List[int]] = 2,
-    kernel_size: Union[int, List[int], Sampler] = None,
-    sigma: Union[float, int, List[float], List[int], Sampler] = None,
+    kernel_size: Union[int, Sequence[int], None] = None,
+    sigma: Union[float, int, Sequence[Union[float, int]], None] = None,
     subsampling_dimension: Union[List[int], int, None] = None
 ) -> torch.Tensor:
     """
@@ -755,7 +756,7 @@ def affine_to_dense_shift(
 
 
 def volshape_to_ndgrid(
-    size: Tuple[int],
+    size: Sequence[int],
     device: Union[str, torch.device] = "cpu",
     dtype: Union[str, torch.dtype] = torch.float32,
     normalize: bool = False,
@@ -994,34 +995,10 @@ def cross_expand(
     >>> print(x1_cross_expanded.shape, x2_cross_expanded.shape)
     torch.Size([1, 3, 7, 4, 5, 6]) torch.Size([1, 3, 7, 8, 9, 10])
     """
-
-    Bx1, Sx1, Cx1, *x1_spatial = x1.shape
-    Bx2, Sx2, Cx2, *x2_spatial = x2.shape
-
-    if Bx1 != Bx2:
-        raise ValueError(
-            f"The input tensors must have the same number of batches. Got Bx1={Bx1} and Bx2={Bx2}")
-
-    # Create pairwise combinations via cartesian product
-    x1_expanded = einops.repeat(x1, "Bx1 Sx1 Cx1 ... -> Bx1 Sx1 Sx2 Cx1 ...", Sx2=Sx2)
-    x2_expanded = einops.repeat(x2, "Bx2 Sx2 Cx2 ... -> Bx2 Sx1 Sx2 Cx2 ...", Sx1=Sx1)
-
-    if return_batched:
-
-        if Bx1 != Bx2 or x1_spatial != x2_spatial:
-            raise ValueError(
-                "The tensors must match in their batch and spatial dimensions. Got:"
-                f"x1.shape: {x1.shape}, x2.shape: {x2.shape}"
-            )
-
-        # Collect paired tensors into the batch dimension
-        paired_tensors = torch.cat([x1_expanded, x2_expanded], dim=3)
-        batched_paired_tensors = einops.rearrange(
-            paired_tensors, "B Sx1 Sx2 C ... -> (B Sx1 Sx2) C ...")
-
-        return batched_paired_tensors
-    else:
-        return x1_expanded, x2_expanded
+    raise NotImplementedError(
+        "cross_expand() has been moved to neurite_sandbox. "
+        "Please use: from neurite_sandbox.etienne_chollet.nn.functional import cross_expand"
+    )
 
 
 def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> torch.Tensor:
@@ -1642,8 +1619,8 @@ def random_flip(dim: int, *args, prob: float = 0.5):
 
 def resize(
     image: torch.Tensor,
-    scale_factor: List[float] = None,
-    shape: List[int] = None,
+    scale_factor: Union[float, Sequence[float], None] = None,
+    shape: Union[Sequence[int], None] = None,
     nearest: bool = False
 ) -> torch.Tensor:
     """
