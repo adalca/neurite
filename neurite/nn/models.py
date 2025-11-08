@@ -60,9 +60,9 @@ class BasicUNet(nn.Module):
         ndim: int,
         in_channels: int,
         out_channels: int,
+        nb_features: Union[Sequence[int], Sequence[Sequence[int]]] = (16, 16, 16, 16, 16),
         padding_mode: Literal['zeros', 'replicate', 'reflect'] = 'zeros',
         upsample_mode: Literal['linear', 'transposed', 'nearest'] = 'linear',
-        nb_features: Union[Sequence[int], Sequence[Sequence[int]]] = (16, 16, 16, 16, 16),
         normalizations: Union[List[Union[Callable, str]], Callable, str, None] = None,
         activations: Union[List[Union[Callable, str]], Callable, str, None] = nn.ReLU,
         order: str = 'caca',
@@ -81,23 +81,29 @@ class BasicUNet(nn.Module):
             Number of input channels.
         out_channels : int
             Number of output channels.
-        nb_features : Union[Sequence[int], Sequence[Sequence[int]]]
+        nb_features : Union[Sequence[int], Sequence[Sequence[int]]], default=(16, 16, 16, 16, 16)
             Number of features at each level of the unet. Can be:
             - Single sequence: [16, 32, 64] (symmetric - downsampling uses [16, 32, 64],
               upsampling uses [64, 32, 16])
             - Sequence of sequences: [[downsampling_features], [upsampling_features]] for complete
-              asymmetry.
-        normalizations : Union[List[str], str, None], optional
+              asymmetry
+        padding_mode : {'zeros', 'replicate', 'reflect'}, default='zeros'
+            Padding mode for convolutional layers.
+        upsample_mode : {'linear', 'transposed', 'nearest'}, default='linear'
+            Upsampling mode for decoder path.
+        normalizations : Union[List[Union[Callable, str]], Callable, str, None], default=None
             Normalization layers to use in each block. Can be a string or a list
             of strings specifying normalizations for each layer, or `None` for no normalization.
-        activations : Union[List[str], str, Callable], optional
+        activations : Union[List[Union[Callable, str]], Callable, str, None], default=nn.ReLU
             Activation functions to use in each block. Can be a callable,
             a string, or a list of strings/callables.
-        order : str, optional
+        order : str, default='caca'
             Order of operations in each convolutional block (e.g., 'ncaca').
-        skip_connections : bool
-            Enable skip connections to concatenate features from downsampling path
-            with upsampling path at matching resolutions. Default is True.
+        final_activation : Union[str, nn.Module, None], default=None
+            Activation function applied after the final output layer.
+        skip_connections : bool, default=True
+            Enable skip connections to concatenate features from downsampling path with upsampling
+            path at matching resolutions.
 
         Examples
         --------
@@ -308,18 +314,20 @@ class BasicAutoencoder(nn.Module):
             Number of features/channels in the latent space.
         out_channels : int
             Number of output channels.
-        nb_features : List[int]
+        nb_features : List[int], default=[16, 16, 16, 16, 16]
             Number of features at each level of the unet. Must be a list of positive integers.
-        normalizations : Union[List[str], str, None], optional
+        normalizations : Union[List[Union[Callable, str]], Callable, str, None], default=None
             Normalization layers to use in each block. Can be a string or a list
             of strings specifying normalizations for each layer, or `None` for no normalization.
-        activations : Union[List[str], str, Callable], optional
+        activations : Union[List[Union[Callable, str]], Callable, str, None], default=nn.ReLU
             Activation functions to use in each block. Can be a callable,
             a string, or a list of strings/callables.
-        order : str, optional
+        order : str, default='caca'
             Order of operations in each convolutional block (e.g., 'ncaca').
-        final_activation : Union[str, nn.Module, None], optional
+        final_activation : Union[str, nn.Module, None], default=None
             Activation function applied after the last convolution.
+        padding_mode : str, default='zeros'
+            Padding mode for convolutional layers.
         """
 
         super().__init__()
