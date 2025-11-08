@@ -1943,8 +1943,8 @@ def bw_grid(
     vol_shape : Sequence[int]
         Expected volume size (dimensions of the output grid).
     spacing : int or Sequence[int]
-        Scalar or sequence the same size as vol_shape. Defines the spacing between grid lines in each
-        dimension.
+        Scalar or sequence the same size as vol_shape. Defines the spacing between grid lines in
+        each dimension.
     thickness : int, default=1
         Line thickness in pixels.
     indexing : {'ij', 'xy'}, default='ij'
