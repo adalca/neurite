@@ -161,12 +161,11 @@ def test_sample_image_from_labels_constant_within_region():
          [2, 2, 2, 2]]
     ]).unsqueeze(0)
 
-    # Use small noise variance for this test
-    import neurite.samplers as samplers
-    result = nef.sample_image_from_labels(
+    # Use small noise std for this test
+    result = ne.sample_image_from_labels(
         label_tensor,
-        mean_sampler=samplers.Fixed(0.5),
-        noise_variance=0.01
+        mean_range=(0.49, 0.51),  # Fixed mean of 0.5
+        noise_std=0.1  # sqrt(0.01) = 0.1
     )
 
     # Within each region, values should be close (low variance)
@@ -186,12 +185,11 @@ def test_sample_image_from_labels_different_regions():
     ]).unsqueeze(0)
 
     # Use very small noise to make regions nearly uniform
-    import neurite.samplers as samplers
     torch.manual_seed(42)
     result = nef.sample_image_from_labels(
         label_tensor,
-        mean_sampler=samplers.Uniform(0, 1),
-        noise_variance=0.001  # Very small variance instead of 0.0
+        mean_range=(0, 1),  # Uniform sampling from [0, 1]
+        noise_std=0.03  # sqrt(0.001) ≈ 0.03
     )
 
     # Each region should have low variance
@@ -207,19 +205,18 @@ def test_sample_image_from_labels_deterministic():
     """Test that same seed produces same result."""
     label_tensor = torch.randint(0, 5, (1, 1, 8, 8))
 
-    import neurite.samplers as samplers
     torch.manual_seed(42)
     result1 = nef.sample_image_from_labels(
         label_tensor,
-        mean_sampler=samplers.Uniform(0, 1),
-        noise_variance=0.1
+        mean_range=(0, 1),  # Uniform sampling from [0, 1]
+        noise_std=0.32  # sqrt(0.1) ≈ 0.32
     )
 
     torch.manual_seed(42)
     result2 = nef.sample_image_from_labels(
         label_tensor,
-        mean_sampler=samplers.Uniform(0, 1),
-        noise_variance=0.1
+        mean_range=(0, 1),  # Uniform sampling from [0, 1]
+        noise_std=0.32  # sqrt(0.1) ≈ 0.32
     )
 
     assert torch.allclose(result1, result2, atol=1e-6)
