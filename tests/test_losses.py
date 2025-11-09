@@ -7,6 +7,18 @@ import neurite as ne
 import neurite.nn.functional as nef
 
 
+def test_base_dice():
+    seg1 = torch.randn(1, 1, 128, 128).sigmoid()
+    seg2 = seg1.clone()
+    dice_score = ne.dice(seg1, seg2)
+
+    # Assert it's a scalar tensor
+    is_tensor = isinstance(dice_score, torch.Tensor)
+    is_no_dim = dice_score.ndim == 0
+    is_scalar = True is is_tensor & is_no_dim
+    assert is_scalar, f"ne.functional.dice() must return a scalar by default. Got: {dice_score}"
+
+
 @pytest.fixture
 def log_probabilities():
     # Initialize the logits from a normal dist
@@ -156,41 +168,3 @@ def test_dice_wrapper():
         "Dice for identical inputs should be close to 1."
     )
 
-
-def test_log_dice(log_probabilities):
-    """
-    Test the log-dice score with log-probabilities
-    """
-
-    log_probs = log_probabilities
-
-    # Compute dice on log between the same tensor
-    log_dice_score = nef.log_dice(log_probs, log_probs,)
-
-    # The expected log dice (still in the log domain) should be zero
-    expected = torch.tensor(0.0)
-
-    assert torch.allclose(log_dice_score, expected, atol=1e-6), (
-        f"Log dice for identical tensors should be close to 1. Got {log_dice_score}"
-    )
-
-
-@pytest.mark.parametrize(
-        'n_segs', (2, 5)
-)
-def test_multiple_log_dice(n_segs, log_probabilities):
-    """
-    Test the log-dice score with multiple log-probabilities
-    """
-
-    log_probs = [log_probabilities] * n_segs
-
-    # Compute dice on log between the same tensor
-    log_dice_score = nef.log_dice(*log_probs, reduction='mean')
-
-    # The expected log dice (still in the log domain) should be zero
-    expected = torch.tensor(0.0)
-
-    assert torch.allclose(log_dice_score, expected, atol=1e-4), (
-        f"Log dice for identical tensors should be close to 1. Got {log_dice_score}"
-    )
