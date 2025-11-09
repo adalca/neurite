@@ -57,8 +57,8 @@ class BasicUNet(nn.Module):
         nb_features: Union[Sequence[int], Sequence[Sequence[int]]] = (16, 16, 16, 16, 16),
         padding_mode: Literal['zeros', 'replicate', 'reflect'] = 'zeros',
         upsample_mode: Literal['linear', 'transposed', 'nearest'] = 'linear',
-        normalizations: Union[List[Union[Callable, str]], Callable, str, None] = None,
-        activations: Union[List[Union[Callable, str]], Callable, str, None] = nn.ReLU,
+        normalizations: Union[Sequence[Union[Callable, str]], Callable, str, None] = None,
+        activations: Union[Sequence[Union[Callable, str]], Callable, str, None] = nn.ReLU,
         order: str = 'caca',
         final_activation: Union[str, nn.Module, None] = None,
         skip_connections: bool = True,
@@ -85,12 +85,12 @@ class BasicUNet(nn.Module):
             Padding mode for convolutional layers.
         upsample_mode : {'linear', 'transposed', 'nearest'}, default='linear'
             Upsampling mode for decoder path.
-        normalizations : Union[List[Union[Callable, str]], Callable, str, None], default=None
-            Normalization layers to use in each block. Can be a string or a list
+        normalizations : Sequence[Union[Callable, str]], Callable, str, or None, default=None
+            Normalization layers to use in each block. Can be a string or a sequence
             of strings specifying normalizations for each layer, or `None` for no normalization.
-        activations : Union[List[Union[Callable, str]], Callable, str, None], default=nn.ReLU
+        activations : Sequence[Union[Callable, str]], Callable, str, or None, default=nn.ReLU
             Activation functions to use in each block. Can be a callable,
-            a string, or a list of strings/callables.
+            a string, or a sequence of strings/callables.
         order : str, default='caca'
             Order of operations in each convolutional block (e.g., 'ncaca').
         final_activation : Union[str, nn.Module, None], default=None
@@ -288,9 +288,9 @@ class BasicAutoencoder(nn.Module):
         in_channels: int,
         latent_features: int,
         out_channels: int,
-        nb_features: List[int] = [16, 16, 16, 16, 16],
-        normalizations: Union[List[Union[Callable, str]], Callable, str, None] = None,
-        activations: Union[List[Union[Callable, str]], Callable, str, None] = nn.ReLU,
+        nb_features: Sequence[int] = (16, 16, 16, 16, 16),
+        normalizations: Union[Sequence[Union[Callable, str]], Callable, str, None] = None,
+        activations: Union[Sequence[Union[Callable, str]], Callable, str, None] = nn.ReLU,
         order: str = 'caca',
         final_activation: Union[str, nn.Module, None] = None,
         padding_mode: str = 'zeros',
@@ -308,14 +308,15 @@ class BasicAutoencoder(nn.Module):
             Number of features/channels in the latent space.
         out_channels : int
             Number of output channels.
-        nb_features : List[int], default=[16, 16, 16, 16, 16]
-            Number of features at each level of the unet. Must be a list of positive integers.
-        normalizations : Union[List[Union[Callable, str]], Callable, str, None], default=None
-            Normalization layers to use in each block. Can be a string or a list
+        nb_features : Sequence[int], default=(16, 16, 16, 16, 16)
+            Number of features at each level of the autoencoder. Must be a sequence of positive
+            integers.
+        normalizations : Sequence[Union[Callable, str]], Callable, str, or None, default=None
+            Normalization layers to use in each block. Can be a string or a sequence
             of strings specifying normalizations for each layer, or `None` for no normalization.
-        activations : Union[List[Union[Callable, str]], Callable, str, None], default=nn.ReLU
+        activations : Sequence[Union[Callable, str]], Callable, str, or None, default=nn.ReLU
             Activation functions to use in each block. Can be a callable,
-            a string, or a list of strings/callables.
+            a string, or a sequence of strings/callables.
         order : str, default='caca'
             Order of operations in each convolutional block (e.g., 'ncaca').
         final_activation : Union[str, nn.Module, None], default=None
