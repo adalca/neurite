@@ -33,7 +33,6 @@ from torch import nn
 
 # Custom imports
 import neurite as ne
-from neurite.samplers import Sampler
 
 
 __all__ = [
@@ -63,7 +62,7 @@ def gaussian_kernel(
     ----------
     kernel_size : int, optional
         Size of each dimension in the Gaussian kernel. Default is 3.
-    sigma : float, int, or Sampler, optional
+    sigma : float or int, optional
         Standard deviation of the Gaussian kernel. Default is 1.
     ndim : int
         Dimensionality of the gaussian kernel. Default is 3.
@@ -210,18 +209,14 @@ def make_range(*args, **kwargs) -> tuple:
     >>> print(rng)
     (0.6, 1)
     """
-    # Return arguments of type {Sampler, list, tuple} as-is
+    # Return arguments of type {list, tuple} as-is
     for arg in args:
-        if isinstance(arg, Sampler):
-            return arg
-        elif isinstance(arg, (list, tuple)):
+        if isinstance(arg, (list, tuple)):
             return arg
 
-    # Return keyword arguments of type {Sampler, list, tuple} as-is
+    # Return keyword arguments of type {list, tuple} as-is
     for arg in kwargs.values():
-        if isinstance(arg, Sampler):
-            return arg
-        elif isinstance(arg, (list, tuple)):
+        if isinstance(arg, (list, tuple)):
             return arg
 
     # Setting default values
