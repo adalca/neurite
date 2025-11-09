@@ -29,7 +29,6 @@ from typing import List, Union, Type, Tuple, Literal, Optional
 import importlib
 
 # Third party imports
-import einops
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -37,7 +36,6 @@ import torch.nn.functional as F
 # Custom imports
 import neurite as ne
 import neurite.nn.functional as nef
-from neurite.samplers import Sampler
 
 
 class Dice(nn.Module):
@@ -50,8 +48,8 @@ class Dice(nn.Module):
     >>> # Instantiate the dice score module
     >>> dice_module = ne.losses.Dice()
     >>> # Randomly sample binary tensors with 3 batches and 4 channels
-    >>> seg1 = ne.samplers.RandInt(0, 1)((3, 4, 128, 128))
-    >>> seg2 = ne.samplers.RandInt(0, 1)((3, 4, 128, 128))
+    >>> seg1 = torch.randint(0, 2, (3, 4, 128, 128))
+    >>> seg2 = torch.randint(0, 2, (3, 4, 128, 128))
     >>> # Compute the dice score and return
     >>> dice_module(seg1, seg2)
     tensor([[0.5003]])
@@ -59,8 +57,8 @@ class Dice(nn.Module):
     # Example 2: Computing the soft dice score with continuious seg maps and no reduction
     >>> dice_module = Dice(reduction=None)
     >>> # Randomly sample continuious "logits"
-    >>> seg1 = ne.samplers.Normal(0, 1)((3, 4, 128, 128))
-    >>> seg2 = ne.samplers.Normal(0, 1)((3, 4, 128, 128))
+    >>> seg1 = torch.randn(3, 4, 128, 128)
+    >>> seg2 = torch.randn(3, 4, 128, 128)
     >>> # Activation functions
     >>> seg1 = ne.utils.logistic(seg1)
     >>> seg2 = ne.utils.logistic(seg2)
@@ -852,7 +850,7 @@ class ContextCrossConv(nn.Module):
     >>> # Create random 2D inputs: 3 sets of 2 query images and 6 context pairs.
     >>> query_image = torch.randn(3, 2, 1, 64, 64)
     >>> context_images = torch.randn(3, 6, 1, 64, 64)
-    >>> context_segmentations = ne.samplers.RandInt()((3, 6, 1, 64, 64))
+    >>> context_segmentations = torch.randint(0, 10, (3, 6, 1, 64, 64))
     >>> # Concat along the channel dimension
     >>> context = torch.cat([context_images, context_segmentations], dim=1)
     >>> # Define the number of query image channels and context set channels seperately:
@@ -871,7 +869,7 @@ class ContextCrossConv(nn.Module):
     >>> # Create random 3D inputs: 1 set of 1 query image and 9 context pairs.
     >>> query_image = torch.randn(1, 1, 1, 128, 128, 128)
     >>> context_images = torch.randn(1, 9, 1, 128, 128, 128)
-    >>> context_segmentations = ne.samplers.RandInt()((1, 9, 1, 128, 128, 128))
+    >>> context_segmentations = torch.randint(0, 10, (1, 9, 1, 128, 128, 128))
     >>> # Concat along the channel dimension
     >>> context = torch.cat([context_images, context_segmentations], dim=1)
     >>> # Define the number of query image channels and context set channels seperately:
@@ -974,17 +972,17 @@ class RescaleValues(nn.Module):
     Scale each element of the input tensor by a multiplicative factor.
     """
 
-    def __init__(self, scale_factor: Union[float, int, Sampler]):
+    def __init__(self, scale_factor: Union[float, int]):
         """
         Initialize the `RescaleValues` module.
 
         Parameters
         ----------
-        scale_factor : float, int, or Sampler
-            Factor (or sampler) by which to rescale the values of the input tensor.
+        scale_factor : float or int
+            Factor by which to rescale the values of the input tensor.
         """
         super().__init__()
-        self.scale_factor = ne.samplers.make_sampler(ne.samplers.Fixed, scale_factor)
+        self.scale_factor = scale_factor
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
@@ -1000,7 +998,7 @@ class RescaleValues(nn.Module):
         torch.Tensor
             Rescaled tensor.
         """
-        return input_tensor * self.scale_factor()
+        return input_tensor * self.scale_factor
 
 
 class Resize(nn.Module):
@@ -1068,8 +1066,6 @@ class Resize(nn.Module):
         super().__init__()
         if size is None and scale_factor is None:
             scale_factor = 1
-        elif scale_factor is not None:
-            scale_factor = ne.samplers.make_sampler(ne.samplers.Fixed, scale_factor)
 
         self.size = size
         self.scale_factor = scale_factor
@@ -1118,10 +1114,10 @@ class SoftQuantize(nn.Module):
 
     def __init__(
         self,
-        nb_bins: Union[int, Sampler] = 16,
-        softness: Union[float, int, Sampler] = 1.0,
-        min_clip: Union[float, int, Sampler] = -float('inf'),
-        max_clip: Union[float, int, Sampler] = float('inf'),
+        nb_bins: int = 16,
+        softness: Union[float, int] = 1.0,
+        min_clip: Union[float, int] = -float('inf'),
+        max_clip: Union[float, int] = float('inf'),
         return_log: bool = False,
     ):
         """
@@ -1129,14 +1125,14 @@ class SoftQuantize(nn.Module):
 
         Parameters
         ----------
-        nb_bins : int or Sampler, optional
+        nb_bins : int, optional
             The number of discrete bins to softly quantize the input values into. By default 16
-        softness : float, int, or Sampler, optional
+        softness : float or int, optional
             The softness factor for quantization. A higher value gives smoother quantization.
             By default 1.0
-        min_clip : float, int, or Sampler, optional
+        min_clip : float or int, optional
             Clip data lower than this value before calculating bin centers. By default -float('inf')
-        max_clip : float, int, or Sampler, optional
+        max_clip : float or int, optional
             Clip data higher than this value before calculating bin centers. By default float('inf')
         return_log : bool, optional
             Optionally return the log of the softly quantized tensor. By default False
@@ -1151,17 +1147,12 @@ class SoftQuantize(nn.Module):
         >>> # Visualize the softly quantized tensor.
         >>> plt.imshow(softly_quantized_tensor[0, 0, 16])
 
-        ### Softly quantize with random `nb_bins` and `softness` parameters
-        >>> # Get `nb_bins` ~U(3, 32), and `softness` ~U(0.001, 10)
-        >>> soft_quantizer = SoftQuantize(nb_bins=RandInt(3, 32), softness=Uniform(0.001, 10))
-        >>> softly_quantized_tensor = soft_quantizer(input_tensor)
-        >>> plt.imshow(softly_quantized_tensor[0, 0, 16])
         """
         super().__init__()
-        self.nb_bins = ne.samplers.make_sampler(ne.samplers.Fixed, nb_bins)
-        self.softness = ne.samplers.make_sampler(ne.samplers.Fixed, softness)
-        self.min_clip = ne.samplers.make_sampler(ne.samplers.Fixed, min_clip)
-        self.max_clip = ne.samplers.make_sampler(ne.samplers.Fixed, max_clip)
+        self.nb_bins = nb_bins
+        self.softness = softness
+        self.min_clip = min_clip
+        self.max_clip = max_clip
         self.return_log = return_log
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
@@ -1233,9 +1224,9 @@ class GaussianBlur(nn.Module):
 
         Parameters
         ----------
-        kernel_size : Sampler or int, optional
+        kernel_size : int, optional
             Size of the Gaussian kernel, default is 3.
-        sigma : float, int, or Sampler, optional
+        sigma : float or int, optional
             Standard deviation of the Gaussian kernel, default is 1.
         """
         super().__init__()
@@ -1274,8 +1265,8 @@ class GaussianAntialiasing(nn.Module):
     def __init__(
         self,
         stride: Union[int, List[int]] = 2,
-        kernel_size: Union[int, List[int], Sampler] = None,
-        sigma: Union[float, int, List[float], List[int], Sampler] = None,
+        kernel_size: Union[int, List[int], None] = None,
+        sigma: Union[float, int, List[float], List[int], None] = None,
         subsampling_dimension: Union[List[int], int, None] = None
     ):
         """
@@ -1286,11 +1277,11 @@ class GaussianAntialiasing(nn.Module):
         stride : int or List[int], optional
             Downsampling stride. If int, the same stride is applied to all spatial dimensions.
             If List[int], different strides can be specified per dimension. Default is 2.
-        kernel_size : int, List[int], or Sampler, optional
+        kernel_size : int or List[int], optional
             Size of the Gaussian kernel for antialiasing. If int, same size is used for all
             dimensions. If List[int], different sizes can be specified per dimension.
             If None, automatically computed as 2 * stride + 1 per dimension. Default is None.
-        sigma : float, int, List[float], List[int], or Sampler, optional
+        sigma : float, int, List[float], or List[int], optional
             Standard deviation of the Gaussian kernel. If float/int, same sigma is used for
             all dimensions. If List, different sigmas can be specified per dimension.
             If None, automatically computed as stride / 2 per dimension. Default is None.
@@ -1454,34 +1445,29 @@ class RandomCrop(nn.Module):
 
     def __init__(
         self,
-        crop_proportion: Union[Sampler, float] = 0.5,
-        prob: Union[Sampler, float] = 1,
-        forbidden_dims: ne.samplers.Union[Tuple, List] = (0, 1),
-        seed: Union[int, Sampler] = None,
+        crop_proportion: Union[float, int] = 0.5,
+        prob: Union[float, int] = 1,
+        forbidden_dims: Union[Tuple, List] = (0, 1),
+        seed: Union[int, None] = None,
     ):
         """
         Initialize the `RandomCrop` module.
 
         Parameters
         ----------
-        crop_proportion : Union[Sampler, float], optional
-            The proportion that is randomly cropped from any allowed dimension. By default 0.5
-            - If a `float` is provided, it represents the maximum proportion (0 to 1) to crop,
-            sampled from independent uniform distributinos for each allowed dimension. A value of
-            `0.5` means up to 50% of each dimension can be cropped.
-            - If a `Sampler` is provided, cropped proportions are dynamically sampled based on the
-            specified distribution
-        prob : Union[Sampler, float], optional
-            The probability of cropping each allowed dimension. By default 1.0
-            - If a `float` is provided, it's used as a fixed probability for all eligible
-            dimensions.
-            - If a `Sampler` is provided, probabilities are dynamically generated for each
-            dimension.
+        crop_proportion : float, optional
+            The proportion that is randomly cropped from any allowed dimension. By default 0.5.
+            Represents the maximum proportion (0 to 1) to crop, sampled from independent uniform
+            distributions for each allowed dimension. A value of `0.5` means up to 50% of each
+            dimension can be cropped.
+        prob : float, optional
+            The probability of cropping each allowed dimension. By default 1.0.
+            Used as a fixed probability for all eligible dimensions.
         forbidden_dims : Union[Tuple[int, ...], List[int]], optional
-            Dimensions that should never be cropped. By defult `(0, 1)` (batch and channel
+            Dimensions that should never be cropped. By default `(0, 1)` (batch and channel
             dimensions)
-        seed : Union[int, Sampler], optional
-            A random seed or sampler to control the randomness of cropping operations. If provided,
+        seed : int, optional
+            A random seed to control the randomness of cropping operations. If provided,
             it ensures reproducibility of the cropping. Defaults to `None`.
         """
         super().__init__()
@@ -1521,25 +1507,25 @@ class RandomClip(nn.Module):
 
     def __init__(
         self,
-        clip_min: Union[float, int, Sampler] = 0,
-        clip_max: Union[float, int, Sampler] = 1,
-        clip_prob: Union[float, int, Sampler] = 0.5,
-        seed: Union[int, Sampler] = None,
+        clip_min: Union[float, int] = 0,
+        clip_max: Union[float, int] = 1,
+        clip_prob: Union[float, int] = 0.5,
+        seed: Union[int, None] = None,
     ):
         """
         Initialize `RandomClip` with specified clipping bounds and sampling probability.
 
         Parameters
         ----------
-        clip_min : Union[float, int, Sampler], optional
+        clip_min : float or int, optional
             The lower bound for clipping. Elements less than `clip_min` are set to `clip_min`.
             Defaults to 0.
-        clip_max : Union[float, int, Sampler], optional
+        clip_max : float or int, optional
             The upper bound for clipping. Elements greater than `clip_max` are set to `clip_max`.
             Defaults to 1.
-        clip_prob : Union[float, int, Sampler], optional
+        clip_prob : float or int, optional
             Probability of applying this operation. Defaults to 0.5.
-        seed : Union[int, Sampler], optional
+        seed : int, optional
             Seed for random number generation to ensure reproducibility. Defaults to None.
 
         Examples
@@ -1547,15 +1533,6 @@ class RandomClip(nn.Module):
         ### Initialize `RandomClip` and apply it deterministically to a tensor:
         >>> random_clip = RandomClip(clip_min=0.1, clip_max=0.9, clip_prob=0.5)
         >>> input_tensor = torch.randn(3, 3)
-        >>> output_tensor = random_clip(input_tensor)
-        >>> print(output_tensor)
-
-        ### Clip by sampling min/max bounds from a custom distribution:
-        >>> from my_samplers import UniformSampler
-        >>> random_clip = RandomClip(
-                clip_min=UniformSampler(0, 0.5),
-                clip_max=UniformSampler(0.5, 1.0)
-            )
         >>> output_tensor = random_clip(input_tensor)
         >>> print(output_tensor)
         """
@@ -1600,29 +1577,23 @@ class RandomGamma(nn.Module):
 
     def __init__(
         self,
-        gamma: Union[float, int, Sampler] = 1.0,
-        prob: Union[float, int, Sampler] = 1.0,
-        seed: Union[int, Sampler] = None,
+        gamma: Union[float, int] = 1,
+        prob: Union[float, int] = 1,
+        seed: Union[int, None] = None,
     ):
         """
         Initialize `RandomGamma`.
 
         Parameters
         ----------
-        gamma : Union[float, int, Sampler], optional
-            The gamma value to apply for the scaling operation.
-            - If a `float` is provided, it represents a fixed gamma value.
-            - If a `Sampler` is provided, the gamma value is dynamically sampled from the specified
-            distribution.
+        gamma : float or int, optional
+            The gamma value to apply for the scaling operation. Represents a fixed gamma value.
             By default `1.0`, which leaves the tensor unchanged.
-        prob : Union[float, int, Sampler], optional
-            The probability of applying the gamma operation.
-            - If a `float` is provided, it's used as a fixed probability for the operation.
-            - If a `Sampler` is provided, probabilities are dynamically generated for each
-            invocation.
-            Default is `1.0` (always apply).
-        seed : Union[int, Sampler], optional
-            A random seed or sampler to control the randomness of the gamma scaling operation. If
+        prob : float, optional
+            The probability of applying the gamma operation. Used as a fixed probability for
+            the operation. Default is `1.0` (always apply).
+        seed : int, optional
+            A random seed to control the randomness of the gamma scaling operation. If
             provided, it ensures reproducibility of the operation. Defaults to `None`.
 
         Examples
@@ -1633,14 +1604,6 @@ class RandomGamma(nn.Module):
         >>> gamma_tensor = gamma_module(tensor)
         >>> print(gamma_tensor)
         tensor([0.0625, 0.2500, 0.5625])
-
-        ### Scaling with gamma ~LogNormal(0, 1)
-        >>> gamma_sampler = LogNormal(0.5, 1.5)
-        >>> gamma_module = RandomGamma(gamma=gamma_sampler, prob=0.8)
-        >>> tensor = torch.tensor([0.25, 0.5, 0.75])
-        >>> gamma_tensor = gamma_module(tensor)
-        >>> print(gamma_tensor)
-        tensor([0.1768, 0.5000, 0.8367])
 
         ### Applying gamma operation with reproducibility
         >>> gamma_module1 = RandomGamma(gamma=2.0, prob=1.0, seed=42)
@@ -1732,23 +1695,23 @@ class RandomClearLabel(nn.Module):
 
     def __init__(
         self,
-        prob: Union[float, int, Sampler] = 0.5,
+        prob: Union[float, int] = 0.5,
         exclude_zero: bool = True,
-        seed: int = None,
+        seed: Union[int, None] = None,
     ):
         """
         Initialize `RandomClearLabel`.
 
         Parameters
         ----------
-        prob : Union[float, int, Sampler], optional
+        prob : float, optional
             Probability of any label/region being selected for erasure as determined by iid
             Bernoulli trials, by default 0.5.
         exclude_zero : bool, optional
             Optionally exclude zero (uaually background) from the list of potential regions to clear
             (never clear zero labels), by default True.
         seed : int, optional
-            A random seed or sampler to control the randomness of label clearing operations. If
+            A random seed to control the randomness of label clearing operations. If
             provided, it ensures reproducibility of the clearing process. By default, None.
         """
         super().__init__()
@@ -1793,36 +1756,28 @@ class SampleImageFromLabels(nn.Module):
 
     Identify all unique integer labels in `label_tensor` and assigns each a mean intensity in the
     corresponding output image (`sampled_image`). The mean intensity serves as the mean for a noise
-    distribution modeled by `noise_sampler`. The variance of the noise model may be a fixed quantity
-    or sampled from another distribution defined by `noise_variance`.
+    distribution. Noise is sampled from a normal distribution with the specified standard deviation.
     """
 
     def __init__(
         self,
-        mean_sampler: Sampler = ne.samplers.Uniform(0, 1),
-        noise_sampler: Sampler = ne.samplers.Normal,
-        noise_variance: Union[float, int, Sampler] = 0.25,
+        mean_range: Tuple[float, float] = (0.0, 1.0),
+        noise_std: Union[float, int] = 0.5,
     ):
         """
         Initialize `SampleImageFromLabels`.
 
         Parameters
         ----------
-        mean_sampler : Sampler
-            A `Sampler` from which to draw the mean intensity for each region defined by each label
-            in the `label_tensor`. By default, `Uniform(0, 1)`
-        noise_sampler : Sampler
-            A `Sampler` that is used to model the noise within a particular label/region. The mean
-            for the sampler is defined by the mean region intensity (sampled from `mean_sampler`).
-            By default, `Normal`.
-        noise_variance : float, int, or Sampler
-            The variance of the noise model. It can be a fixed quantity (int or float), or a sampled
-            quantity in the case a `Sampler` is passed. By default, 0.25.
+        mean_range : Tuple[float, float], default=(0.0, 1.0)
+            Range (min, max) for sampling mean intensity for each region. Mean intensities are
+            sampled uniformly from this range.
+        noise_std : float or int, default=0.5
+            Standard deviation of the Gaussian noise added to each region.
         """
         super().__init__()
-        self.mean_sampler = mean_sampler
-        self.noise_sampler = noise_sampler
-        self.noise_variance = noise_variance
+        self.mean_range = mean_range
+        self.noise_std = noise_std
 
     def forward(self, label_tensor: torch.Tensor) -> torch.Tensor:
         """
@@ -1840,11 +1795,10 @@ class SampleImageFromLabels(nn.Module):
             A tensor of sampled image intensities with the same shape as `label_tensor`.
         """
 
-        return ne.utils.sample_image_from_labels(
+        return ne.functional.sample_image_from_labels(
             label_tensor,
-            self.mean_sampler,
-            self.noise_sampler,
-            self.noise_variance
+            mean_range=self.mean_range,
+            noise_std=self.noise_std
         )
 
 
