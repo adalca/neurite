@@ -25,7 +25,7 @@ the License.
 """
 
 # Standard library imports
-from typing import List, Union, Type, Tuple, Literal, Optional
+from typing import Union, Type, Tuple, Literal, Optional, Sequence
 import importlib
 
 # Third party imports
@@ -77,25 +77,24 @@ class Dice(nn.Module):
         reduction_dim: Union[int, Tuple] = (0, 1),
         keepdims: bool = True,
     ) -> None:
-
         """
         Initialize `Dice`.
 
         Parameters
         ----------
-        smooth_numerator : float, optional
+        smooth_numerator : float, default=1e-12
             Smoothing constant added to the numerator.
-        smooth_denominator : float, optional
+        smooth_denominator : float, default=1e-12
             Smoothing constant added to the denominator.
-        reduction : str, optional
+        reduction : str, default='mean'
             The type of reduction to apply. Supported values for multidimensional reductions are:
             'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'; for single-dimension
-            reductions: 'argmin', 'argmax', and all multidimensionals. Default is 'mean'.
-        reduction_dim : int or tuple of ints, optional
+            reductions: 'argmin', 'argmax', and all multidimensionals.
+        reduction_dim : int or tuple of ints, default=(0, 1)
             Dimension(s) over which to apply the reduction. For multidimensional reductions, pass a
-            tuple of dimensions; for single-dimension reductions, pass an integer. Default is (0, 1)
-        keepdims : bool, optional
-            Whether to retain reduced dimensions as a singleton. Default is True.
+            tuple of dimensions; for single-dimension reductions, pass an integer.
+        keepdims : bool, default=True
+            Whether to retain reduced dimensions as a singleton.
         """
         super().__init__()
 
@@ -119,7 +118,6 @@ class Dice(nn.Module):
         torch.Tensor
             The computed Dice coefficient, optionally reduced according to object initialization.
         """
-
         return nef.dice(
             *segs,
             smooth_numerator=self.smooth_numerator,
@@ -138,24 +136,23 @@ class Activation(nn.Module):
         self,
         activation_type: Union[str, Type[nn.Module], None] = None,
         inplace: bool = True,
-        negative_slope: float = 0.01,
-        alpha: float = 1.0
+        negative_slope: Union[float, int] = 0.01,
+        alpha: Union[float, int] = 1.0
     ) -> nn.Module:
         """
         Initialize `Activation`.
 
         Parameters
         ----------
-        activation_type : str
-            Type of activation function. Supported values: 'relu',
-            'leaky_relu',
-            'elu'.
-        inplace : bool, optional
-            Whether to perform the operation in-place. Default is True.
-        negative_slope : float, optional
-            Negative slope for 'leaky_relu'. Default is 0.01.
-        alpha : float, optional
-            Alpha value for 'elu'. Default is 1.0.
+        activation_type : str, Type[nn.Module], or None, default=None
+            Type of activation function. Supported values: 'relu', 'leaky_relu', 'elu', or an
+            nn.Module class/instance.
+        inplace : bool, default=True
+            Whether to perform the operation in-place.
+        negative_slope : float, default=0.01
+            Negative slope for 'leaky_relu'.
+        alpha : float, default=1.0
+            Alpha value for 'elu'.
         """
 
         super(Activation, self).__init__()
@@ -223,15 +220,14 @@ class ConvBlock(nn.Sequential):
     The default sequence of operations in this block is:
 
     1. **Convolution**: Apply an nD convolution over the input.
-    2. **Normalization**: Normalize the output of the convolution to stabilize and accelerate
-    training.
+    2. **Normalization**: Normalize the output of the conv.
     3. **Activation Function**: Introduce non-linearity to the model.
 
     Attributes
     ----------
-    conv : nn.Conv2d
+    conv : nn.Conv*d
         The convolutional layer.
-    batch_norm : nn.BatchNorm2d
+    batch_norm : nn.BatchNorm*d
         The batch normalization layer.
     activation : nn.Module
         The activation function.
@@ -252,8 +248,6 @@ class ConvBlock(nn.Sequential):
     >>> print(output.shape)
     torch.Size([16, 128, 32, 32])
     """
-
-    # Mapping of spatial dimensions for convolutions
     conv_dim_map = {1: '1d', 2: '2d', 3: '3d'}
 
     def __init__(
@@ -269,7 +263,7 @@ class ConvBlock(nn.Sequential):
         groups: int = 1,
         bias: bool = True,
         normalization: Union[str, nn.Module, None] = None,
-        activation: Union[List, str, nn.Module, None] = None,
+        activation: Union[Sequence, str, nn.Module, None] = None,
         order: str = 'cna',
     ):
         """
@@ -283,37 +277,36 @@ class ConvBlock(nn.Sequential):
             Number of input channels.
         out_channels : int
             Number of output channels.
-        kernel_size : int or tuple, optional
-            Size of the convolving kernel. Default is 3.
-        stride : int or tuple, optional
-            Stride of the convolution. Default is 1.
-        padding : int or tuple, optional
-            Padding added to all sides of the input. Default is 1.
-        dilation : int or tuple, optional
-            Spacing between kernel elements. Every `dilation`-th element is used. Default is 1.
-        groups : int, optional
-            Number of blocked connections from input to output channels. Default is 1.
-        bias : bool, optional
-            If True, a learnable bias is added to the output. Default is True.
-        normalization : str, nn.Module, or None, optional
+        kernel_size : int or tuple, default=3
+            Size of the convolving kernel.
+        stride : int or tuple, default=1
+            Stride of the convolution.
+        padding : int or tuple, default=1
+            Padding added to all sides of the input.
+        padding_mode : {'zeros', 'replicate', 'reflect'}, default='zeros'
+            Padding mode for the convolution.
+        dilation : int or tuple, default=1
+            Spacing between kernel elements. Every `dilation`-th element is used.
+        groups : int, default=1
+            Number of blocked connections from input to output channels.
+        bias : bool, default=True
+            If True, a learnable bias is added to the output.
+        normalization : str, nn.Module, or None, default=None
             Defines the normalization layer. Can be one of:
             - A string: Supported options are 'batch', 'instance', 'layer', or 'group'.
             - A `Normalization` module: Instantiated or uninstantiated `Normalization` layer.
                 e.g. nn.InstanceNorm3d(16) or nn.InstanceNorm3d
-            - `None`: No normalization is applied. Default is `None`.
-
-        activation : str, nn.Module, or None, optional
+            - `None`: No normalization is applied.
+        activation : Sequence, str, nn.Module, or None, default=None
             Defines the activation layer. Can be one of:
             - A string: Supported options are 'relu', 'leaky_relu', or 'elu'.
-            - A list: A list containing any of these optinons. Must have the same number of elements
-                as the number of activations specified in `order`.
+            - A Sequence: A sequence containing any of these optinons. Must have the same number
+                of elements as the number of activations specified in `order`.
             - A `nn.Module`: Instantiated or uninstantiated activation module.
                 e.g. nn.Sigmoid(), nn.Sigmoid
-            - `None`: No activation is applied. Default is `None`.
-
-        order : str, optional
-            The order of operations in the block. Default is 'cna'
-            (normalization -> convolution -> activation).
+            - `None`: No activation is applied.
+        order : str, default='cna'
+            The order of operations in the block (normalization -> convolution -> activation).
             Each character in the string represents one of the following:
             - `'c'`: Convolution
             - `'n'`: Normalization
@@ -464,22 +457,20 @@ class TransposedConv(nn.Module):
             Number of input channels.
         out_channels : int
             Number of output channels.
-        kernel_size : int or tuple
+        kernel_size : int or tuple, default=4
             Size of the convolving kernel.
-        stride : int or tuple, optional
-            Stride of the convolution. Default is 2.
-        padding : int or tuple, optional
-            Padding added to all sides of the input. Default is 1.
-        output_padding : int or tuple, optional
-            Additional size added to one side of each dimension in the output
-            shape. Default is 0.
-        dilation : int or tuple, optional
-            Spacing between kernel elements. Default is 1.
-        groups : int, optional
+        stride : int or tuple, default=2
+            Stride of the convolution.
+        padding : int or tuple, default=1
+            Padding added to all sides of the input.
+        output_padding : int or tuple, default=0
+            Additional size added to one side of each dimension in the output shape.
+        dilation : int or tuple, default=1
+            Spacing between kernel elements.
+        groups : int, default=1
             Number of blocked connections from input to output channels.
-            Default is 1.
-        bias : bool, optional
-            If True, a learnable bias is added to the output. Default is True.
+        bias : bool, default=True
+            If True, a learnable bias is added to the output.
         """
         super(TransposedConv, self).__init__()
 
@@ -539,12 +530,11 @@ class Pool(nn.Module):
         ----------
         ndim : int
             The spatial dimensionality of the pooling operation. Must be 1, 2, or 3.
-        pool_mode : str, optional
-            The pooling mode to use. Options are 'max' for max pooling,
-            'avg' for average pooling, and 'lp' for LP pooling. Default is
-            'max'.
-        kernel_size : int or tuple, optional
-            The size of the pooling kernel. Default is 2.
+        pool_mode : str, default='max'
+            The pooling mode to use. Options are 'max' for max pooling, 'avg' for average pooling,
+            and 'lp' for LP pooling.
+        kernel_size : int or tuple, default=2
+            The size of the pooling kernel.
         """
         super(Pool, self).__init__()
 
@@ -616,32 +606,32 @@ class DownsampleConvBlock(nn.Module):
             Number of input channels.
         out_channels : int
             Number of output channels.
-        kernel_size : int, optional
-            Size of the convolving kernel. Default is 3.
-        stride : int, optional
-            Stride of the convolution. Default is 1.
-        padding : int, optional
-            Padding added to all sides of the input. Default is 1.
-        padding_mode : {'zeros', 'replicate', 'reflect'}, optional
-            Padding mode for the convolution. Default is 'zeros'.
-        normalization : str, nn.Module, or None, optional
-            Normalization type. Default is 'batch'.
-        activation : str, nn.Module, or None, optional
-            Activation type. Default is 'relu'.
-        pool_mode : str, optional
-            Pooling mode ('max' or 'avg'). Default is 'max'.
-        pool_kernel_size : int, optional
-            Kernel size for pooling. Default is 2.
-        order : str, optional
-            The order of operations in the block. Default is 'nca' (normalization -> convolution ->
-            activation). Each character in the string can be specified an arbitrary number of times
-            in any order. Each character in the string represents one of the following:
+        kernel_size : int, default=3
+            Size of the convolving kernel.
+        stride : int, default=1
+            Stride of the convolution.
+        padding : int, default=1
+            Padding added to all sides of the input.
+        padding_mode : {'zeros', 'replicate', 'reflect'}, default='zeros'
+            Padding mode for the convolution.
+        normalization : str, nn.Module, or None, default=None
+            Normalization type.
+        activation : str, nn.Module, or None, default='relu'
+            Activation type.
+        pool_mode : str, default='max'
+            Pooling mode ('max' or 'avg').
+        pool_kernel_size : int, default=2
+            Kernel size for pooling.
+        order : str, default='nca'
+            The order of operations in the block (normalization -> convolution -> activation).
+            Each character in the string can be specified an arbitrary number of times in any order.
+            Each character in the string represents one of the following:
             - `'c'`: Convolution
             - `'n'`: Normalization
             - `'a'`: Activation
-        return_skip : bool
+        return_skip : bool, default=False
             If True, return skip connection features from the forward pass for use in UNet-style
-            architectures. Default is False.
+            architectures.
         """
         super().__init__()
         self.return_skip = return_skip
@@ -661,7 +651,7 @@ class DownsampleConvBlock(nn.Module):
 
         self.pool = Pool(ndim=ndim, pool_mode=pool_mode, kernel_size=pool_kernel_size)
 
-    def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
+    def forward(self, input_tensor: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
         """
         Forward pass of the downsampling convolution.
 
@@ -729,36 +719,42 @@ class UpsampleConvBlock(nn.Module):
             Number of input channels.
         out_channels : int
             Number of output channels.
-        kernel_size : int, optional
-            Size of the convolving kernel. Default is 3.
-        stride : int, optional
-            Stride of the convolution. Default is 1.
-        padding : int, optional
-            Padding added to all sides of the input. Default is 1.
-        upsample_kernel_size : int, optional
-            Kernel size for the transposed convolution. Default is 4.
-        upsample_stride : int, optional
-            Stride for the transposed convolution. Default is 2.
-        upsample_padding : int, optional
-            Padding for the transposed convolution. Default is 1.
-        normalization : str, nn.Module, or None, optional
-            Normalization type. Default is 'batch'.
-        activation : str, nn.Module, or None, optional
-            Activation type. Default is 'relu'.
-        order : str, optional
-            The order of operations in the block. Default is 'nca' (normalization -> convolution ->
-            activation). Each character in the string can be specified an arbitrary number of times
-            in any order. Each character in the string represents one of the following:
+        kernel_size : int, default=3
+            Size of the convolving kernel.
+        stride : int, default=1
+            Stride of the convolution.
+        padding : int, default=1
+            Padding added to all sides of the input.
+        padding_mode : {'zeros', 'replicate', 'reflect'}, default='zeros'
+            Padding mode for the convolution.
+        upsample_mode : {'linear', 'transposed', 'nearest'}, default='linear'
+            Upsampling mode.
+        upsample_kernel_size : int, default=4
+            Kernel size for the transposed convolution.
+        upsample_stride : int, default=2
+            Stride for the transposed convolution.
+        upsample_padding : int, default=1
+            Padding for the transposed convolution.
+        scale_factor : int, default=2
+            Scale factor for upsampling.
+        normalization : str, nn.Module, or None, default=None
+            Normalization type.
+        activation : str, nn.Module, or None, default='relu'
+            Activation type.
+        order : str, default='nca'
+            The order of operations in the block (normalization -> convolution -> activation).
+            Each character in the string can be specified an arbitrary number of times in any order.
+            Each character in the string represents one of the following:
             - `'c'`: Convolution
             - `'n'`: Normalization
             - `'a'`: Activation
-        accepts_skip : bool
+        accepts_skip : bool, default=True
             If True, the block is configured to accept skip connections (UNet-style). This allows
-            the block to concatenate skip features with the main input. Default is True.
-        skip_channels : int or None, optional
+            the block to concatenate skip features with the main input.
+        skip_channels : int or None, default=None
             Number of channels in the skip connection. If provided and accepts_skip=True,
             the actual concatenated input will be in_channels + skip_channels. If None and
-            accepts_skip=True, defaults to in_channels (symmetric assumption). Default is None.
+            accepts_skip=True, defaults to in_channels (symmetric assumption).
         """
 
         super().__init__()
@@ -804,7 +800,11 @@ class UpsampleConvBlock(nn.Module):
             padding_mode=padding_mode,
         )
 
-    def forward(self, input_tensor: torch.Tensor, skip: torch.Tensor = None) -> torch.Tensor:
+    def forward(
+        self,
+        input_tensor: torch.Tensor,
+        skip: Union[torch.Tensor, None] = None
+    ) -> torch.Tensor:
         """
         Forward pass of the upsampling convolutional block.
 
@@ -821,7 +821,6 @@ class UpsampleConvBlock(nn.Module):
             Upsampled tensor after applying upsampling operation and conv blocks.
         """
         if isinstance(skip, torch.Tensor):
-
             features = self.upsample(input_tensor)
             features = torch.cat([features, skip], dim=1)
 
@@ -1010,16 +1009,15 @@ class Resize(nn.Module):
 
         Parameters
         ----------
-        size : int or Tuple[int, int], optional
+        size : int, Tuple[int, int], or None, default=None
             The desired output size. If None, uses `scale_factor`.
-        scale_factor : float or Tuple[float, float], optional
+        scale_factor : float, Tuple[float, float], or None, default=None
             Scaling factor for resizing. If None, uses `size`.
-        mode : str, optional
-            Interpolation mode for upsampling. Options include 'nearest', 'linear',
-            'bicubic', 'area', and 'nearest-exact'. Default is 'linear'.
-        align_corners : bool, optional
+        mode : {'linear', 'nearest', 'bicubic', 'area', 'nearest-exact'}, default='linear'
+            Interpolation mode for upsampling.
+        align_corners : bool or None, default=None
             Alignment for "linear", "bilinear", or "trilinear" modes.
-        recompute_scale_factor : bool, optional
+        recompute_scale_factor : bool or None, default=None
             If True, recomputes the scale factor for interpolation.
         antialias : bool, default=False
             Applies anti-aliasing if `scale_factor` < 1.0.
@@ -1116,17 +1114,16 @@ class SoftQuantize(nn.Module):
 
         Parameters
         ----------
-        nb_bins : int, optional
-            The number of discrete bins to softly quantize the input values into. By default 16
-        softness : float or int, optional
+        nb_bins : int, default=16
+            The number of discrete bins to softly quantize the input values into.
+        softness : float or int, default=1.0
             The softness factor for quantization. A higher value gives smoother quantization.
-            By default 1.0
-        min_clip : float or int, optional
-            Clip data lower than this value before calculating bin centers. By default -float('inf')
-        max_clip : float or int, optional
-            Clip data higher than this value before calculating bin centers. By default float('inf')
-        return_log : bool, optional
-            Optionally return the log of the softly quantized tensor. By default False
+        min_clip : float or int, default=-inf
+            Clip data lower than this value before calculating bin centers.
+        max_clip : float or int, default=inf
+            Clip data higher than this value before calculating bin centers.
+        return_log : bool, default=False
+            Optionally return the log of the softly quantized tensor.
 
         Examples
         --------
@@ -1215,10 +1212,10 @@ class GaussianBlur(nn.Module):
 
         Parameters
         ----------
-        kernel_size : int, optional
-            Size of the Gaussian kernel, default is 3.
-        sigma : float or int, optional
-            Standard deviation of the Gaussian kernel, default is 1.
+        kernel_size : int, default=3
+            Size of the Gaussian kernel.
+        sigma : float or int, default=1
+            Standard deviation of the Gaussian kernel.
         """
         super().__init__()
         self.kernel_size = kernel_size
@@ -1255,30 +1252,30 @@ class GaussianAntialiasing(nn.Module):
     """
     def __init__(
         self,
-        stride: Union[int, List[int]] = 2,
-        kernel_size: Union[int, List[int], None] = None,
-        sigma: Union[float, int, List[float], List[int], None] = None,
-        subsampling_dimension: Union[List[int], int, None] = None
+        stride: Union[int, Sequence[int]] = 2,
+        kernel_size: Union[int, Sequence[int], None] = None,
+        sigma: Union[float, int, Sequence[float], Sequence[int], None] = None,
+        subsampling_dimension: Union[Sequence[int], int, None] = None
     ):
         """
         Initialize `GaussianAntialiasing`.
 
         Parameters
         ----------
-        stride : int or List[int], optional
+        stride : int or Sequence[int], default=2
             Downsampling stride. If int, the same stride is applied to all spatial dimensions.
-            If List[int], different strides can be specified per dimension. Default is 2.
-        kernel_size : int or List[int], optional
+            If Sequence[int], different strides can be specified per dimension.
+        kernel_size : int, Sequence[int], or None, default=None
             Size of the Gaussian kernel for antialiasing. If int, same size is used for all
-            dimensions. If List[int], different sizes can be specified per dimension.
-            If None, automatically computed as 2 * stride + 1 per dimension. Default is None.
-        sigma : float, int, List[float], or List[int], optional
+            dimensions. If Sequence[int], different sizes can be specified per dimension.
+            If None, automatically computed as 2 * stride + 1 per dimension.
+        sigma : float, int, Sequence[float], Sequence[int], or None, default=None
             Standard deviation of the Gaussian kernel. If float/int, same sigma is used for
-            all dimensions. If List, different sigmas can be specified per dimension.
-            If None, automatically computed as stride / 2 per dimension. Default is None.
-        subsampling_dimension : List[int], int, or None, optional
+            all dimensions. If Sequence, different sigmas can be specified per dimension.
+            If None, automatically computed as stride / 2 per dimension.
+        subsampling_dimension : Sequence[int], int, or None, default=None
             Dimensions to apply antialiasing and subsampling. If None, applies to all
-            spatial dimensions. Default is None.
+            spatial dimensions.
 
         Examples
         --------
@@ -1347,29 +1344,26 @@ class Resample(nn.Module):
 
     def __init__(
         self,
-        resample_dimension: Union[int, List[int]] = None,
-        downsample_stride: Union[int, List[int]] = 2,
-        upsample_scale_factor: Union[int, List[int]] = 2,
+        resample_dimension: Union[int, Sequence[int], None] = None,
+        downsample_stride: Union[int, Sequence[int]] = 2,
+        upsample_scale_factor: Union[int, Sequence[int]] = 2,
         mode: Literal['linear', 'nearest', 'bicubic', 'area', 'nearest-exact'] = 'linear',
-        shape: tuple = None,
+        shape: Union[tuple, None] = None,
     ):
         """
         Initialize `Resample`.
 
         Parameters
         ----------
-        resample_dimension : int or list of ints, optional
+        resample_dimension : int, Sequence[int], or None, default=None
             The dimension(s) that should be resampled. If None, all dimensions are resampled.
-            Default is None.
-            dimensions.
-        downsample_stride : int or list of ints, optional
-            Factor by which to subsample. Default is 2.
-        upsample_scale_factor : int, float or list of ints or floats, optional
-            Factor by which to upsample. Default is 2.
-        mode : str, optional
-            Interpolation mode for upsampling. Options include 'nearest', 'linear',
-            'bicubic', 'area', and 'nearest-exact'. Default is 'linear'.
-        shape : tuple
+        downsample_stride : int or Sequence[int], default=2
+            Factor by which to subsample.
+        upsample_scale_factor : int or Sequence[int], default=2
+            Factor by which to upsample.
+        mode : {'linear', 'nearest', 'bicubic', 'area', 'nearest-exact'}, default='linear'
+            Interpolation mode for upsampling.
+        shape : tuple or None, default=None
             Spatial dimensions (without batch or channel dims) to upsample the subsampled tensor
             into.
 
@@ -1438,7 +1432,7 @@ class RandomCrop(nn.Module):
         self,
         crop_proportion: Union[float, int] = 0.5,
         prob: Union[float, int] = 1,
-        forbidden_dims: Union[Tuple, List] = (0, 1),
+        forbidden_dims: Union[Tuple, Sequence] = (0, 1),
         seed: Union[int, None] = None,
     ):
         """
@@ -1446,20 +1440,19 @@ class RandomCrop(nn.Module):
 
         Parameters
         ----------
-        crop_proportion : float, optional
-            The proportion that is randomly cropped from any allowed dimension. By default 0.5.
+        crop_proportion : float or int, default=0.5
+            The proportion that is randomly cropped from any allowed dimension.
             Represents the maximum proportion (0 to 1) to crop, sampled from independent uniform
             distributions for each allowed dimension. A value of `0.5` means up to 50% of each
             dimension can be cropped.
-        prob : float, optional
-            The probability of cropping each allowed dimension. By default 1.0.
+        prob : float or int, default=1
+            The probability of cropping each allowed dimension.
             Used as a fixed probability for all eligible dimensions.
-        forbidden_dims : Union[Tuple[int, ...], List[int]], optional
-            Dimensions that should never be cropped. By default `(0, 1)` (batch and channel
-            dimensions)
-        seed : int, optional
+        forbidden_dims : Tuple or Sequence, default=(0, 1)
+            Dimensions that should never be cropped (batch and channel dimensions).
+        seed : int or None, default=None
             A random seed to control the randomness of cropping operations. If provided,
-            it ensures reproducibility of the cropping. Defaults to `None`.
+            it ensures reproducibility of the cropping.
         """
         super().__init__()
         self.crop_proportion = crop_proportion
@@ -1508,16 +1501,14 @@ class RandomClip(nn.Module):
 
         Parameters
         ----------
-        clip_min : float or int, optional
+        clip_min : float or int, default=0
             The lower bound for clipping. Elements less than `clip_min` are set to `clip_min`.
-            Defaults to 0.
-        clip_max : float or int, optional
+        clip_max : float or int, default=1
             The upper bound for clipping. Elements greater than `clip_max` are set to `clip_max`.
-            Defaults to 1.
-        clip_prob : float or int, optional
-            Probability of applying this operation. Defaults to 0.5.
-        seed : int, optional
-            Seed for random number generation to ensure reproducibility. Defaults to None.
+        clip_prob : float or int, default=0.5
+            Probability of applying this operation.
+        seed : int or None, default=None
+            Seed for random number generation to ensure reproducibility.
 
         Examples
         --------
@@ -1577,15 +1568,15 @@ class RandomGamma(nn.Module):
 
         Parameters
         ----------
-        gamma : float or int, optional
+        gamma : float or int, default=1
             The gamma value to apply for the scaling operation. Represents a fixed gamma value.
-            By default `1.0`, which leaves the tensor unchanged.
-        prob : float, optional
+            A value of `1.0` leaves the tensor unchanged.
+        prob : float or int, default=1
             The probability of applying the gamma operation. Used as a fixed probability for
-            the operation. Default is `1.0` (always apply).
-        seed : int, optional
+            the operation (always apply by default).
+        seed : int or None, default=None
             A random seed to control the randomness of the gamma scaling operation. If
-            provided, it ensures reproducibility of the operation. Defaults to `None`.
+            provided, it ensures reproducibility of the operation.
 
         Examples
         --------
@@ -1695,15 +1686,15 @@ class RandomClearLabel(nn.Module):
 
         Parameters
         ----------
-        prob : float, optional
+        prob : float or int, default=0.5
             Probability of any label/region being selected for erasure as determined by iid
-            Bernoulli trials, by default 0.5.
-        exclude_zero : bool, optional
-            Optionally exclude zero (uaually background) from the list of potential regions to clear
-            (never clear zero labels), by default True.
-        seed : int, optional
+            Bernoulli trials.
+        exclude_zero : bool, default=True
+            Optionally exclude zero (usually background) from the list of potential regions to clear
+            (never clear zero labels).
+        seed : int or None, default=None
             A random seed to control the randomness of label clearing operations. If
-            provided, it ensures reproducibility of the clearing process. By default, None.
+            provided, it ensures reproducibility of the clearing process.
         """
         super().__init__()
         self.prob = prob
