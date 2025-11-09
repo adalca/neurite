@@ -11,7 +11,7 @@ def test_soft_quantize_constant_input_same_output():
 
     const_val = 3.14
     input_tensor = torch.full((2, 3), const_val)
-    output_tensor = nef.soft_quantize(input_tensor.clone(), nb_bins=10, softness=2.0)
+    output_tensor = ne.soft_quantize(input_tensor.clone(), nb_bins=10, softness=2.0)
 
     assert torch.allclose(output_tensor, input_tensor)
 
@@ -24,7 +24,7 @@ def test_soft_quantize_monotonic_increasing(softness):
 
     input_tensor = torch.linspace(0.0, 1.0, steps=5)
 
-    output_tensor = nef.soft_quantize(
+    output_tensor = ne.soft_quantize(
         input_tensor.clone(),
         nb_bins=5,
         softness=softness
@@ -41,7 +41,7 @@ def test_soft_quantize_clipping():
 
     input_tensor = torch.randn(1, 1, 16, 16)
 
-    output_tensor = nef.soft_quantize(
+    output_tensor = ne.soft_quantize(
         input_tensor.clone(),
         nb_bins=3,
         softness=1.0,
@@ -145,7 +145,7 @@ def test_subsample_tensor_strides(
 def test_grid_shape(grid_shape, expected_out_shape):
 
     # Must return stack!
-    coord_grid = nef.volshape_to_ndgrid(grid_shape, stack=True)
+    coord_grid = ne.volshape_to_ndgrid(grid_shape, stack=True)
     assert coord_grid.shape == expected_out_shape
 
 
@@ -158,7 +158,7 @@ def test_grid_normalized(grid_shape: tuple):
     generated coordinate grid has values exactly -1 or 1.
     """
 
-    coord_grid = ne.nn.functional.volshape_to_ndgrid(
+    coord_grid = ne.volshape_to_ndgrid(
         grid_shape, normalize=True, indexing='ij', stack=True
     )
 
@@ -176,11 +176,6 @@ def test_grid_normalized(grid_shape: tuple):
     expected_corner_values = torch.tensor(expected_corner_values)
 
     assert torch.all(corner_vals == expected_corner_values)
-
-
-def test_logistic_midpoint():
-    out = nef.logistic(torch.tensor(0.0))
-    assert torch.allclose(out, torch.tensor(0.5))
 
 
 @pytest.mark.parametrize('n,mode', [

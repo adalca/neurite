@@ -310,7 +310,7 @@ def apply_bernoulli_mask(
     print((masked_shape/original_shape))
     ```
     """
-    return ne.functional.apply_bernoulli_mask(input_tensor, p=p, returns=returns)
+    return ne.apply_bernoulli_mask(input_tensor, p=p, returns=returns)
 
 
 def subsample(
@@ -355,7 +355,7 @@ def subsample(
     >>> print(subsampled.shape)
     torch.Size([2, 3, 16, 16])
     """
-    return ne.functional.subsample(
+    return ne.subsample(
         input_tensor=input_tensor,
         stride=stride,
         subsampling_dimension=subsampling_dimension,
@@ -495,7 +495,7 @@ def upsample(
     >>> print(upsampled_tensor.shape)
     torch.Size([1, 3, 64, 64, 64])
     """
-    return ne.functional.upsample(
+    return ne.upsample(
         input_tensor=input_tensor,
         scale_factor=scale_factor,
         size=shape,
@@ -622,7 +622,7 @@ def random_clear_label(
     >>> print(torch.equal(cleared_tensor1, cleared_tensor2))
     True
     """
-    return ne.functional.random_clear_label(
+    return ne.random_clear_label(
         input_tensor, label_tensor, prob=prob, exclude_zero=exclude_zero, seed=seed
     )
 
@@ -664,7 +664,7 @@ def sample_image_from_labels(
     torch.Tensor
         A tensor of sampled image intensities with the same shape as `label_tensor`.
     """
-    return ne.functional.sample_image_from_labels(
+    return ne.sample_image_from_labels(
         label_tensor, mean_sampler=mean_sampler, noise_sampler=noise_sampler,
         noise_variance=noise_variance
     )
@@ -791,7 +791,7 @@ def volshape_to_ndgrid(
     spatial_size = size[2:]
 
     # Get base grid (shape-agnostic)
-    grid = ne.functional.volshape_to_ndgrid(
+    grid = ne.volshape_to_ndgrid(
         size=spatial_size,
         device=device,
         dtype=dtype,
@@ -964,7 +964,7 @@ def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> tor
     >>> filtered.shape
     torch.Size([2, 2])
     """
-    return ne.functional.filter_dim(tensor, dim=dim, verbose=verbose)
+    return ne.filter_dim(tensor, dim=dim, verbose=verbose)
 
 
 def crop_to_nearest_multiple(tensor, multiple=128):
@@ -1076,7 +1076,7 @@ def mse(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
     >>> print(mse_value.shape)
     torch.Size([])
     """
-    return ne.functional.mse(tensor1, tensor2)
+    return ne.mse(tensor1, tensor2)
 
 
 def dice(
@@ -1131,7 +1131,7 @@ def dice(
     torch.Size([1, 1])
     """
     # Compute Dice using base implementation with (B, C) preserved
-    dice_score = ne.functional.dice(
+    dice_score = ne.dice(
         *segs,
         smooth_numerator=smooth_numerator,
         smooth_denominator=smooth_denominator,
@@ -1265,7 +1265,7 @@ def reduce(
     >>> reduce(input_tensor, reduction='amax', dim=(1, 2, 3))
     tensor([4.6618, 3.9218, 4.1831])
     """
-    return ne.functional.reduce(tensor, reduction=reduction, dim=dim, keepdims=keepdims)
+    return ne.reduce(tensor, reduction=reduction, dim=dim, keepdims=keepdims)
 
 
 def infer_linear_interpolation_mode(
@@ -1476,7 +1476,7 @@ def random_flip(dim: int, *args, prob: float = 0.5):
     >>> x = torch.randn(1, 1, 4, 4)
     >>> flipped = random_flip(dim=3, x, prob=1.0)  # dim=3 is width
     """
-    return ne.functional.random_flip(dim, *args, prob=prob)
+    return ne.random_flip(dim, *args, prob=prob)
 
 
 def resize(

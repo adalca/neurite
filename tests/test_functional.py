@@ -227,7 +227,7 @@ def test_sample_image_from_labels_deterministic():
 
 def test_volshape_to_ndgrid_sizes():
     size = (19, 32)
-    the_grid = ne.functional.volshape_to_ndgrid(size=size, stack=True)
+    the_grid = ne.volshape_to_ndgrid(size=size, stack=True)
     assert tuple(the_grid.shape) == (19, 32, 2)
 
 
