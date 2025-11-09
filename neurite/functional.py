@@ -573,7 +573,7 @@ def random_clear_label(
         Optionally exclude zero (uaually background) from the list of potential regions to clear
         (never clear zero labels), by default True.
     seed : int, optional
-        A random seed or sampler to control the randomness of label clearing operations. If
+        A random seed to control the randomness of label clearing operations. If
         provided, it ensures reproducibility of the clearing process. By default, None.
 
     Returns

@@ -550,7 +550,7 @@ def random_clear_label(
         Optionally exclude zero (usually background) from the list of potential regions to clear
         (never clear zero labels).
     seed : int, default=None
-        A random seed or sampler to control the randomness of label clearing operations. If
+        A random seed to control the randomness of label clearing operations. If
         provided, it ensures reproducibility of the clearing process.
 
     Returns
@@ -1138,8 +1138,8 @@ def log_dice(
     Examples
     --------
     >>> # Computing log_dice of random tensors
-    >>> seg1 = ne.samplers.RandInt(0, 1)((1, 1, 32, 32))
-    >>> seg2 = ne.samplers.RandInt(0, 1)((1, 1, 32, 32))
+    >>> seg1 = torch.randint(0, 2, (1, 1, 32, 32))
+    >>> seg2 = torch.randint(0, 2, (1, 1, 32, 32))
     >>> log_dice = ne.utils.log_dice(seg1, seg2)
     >>> # Expecting log(0.5) ~= -0.69314
     >>> log_dice
