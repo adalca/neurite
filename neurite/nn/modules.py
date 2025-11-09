@@ -99,7 +99,6 @@ class Dice(nn.Module):
         """
         super().__init__()
 
-        # Store attributes
         self.smooth_numerator = smooth_numerator
         self.smooth_denominator = smooth_denominator
         self.reduction = reduction
@@ -364,7 +363,6 @@ class ConvBlock(nn.Sequential):
 
         super().__init__()
 
-        # Assign required instance attributes
         self.ndim = ndim
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -373,7 +371,7 @@ class ConvBlock(nn.Sequential):
         self.order = list(order)
         valid_operations = ['c', 'n', 'a']
 
-        # Get the number of activations to validate `activation` argument
+        # Count activations to validate that activation list matches order specification
         n_activations = order.count('a')
 
         if not isinstance(activation, (list, tuple)):
@@ -390,14 +388,11 @@ class ConvBlock(nn.Sequential):
         if ndim not in ConvBlock.conv_dim_map:
             raise ValueError(f"Unsupported ndim={ndim}. Must be 1, 2, or 3.")
 
-        # Dynamically retreive the appropriate `Conv*` class
         conv_cls_name = f"Conv{ConvBlock.conv_dim_map[ndim]}"
         conv_cls = getattr(nn, conv_cls_name)
 
-        # Initialize trackers for the order in the conv
         conv_id, norm_id, act_id = 0, 0, 0
 
-        # Collect layers in the appropriate order
         for operation in self.order:
 
             if operation == 'c':
@@ -406,10 +401,9 @@ class ConvBlock(nn.Sequential):
                     padding, dilation, groups, bias, padding_mode=padding_mode
                 )
 
-                in_channels = out_channels  # All future convs and stuff will have this many in
+                in_channels = out_channels  # Subsequent convs have this many
                 conv_id += 1
 
-            # Dynamically construct the normalization and assign it to a named key in layers
             elif operation == 'n' and normalization is not None:
                 layers[f'normalization{norm_id}'] = ne.utils.utils.build_normalization(
                     normalization_type=normalization,
@@ -418,7 +412,6 @@ class ConvBlock(nn.Sequential):
                 )
                 norm_id += 1
 
-            # Construct the activation and assign it to a named key in layers
             elif operation == 'a' and activation is not None:
                 layers[f'activation{act_id}'] = Activation(activation[act_id])
                 act_id += 1
@@ -791,13 +784,11 @@ class UpsampleConvBlock(nn.Module):
                 align_corners=align
             )
 
-        # Add skip connection channels to input if skip connections are accepted
         if accepts_skip:
             if skip_channels is not None:
-                # Use explicit skip channel count for asymmetric architectures
                 in_channels += skip_channels
             else:
-                # Fall back to doubling for symmetric architectures (backward compatibility)
+                # Backward compatibility when assumimg symmetric architecture
                 in_channels += in_channels
 
         self.conv_block = ConvBlock(
@@ -1091,7 +1082,7 @@ class Resize(nn.Module):
         resized_tensor = F.interpolate(
             input=input_tensor,
             size=self.size,
-            scale_factor=self.scale_factor(),
+            scale_factor=self.scale_factor,
             mode=self.mode,
             align_corners=self.align_corners,
             recompute_scale_factor=self.recompute_scale_factor,
