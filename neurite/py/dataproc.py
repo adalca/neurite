@@ -21,16 +21,6 @@ import matplotlib.pyplot as plt
 import pystrum.pynd.ndutils as nd
 
 
-__all__ = [
-    "proc_mgh_vols",
-    "scans_to_slices",
-    "vol_proc",
-    "prior_to_weights",
-    "filestruct_change",
-    "ml_split",
-]
-
-
 def proc_mgh_vols(inpath,
                   outpath,
                   ext='.mgz',

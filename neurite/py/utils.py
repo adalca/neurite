@@ -7,16 +7,6 @@ import numpy as np
 import matplotlib
 
 
-__all__ = [
-    "softmax",
-    "rebase_lab",
-    "load_fs_lut",
-    "seg_to_rgb_fs_lut",
-    "fs_lut_to_cmap",
-    "normalize_axes",
-]
-
-
 def softmax(x, axis):
     """
     softmax of a numpy array along a given dimension
