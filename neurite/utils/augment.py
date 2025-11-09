@@ -27,23 +27,18 @@ the License.
 """
 
 # Standard library imports
-from __future__ import annotations
 from typing import Union, Tuple, List
 
 # Third party imports
 import torch
 
-# Custom imports
-import neurite as ne
-from neurite.samplers import Sampler
-
 
 def random_crop(
     input_tensor: torch.Tensor,
-    crop_proportion: Union[Sampler, float] = 0.5,
-    prob: Union[Sampler, float] = 1,
+    crop_proportion: Union[float, int] = 0.5,
+    prob: Union[float, int] = 1,
     forbidden_dims: Union[Tuple, List] = (0, 1),
-    seed: Union[Sampler, int] = None,
+    seed: Union[int, None] = None,
 ):
     """
     Apply random crops ~iid Ber() to the input tensor along the specified dimensions.
@@ -56,21 +51,17 @@ def random_crop(
     ----------
     input_tensor : torch.Tensor
         The tensor to be randomly cropped. It is assumed to have batch and channel dimensions.
-    crop_proportion : Union[Sampler, float], optional
-        The proportion that is randomly cropped from any allowed dimension. By default 0.5
-        - If a `float` is provided, it represents the maximum proportion (0 to 1) to crop,
-        sampled from independent uniform distributinos for each allowed dimension. A value of `0.5`
-        means up to 50% of each dimension can be cropped.
-        - If a `Sampler` is provided, cropped proportions are dynamically sampled based on the
-        specified distribution
-    prob : Union[Sampler, float], optional
-        The probability of cropping each allowed dimension. By default 1.0
-        - If a `float` is provided, it's used as a fixed probability for all eligible dimensions.
-        - If a `Sampler` is provided, probabilities are dynamically generated for each dimension.
+    crop_proportion : float or int, optional
+        The maximum proportion (0 to 1) to crop, sampled from independent uniform distributions
+        for each allowed dimension. A value of `0.5` means up to 50% of each dimension can be
+        cropped. By default 0.5.
+    prob : float or int, optional
+        The probability of cropping each allowed dimension. Used as a fixed probability for all
+        eligible dimensions. By default 1.0.
     forbidden_dims : Union[Tuple[int, ...], List[int]], optional
-        Dimensions that should never be cropped. By defult `(0, 1)` (batch and channel dimensions)
-    seed : Union[Sampler, int], optional
-        A random seed or sampler to control the randomness of cropping operations. If provided, it
+        Dimensions that should never be cropped. By default `(0, 1)` (batch and channel dimensions)
+    seed : int, optional
+        A random seed to control the randomness of cropping operations. If provided, it
         ensures reproducibility of the cropping. Defaults to `None`.
 
     Returns
@@ -87,38 +78,19 @@ def random_crop(
     >>> print(cropped_tensor.shape)
     torch.Size([2, 3, 51, 51])
 
-    >>> # Cropping between 25% to 75% of each dimension
-    >>> cropped_tensor = random_crop(tensor, crop_proportion=Uniform(0.25, 0.75))
-    >>> print(cropped_tensor.shape)
-    torch.Size([2, 3, 45, 45])
-
     >>> # Specifying forbidden dimensions (e.g., not cropping the last dimension)
     >>> cropped_tensor = random_crop(tensor, forbidden_dims=[0, 1, 3])
     >>> print(cropped_tensor.shape)
     torch.Size([2, 3, 64, 32])
     """
 
-    # Initialize random seed if provided
     if seed is not None:
         torch.manual_seed(seed)
 
     # Calculate the list of allowable dimensions
     allowed_dims = [x for x in range(input_tensor.dim()) if x not in forbidden_dims]
 
-    # If `crop_proportion` is float, interpret it as upper bound of uniform distribution.
-    crop_sampler = ne.samplers.make_sampler(
-        ne.samplers.Uniform,
-        ne.utils.utils.range_endpoints(0, crop_proportion)
-    )
-
-    # If prob is a sampler, sample from it
-    if isinstance(prob, Sampler):
-        prob = prob()
-
-    # Make prob into a Bernoulli distribution
-    prob = ne.samplers.make_sampler(ne.samplers.Bernoulli, prob)
-
-    # Make empty list of slices which we will modufy
+    # Make empty list of slices which we will modify
     slices = [slice(None)] * input_tensor.dim()
 
     # I think `translation_min` will always be zero. Keep it as such.
@@ -127,24 +99,20 @@ def random_crop(
     # Iterate through each dimension and make croppings for them independently.
     for dim in allowed_dims:
 
-        # Decide if we are to crop the current dimension
-        if bool(prob()):
+        # Decide if we are to crop the current dimension (Bernoulli trial)
+        if torch.rand(1).item() < prob:
 
-            # Determine the size of this dimension
             dim_size = input_tensor.shape[dim]
+            sampled_proportion = torch.rand(1).item() * crop_proportion
+            crop_size = round((1 - sampled_proportion) * dim_size)
 
-            # Sample a random proportion of the dimension to crop and convert it to a point along
-            # the axis.
-            crop_size = round((1 - crop_sampler()) * dim_size)
-
-            # Calculate the maximum translation to avoid going out of bounds.
             translation_max = dim_size - crop_size
 
             # Prevent errors in the case of no translation
             if translation_min != translation_max:
 
                 # Sample a valid translation (can't be out of bounds!)
-                translation = ne.samplers.RandInt(translation_min, translation_max)()
+                translation = torch.randint(translation_min, translation_max + 1, (1,)).item()
 
             else:
 
@@ -158,10 +126,10 @@ def random_crop(
 
 def random_clip(
     input_tensor: torch.Tensor,
-    clip_min: Union[float, int, Sampler] = 0,
-    clip_max: Union[float, int, Sampler] = 1,
-    clip_prob: Union[float, int, Sampler] = 0.5,
-    seed: Union[int, Sampler] = None,
+    clip_min: Union[float, int] = 0,
+    clip_max: Union[float, int] = 1,
+    clip_prob: Union[float, int] = 0.5,
+    seed: Union[int, None] = None,
 ) -> torch.Tensor:
     """
     Randomly clip values in a tensor to a specified range with a given probability.
@@ -170,17 +138,14 @@ def random_clip(
     ----------
     input_tensor : torch.Tensor
         The input tensor whose values may be clipped.
-    clip_min : Union[float, int, Sampler], optional
-        The minimum value for clipping. If a `Sampler` is provided, it is sampled dynamically.
-        By default, 0.
-    clip_max : Union[float, int, Sampler], optional
-        The maximum value for clipping. If a `Sampler` is provided, it is sampled dynamically.
-        By default, 1.
-    clip_prob : Union[float, int, Sampler], optional
-        The probability of applying the clipping operation. If a `Sampler` is provided, it is
-        sampled dynamically. By default, 0.5.
-    seed : Union[int, Sampler], optional
-        A seed value or a sampler for reproducibility. Default is None.
+    clip_min : float or int, optional
+        The minimum value for clipping. By default, 0.
+    clip_max : float or int, optional
+        The maximum value for clipping. By default, 1.
+    clip_prob : float, optional
+        The probability of applying the clipping operation. By default, 0.5.
+    seed : int, optional
+        A seed value for reproducibility. Default is None.
 
     Returns
     -------
@@ -196,17 +161,6 @@ def random_clip(
     >>> print(clipped_tensor)
     tensor([1.0, 0.0, 1.0])
 
-    ### Dynamic range clipping
-    >>> from my_samplers import UniformSampler
-    >>> input_tensor = torch.tensor([1.5, -0.5, 3.0])
-    >>> clipped_tensor = random_clip(
-                            input_tensor,
-                            clip_min=UniformSampler(0, 0.5), 
-                            clip_max=UniformSampler(1.5, 2.0)
-                        )
-    >>> print(clipped_tensor)
-    tensor([1.5000, 0.1732, 1.6281])
-
     ### Reproducibility with a seed
     >>> input_tensor = torch.tensor([1.5, -0.5, 3.0])
     >>> clipped_tensor1 = random_clip(input_tensor, clip_min=0, clip_max=1, seed=42)
@@ -214,37 +168,23 @@ def random_clip(
     >>> print(clipped_tensor1 is clipped_tensor2)
     True
     """
-    # If prob is a sampler, sample from it
-    if isinstance(clip_prob, Sampler):
-        clip_prob = clip_prob()
-
-    # Make prob into a Bernoulli distribution
-    clip_prob = ne.samplers.make_sampler(ne.samplers.Bernoulli, clip_prob)
+    # Initialize random seed if provided
+    if seed is not None:
+        torch.manual_seed(seed)
 
     # Sample Bernoulli trial to determine whether to clip
-    if bool(clip_prob()):
-
-        # Initialize random seed if provided
-        if seed is not None:
-            torch.manual_seed(seed)
-
-        # If `clip_min` is float, interpret it as a fixed minimum for clipping (clipping floor).
-        clip_min = ne.samplers.make_sampler(ne.samplers.Fixed, clip_min)
-
-        # If `clip_max` is float, interpret it as a fixed maximum for clipping (clipping ceiling).
-        clip_max = ne.samplers.make_sampler(ne.samplers.Fixed, clip_min)
-
-        # Sample and apply clips
-        return input_tensor.clip_(clip_min(), clip_max())
+    if torch.rand(1).item() < clip_prob:
+        # Apply clips
+        return input_tensor.clip_(clip_min, clip_max)
     else:
         return input_tensor
 
 
 def random_gamma(
     input_tensor: torch.Tensor,
-    gamma: Union[Sampler, float] = 1.0,
-    prob: Union[Sampler, float] = 1.0,
-    seed: Union[Sampler, int] = None,
+    gamma: Union[float, int] = 1,
+    prob: Union[float, int] = 1,
+    seed: Union[int, None] = None,
 ) -> torch.Tensor:
     """
     Apply randomized nonlinear gamma scaling to the input tensor with a specified probability.
@@ -258,19 +198,14 @@ def random_gamma(
     input_tensor : torch.Tensor
         The tensor to which the gamma scaling operation will be applied. Assumed to have a range
         suitable for gamma correction (typically normalized between 0 and 1).
-    gamma : Union[float, Sampler], optional
-        The gamma value to apply for the scaling operation.
-        - If a `float` is provided, it represents a fixed gamma value.
-        - If a `Sampler` is provided, the gamma value is dynamically sampled based on the specified
-          distribution.
+    gamma : float or int, optional
+        The gamma value to apply for the scaling operation. Represents a fixed gamma value.
         By default `1.0`, which leaves the tensor unchanged.
-    prob : Union[float, Sampler], optional
-        The probability of applying the gamma scaling operation.
-        - If a `float` is provided, it's used as a fixed probability for the operation.
-        - If a `Sampler` is provided, probabilities are dynamically generated for each invocation.
-        By default `1.0` (always apply).
-    seed : Union[int, Sampler], optional
-        A random seed or sampler to control the randomness of the gamma operation. If provided,
+    prob : float or int, optional
+        The probability of applying the gamma scaling operation. Used as a fixed probability for
+        the operation. By default `1.0` (always apply).
+    seed : int, optional
+        A random seed to control the randomness of the gamma operation. If provided,
         it ensures reproducibility of the operation. Defaults to `None`.
 
     Returns
@@ -287,14 +222,6 @@ def random_gamma(
     >>> print(gamma_tensor)
     tensor([0.0625, 0.2500, 0.5625])
 
-    ### Randomized gamma scaling operation with a range of gamma values
-    >>> from neurite.torch.random import Uniform
-    >>> tensor = torch.tensor([0.25, 0.5, 0.75])
-    >>> gamma_sampler = Uniform(0.5, 1.5)
-    >>> gamma_tensor = random_gamma(tensor, gamma=gamma_sampler, prob=0.8)
-    >>> print(gamma_tensor)
-    tensor([0.1768, 0.5000, 0.8367])
-
     ### Applying gamma scaling operation with reproducibility
     >>> tensor = torch.tensor([0.25, 0.5, 0.75])
     >>> gamma_tensor1 = random_gamma(tensor, gamma=2.0, prob=1.0, seed=42)
@@ -306,19 +233,8 @@ def random_gamma(
     if seed is not None:
         torch.manual_seed(seed)
 
-    # If prob is a sampler, sample from it
-    if isinstance(prob, Sampler):
-        prob = prob()
-
-    # Make prob into a Bernoulli distribution
-    prob = ne.samplers.make_sampler(ne.samplers.Bernoulli, prob)
-
     # Sample Bernoulli trial to determine whether to apply gamma scaling operation
-    if bool(prob()):
-
-        # Sample gamma
-        gamma = ne.samplers.make_sampler(ne.samplers.Fixed, gamma)()
-
+    if torch.rand(1).item() < prob:
         # Apply nonlinear gamma scaling operation
         return input_tensor.pow(gamma)
     else:
