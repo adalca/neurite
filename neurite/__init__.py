@@ -73,7 +73,6 @@ from . import py        # Noqa: F401
 from . import nn
 from . import utils
 from . import samplers
-from . import functional
 from .functional import *
 
 # Importing submodules from `py` to top level. Not `utils` to avoid shadowing
