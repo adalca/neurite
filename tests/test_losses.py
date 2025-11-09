@@ -16,7 +16,7 @@ def test_base_dice():
     is_tensor = isinstance(dice_score, torch.Tensor)
     is_no_dim = dice_score.ndim == 0
     is_scalar = True is is_tensor & is_no_dim
-    assert is_scalar, f"ne.functional.dice() must return a scalar by default. Got: {dice_score}"
+    assert is_scalar, f"ne.dice() must return a scalar by default. Got: {dice_score}"
 
 
 @pytest.fixture
@@ -167,4 +167,3 @@ def test_dice_wrapper():
     assert torch.allclose(result, expected, atol=1e-6), (
         "Dice for identical inputs should be close to 1."
     )
-

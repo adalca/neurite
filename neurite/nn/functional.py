@@ -224,8 +224,6 @@ def apply_bernoulli_mask(
     """
     Apply a Bernoulli mask to a tensor in (B, C, *spatial) format.
 
-    Wrapper around `neurite.functional.apply_bernoulli_mask()` that handles (B, C, *spatial) format.
-
     Sample a Bernoulli mask with the parameter `p`, representing the probability of
     success (e.g. realizing a 1) and apply it to `input_tensor` via element-wise multiplcation. The
     The elements of `input_tensor` corresponding to successes in the mask are preserved, while
@@ -293,9 +291,6 @@ def subsample(
 ) -> torch.Tensor:
     """
     Subsamples `input_tensor` by a factor `stride` along the specified dimension.
-
-    Wrapper around `neurite.functional.subsample()` that assumes (B, C, *spatial).
-    The `subsampling_dimension` parameter references spatial dimensions (0-indexed).
 
     Parameters
     ----------
@@ -435,8 +430,6 @@ def upsample(
     """
     Upsample 1D, 2D, or 3D tensors to a given `shape`.
 
-    Wrapper around `neurite.functional.upsample()` that assumes (B, C, *spatial).
-
     Parameters
     ----------
     input_tensor : torch.Tensor
@@ -544,8 +537,6 @@ def random_clear_label(
     """
     Erase regions of an image from randomly selected regions in a label map.
 
-    Wrapper around `neurite.functional.random_clear_label()` that handles (B, C, *spatial) format.
-
     Identify unique labels within the `label_tensor` and, based on a specified probability,
     designate regions of the `input_tensor` to be erased (set to zero).
 
@@ -608,9 +599,6 @@ def sample_image_from_labels(
 ) -> torch.Tensor:
     """
     Generate an image from a label map by sampling a random intensity for each label.
-
-    Wrapper around `neurite.functional.sample_image_from_labels()` that handles tensors
-    with shape (B, C, *spatial).
 
     Identify all unique integer labels in `label_tensor` and assigns each a mean intensity in the
     corresponding output image (`sampled_image`). The mean intensity serves as the mean for a noise
@@ -723,9 +711,6 @@ def volshape_to_ndgrid(
 ) -> torch.Tensor:
     """
     Generate a grid of spatial coordinates with (B, C, *spatial) format.
-
-    Wrapper around `neurite.functional.volshape_to_ndgrid()` that handles full tensor shapes
-    including batch and channel dimensions.
 
     Parameters
     ----------
@@ -908,9 +893,6 @@ def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> tor
     """
     Filter slices of a tensor that contain NaNs, infinite values, or are entirely zero.
 
-    Wrapper around `neurite.functional.filter_dim()` that handles tensors
-    with shape (B, C, *spatial).
-
     Parameters
     ----------
     tensor : torch.Tensor
@@ -1024,8 +1006,6 @@ def mse(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
     """
     Calculate mean squared error (MSE) between two tensors.
 
-    Wrapper around `neurite.functional.mse()` that works on tensors with any shape.
-
     Parameters
     ----------
     tensor1 : torch.Tensor
@@ -1062,8 +1042,6 @@ def dice(
 ) -> torch.Tensor:
     """
     Compute Dice score over multiple segmentation maps with shape (B, C, *spatial_dims).
-
-    Wrapper around `neurite.functional.dice()` that assumes (B, C, *spatial) format.
 
     Parameters
     ----------
@@ -1424,8 +1402,6 @@ def build_normalization(
 def random_flip(dim: int, *args, prob: float = 0.5):
     """
     Randomly flip tensor(s) along the given dimension.
-
-    Wrapper around `neurite.functional.random_flip()` that handles (B, C, *spatial) format.
 
     Parameters
     ----------
