@@ -138,7 +138,7 @@ class Activation(nn.Module):
         inplace: bool = True,
         negative_slope: Union[float, int] = 0.01,
         alpha: Union[float, int] = 1.0
-    ) -> nn.Module:
+    ) -> None:
         """
         Initialize `Activation`.
 
@@ -154,7 +154,6 @@ class Activation(nn.Module):
         alpha : float, default=1.0
             Alpha value for 'elu'.
         """
-
         super(Activation, self).__init__()
 
         if activation_type is None:
@@ -207,10 +206,7 @@ class Activation(nn.Module):
         torch.Tensor
             Input tensor with activation/nonlinearity applied.
         """
-        if self.activation is None:
-            return nn.Identity()(input_tensor)
-        else:
-            return self.activation(input_tensor)
+        return self.activation(input_tensor)
 
 
 class ConvBlock(nn.Sequential):
@@ -359,42 +355,38 @@ class ConvBlock(nn.Sequential):
         self.ndim = ndim
         self.in_channels = in_channels
         self.out_channels = out_channels
-
-        layers = nn.ModuleDict()
         self.order = list(order)
-        valid_operations = ['c', 'n', 'a']
 
-        # Count activations to validate that activation list matches order specification
-        n_activations = order.count('a')
-
-        if not isinstance(activation, (list, tuple)):
-            activation = [activation] * n_activations
-        else:
-            assert len(activation) == n_activations, (
-                "The total number of activations passed to `activation` must be the same number ",
-                f"defined in `order`. Got activation={activation}, order={order}"
-            )
-
+        valid_operations = {'c', 'n', 'a'}
         if not set(order).issubset(valid_operations):
             raise ValueError(f"Invalid order. Must be a subset of {valid_operations}.")
 
         if ndim not in ConvBlock.conv_dim_map:
             raise ValueError(f"Unsupported ndim={ndim}. Must be 1, 2, or 3.")
 
+        n_activations = order.count('a')
+        if not isinstance(activation, (list, tuple)):
+            activation = [activation] * n_activations
+        else:
+            assert len(activation) == n_activations, (
+                "The total number of activations passed to `activation` must be the same number "
+                f"defined in `order`. Got activation={activation}, order={order}"
+            )
+
         conv_cls_name = f"Conv{ConvBlock.conv_dim_map[ndim]}"
         conv_cls = getattr(nn, conv_cls_name)
 
+        # Build layers
+        layers = nn.ModuleDict()
         conv_id, norm_id, act_id = 0, 0, 0
 
         for operation in self.order:
-
             if operation == 'c':
                 layers[f"conv{conv_id}"] = conv_cls(
                     in_channels, out_channels, kernel_size, stride,
                     padding, dilation, groups, bias, padding_mode=padding_mode
                 )
-
-                in_channels = out_channels  # Subsequent convs have this many
+                in_channels = out_channels
                 conv_id += 1
 
             elif operation == 'n' and normalization is not None:
@@ -665,12 +657,12 @@ class DownsampleConvBlock(nn.Module):
         torch.Tensor
             Downsampled tensor after applying convolution and pooling.
         """
+        conv_result = self.conv_block(input_tensor)
+        pooled_result = self.pool(conv_result)
 
         if self.return_skip:
-            conv_result = self.conv_block(input_tensor)
-            return self.pool(conv_result), conv_result
-        else:
-            return self.pool(self.conv_block(input_tensor))
+            return pooled_result, conv_result
+        return pooled_result
 
 
 class UpsampleConvBlock(nn.Module):
@@ -768,12 +760,11 @@ class UpsampleConvBlock(nn.Module):
                 stride=upsample_stride,
                 padding=upsample_padding
             )
-
         else:
             if upsample_mode == 'linear':
                 upsample_mode = ne.utils.utils.infer_linear_interpolation_mode(ndim)
-            align = None if upsample_mode == 'nearest' else True
 
+            align = None if upsample_mode == 'nearest' else True
             self.upsample = nn.Upsample(
                 scale_factor=scale_factor,
                 mode=upsample_mode,
@@ -787,6 +778,7 @@ class UpsampleConvBlock(nn.Module):
                 # Backward compatibility when assumimg symmetric architecture
                 in_channels += in_channels
 
+        # Build convolutional block
         self.conv_block = ConvBlock(
             ndim=ndim,
             in_channels=in_channels,
@@ -820,13 +812,12 @@ class UpsampleConvBlock(nn.Module):
         torch.Tensor
             Upsampled tensor after applying upsampling operation and conv blocks.
         """
+        features = self.upsample(input_tensor)
+
         if isinstance(skip, torch.Tensor):
-            features = self.upsample(input_tensor)
             features = torch.cat([features, skip], dim=1)
 
-            return self.conv_block(features)
-        else:
-            return self.conv_block(self.upsample(input_tensor))
+        return self.conv_block(features)
 
 
 class ContextCrossConv(nn.Module):
