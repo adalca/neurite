@@ -16,12 +16,6 @@ from torch import nn
 import neurite as ne
 
 
-__all__ = [
-    "BasicUNet",
-    "BasicAutoencoder",
-]
-
-
 class BasicUNet(nn.Module):
     """
     Flexible UNet with many configuration options.

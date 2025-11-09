@@ -40,33 +40,6 @@ import neurite.nn.functional as nef
 from neurite.samplers import Sampler
 
 
-__all__ = [
-    "Activation",
-    "ConvBlock",
-    "TransposedConv",
-    "Pool",
-    "DownsampleConvBlock",
-    "UpsampleConvBlock",
-    "ContextCrossConv",
-    "RescaleValues",
-    "Resize",
-    "SoftQuantize",
-    "MSE",
-    "GaussianBlur",
-    "GaussianAntialiasing",
-    "Resample",
-    "RandomCrop",
-    "RandomClip",
-    "RandomGamma",
-    "RandomIntensityLookup",
-    "RandomClearLabel",
-    "SampleImageFromLabels",
-    "Dice",
-    "CategoricalCrossentropy",
-    "MeanSquaredErrorProb",
-]
-
-
 class Dice(nn.Module):
     """
     Compute the Dice score between two segmentation tensors (e.g. ground truth, predictions, etc...)
