@@ -1,14 +1,12 @@
 """
 Tensor operations and functions for Neurite.
 
-A collection of functions for manipulating and analyzing PyTorch tensors, 
-with applications a focus on imaging. 
+A collection of functions for manipulating and analyzing PyTorch tensors,
+with applications a focus on imaging.
 
 Notes
 -----
 - All functions assume tensors follow the (B, C, *spatial_dims) convention.
-- Some utilities accept `Sampler` objects from `neurite.samplers` for
-  stochastic behavior.
 """
 
 # Standard library imports
@@ -23,7 +21,6 @@ import torch.nn.functional as F
 
 # Custom imports
 import neurite as ne
-from neurite.samplers import Sampler
 
 
 def identity(input_argument):
@@ -46,7 +43,7 @@ def gaussian_smoothing(
     kernel_size : int, List[int], or optional
         Size of the Gaussian kernel. If int, same size is used for all dimensions.
         If Sequence[int], different sizes can be specified per dimension.
-    sigma : float, int, Sequence[float], Sequence[int], or Sampler, default=1
+    sigma : float, int, Sequence[float], Sequence[int], default=1
         Standard deviation of the Gaussian kernel. If float/int, same sigma is used
         for all dimensions. If Sequence, different sigmas can be specified per dimension.
 
@@ -102,8 +99,8 @@ def gaussian_smoothing(
 def gaussian_antialiasing(
     input_tensor: torch.Tensor,
     stride: Union[int, Sequence[int]] = 2,
-    kernel_size: Union[int, Sequence[int], Sampler, None] = None,
-    sigma: Union[float, int, Sequence[float], Sequence[int], Sampler, None] = None,
+    kernel_size: Union[int, Sequence[int], None] = None,
+    sigma: Union[float, int, Sequence[float], Sequence[int], None] = None,
     subsampling_dimension: Union[List[int], int, None] = None
 ) -> torch.Tensor:
     """
@@ -120,11 +117,11 @@ def gaussian_antialiasing(
     stride : int or Sequence[int], default=2
         Downsampling stride. If int, the same stride is applied to all spatial dimensions.
         If Sequence[int], different strides can be specified per dimension.
-    kernel_size : int, Sequence[int], or Sampler, default=None
+    kernel_size : int, Sequence[int], default=None
         Size of the Gaussian kernel for antialiasing. If int, same size is used for all
         dimensions. If Sequence[int], different sizes can be specified per dimension.
         If None, automatically computed as 2 * stride + 1 per dimension.
-    sigma : float, int, Sequence[float], Sequence[int], or Sampler, default=None
+    sigma : float, int, Sequence[float], Sequence[int], default=None
         Standard deviation of the Gaussian kernel. If float/int, same sigma is used for
         all dimensions. If Sequence, different sigmas can be specified per dimension.
         If None, automatically computed as stride / 2 per dimension.
@@ -546,7 +543,7 @@ def random_clear_label(
         Image or tensor to clear with shape (B, C, *spatial).
     label_tensor : torch.Tensor
         Label map corresponding to sampling domain from which to select regions for clearing.
-    prob : float, int, or Sampler, default=0.5
+    prob : float, default=0.5
         Probability of any label/region being selected for erasure as determined by iid Bernoulli
         trials.
     exclude_zero : bool, default=True
@@ -593,42 +590,33 @@ def random_clear_label(
 
 def sample_image_from_labels(
     label_tensor: torch.Tensor,
-    mean_sampler: Sampler = ne.samplers.Uniform(0, 1),
-    noise_sampler: Sampler = ne.samplers.Normal,
-    noise_variance: Union[float, int, Sampler] = 0.25
+    mean_range: Tuple[float, float] = (0.0, 1.0),
+    noise_std: float = 0.5
 ) -> torch.Tensor:
     """
     Generate an image from a label map by sampling a random intensity for each label.
 
     Identify all unique integer labels in `label_tensor` and assigns each a mean intensity in the
     corresponding output image (`sampled_image`). The mean intensity serves as the mean for a noise
-    distribution modeled by `noise_sampler`. The variance of the noise model may be a fixed quantity
-    or sampled from another distribution defined by `noise_variance`.
+    distribution. Noise is sampled from a normal distribution with the specified standard deviation.
 
     Parameters
     ----------
     label_tensor : torch.Tensor
         A tensor with batch and channel dimensions containing integer labels defining distinct
         regions.
-    mean_sampler : Sampler, default=ne.samplers.Uniform(0, 1)
-        A `Sampler` from which to draw the mean intensity for each region defined by each label in
-        the `label_tensor`.
-    noise_sampler : Sampler, default=ne.samplers.Normal
-        A `Sampler` that is used to model the noise within a particular label/region. The mean for
-        the sampler is defined by the mean region intensity (sampled from `mean_sampler`).
-    noise_variance : float, int, or Sampler, default=0.25
-        The variance of the noise model. It can be a fixed quantity (int or float), or a sampled
-        quantity in the case a `Sampler` is passed.
+    mean_range : Tuple[float, float], default=(0.0, 1.0)
+        Range (min, max) for sampling mean intensity for each region. Mean intensities are
+        sampled uniformly from this range.
+    noise_std : float, default=0.5
+        Standard deviation of the Gaussian noise added to each region.
 
     Returns
     -------
     torch.Tensor
         A tensor of sampled image intensities with the same shape as `label_tensor`.
     """
-    return ne.sample_image_from_labels(
-        label_tensor, mean_sampler=mean_sampler, noise_sampler=noise_sampler,
-        noise_variance=noise_variance
-    )
+    return ne.sample_image_from_labels(label_tensor, mean_range=mean_range, noise_std=noise_std)
 
 
 def affine_to_dense_shift(
