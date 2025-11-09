@@ -60,8 +60,8 @@ class Dice(nn.Module):
     >>> seg1 = torch.randn(3, 4, 128, 128)
     >>> seg2 = torch.randn(3, 4, 128, 128)
     >>> # Activation functions
-    >>> seg1 = ne.utils.logistic(seg1)
-    >>> seg2 = ne.utils.logistic(seg2)
+    >>> seg1 = torch.sigmoid(seg1)
+    >>> seg2 = torch.sigmoid(seg2)
     >>> # Compute the dice score and return
     >>> dice_module(seg1, seg2)
     tensor([[0.4982, 0.5022, 0.4984, 0.5024],
