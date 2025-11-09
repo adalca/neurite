@@ -11,7 +11,6 @@ import torch.nn.functional as F
 
 # Custom imports
 import neurite as ne
-from neurite.samplers import Sampler
 
 __all__ = [
     "soft_quantize",
@@ -567,7 +566,7 @@ def random_clear_label(
         Image or tensor to clear.
     label_tensor : torch.Tensor
         Label map corresponding to sampling domain from which to select regions for clearing.
-    prob : Union[float, int, Sampler], optional
+    prob : float, optional
         Probability of any label/region being selected for erasure as determined by iid Bernoulli
         trials, by default 0.5.
     exclude_zero : bool, optional
@@ -608,8 +607,6 @@ def random_clear_label(
     True
     """
     if seed is not None:
-        if isinstance(seed, Sampler):
-            seed = seed()
         torch.manual_seed(seed)
 
     unique_labels = torch.unique(label_tensor)
@@ -668,54 +665,52 @@ def random_flip(dim: int, *args, prob: float = 0.5):
 
 def sample_image_from_labels(
     label_tensor: torch.Tensor,
-    mean_sampler: Union[float, int, None] = None,
-    noise_sampler: Union[float, int, None] = None,
-    noise_variance: Union[float, int, Sampler] = 0.25
+    mean_range: Tuple[float, float] = (0.0, 1.0),
+    noise_std: float = 0.5
 ) -> torch.Tensor:
     """
     Generate an image from a label map by sampling a random intensity for each label.
 
     Identify all unique integer labels in `label_tensor` and assigns each a mean intensity in the
     corresponding output image (`sampled_image`). The mean intensity serves as the mean for a noise
-    distribution modeled by `noise_sampler`. The variance of the noise model may be a fixed quantity
-    or sampled from another distribution defined by `noise_variance`.
+    distribution. Noise is sampled from a normal distribution with the specified standard deviation.
 
     Parameters
     ----------
     label_tensor : torch.Tensor
         A tensor containing integer labels defining distinct regions.
-    mean_sampler : Sampler
-        A `Sampler` from which to draw the mean intensity for each region defined by each label in
-        the `label_tensor`. By default, `Uniform(0, 1)`
-    noise_sampler : Sampler
-        A `Sampler` that is used to model the noise within a particular label/region. The mean for
-        the sampler is defined by the mean region intensity (sampled from `mean_sampler`).
-        By default, `Normal`.
-    noise_variance : float, int, or Sampler
-        The variance of the noise model. It can be a fixed quantity (int or float), or a sampled
-        quantity in the case a `Sampler` is passed. By default, 0.25.
+    mean_range : Tuple[float, float], default=(0.0, 1.0)
+        Range (min, max) for sampling mean intensity for each region. Mean intensities are
+        sampled uniformly from this range.
+    noise_std : float, default=0.5
+        Standard deviation of the Gaussian noise added to each region. The square root of
+        the variance parameter.
 
     Returns
     -------
     torch.Tensor
         A tensor of sampled image intensities with the same shape as `label_tensor`.
+
+    Examples
+    --------
+    >>> label_map = torch.tensor([[[0, 0, 1, 1], [0, 0, 1, 1]]])
+    >>> sampled = sample_image_from_labels(label_map, mean_range=(0.3, 0.7), noise_std=0.1)
+    >>> sampled.shape
+    torch.Size([1, 4, 4])
     """
-    if mean_sampler is None:
-        mean_sampler: Sampler = ne.samplers.Uniform(0, 1)
-    if noise_sampler is None:
-        noise_sampler = ne.samplers.Normal
-
-    noise_variance = ne.samplers.make_sampler(ne.samplers.Fixed, noise_variance)
     unique_labels = torch.unique(label_tensor)
-    sampled_image = torch.zeros_like(label_tensor).float()
+    min_val, max_val = mean_range
 
-    # Iteratevly texturize/sample intensities for each region as specified by a label
+    sampled_image = torch.zeros_like(label_tensor, dtype=torch.float32)
+    uniform_dist = torch.distributions.Uniform(low=min_val, high=max_val)
+
     for label in unique_labels:
-        mean_region_intensity = mean_sampler()
+        mask = label_tensor == label
+        num_elements = mask.sum().item()
 
-        texturized_redion = noise_sampler(
-            mean_region_intensity, noise_variance())(label_tensor[label_tensor == label].shape)
-        sampled_image[label_tensor == label] = texturized_redion
+        mean_region_intensity = uniform_dist.sample().item()
+        texturized_region = mean_region_intensity + noise_std * torch.randn(num_elements)
+        sampled_image[mask] = texturized_region
 
     return sampled_image
 
