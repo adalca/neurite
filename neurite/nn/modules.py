@@ -1324,7 +1324,7 @@ class GaussianAntialiasing(nn.Module):
         )
 
 
-class Resample(nn.Module):
+class ResampleAnisotropic(nn.Module):
     """
     Spatially {subsample, resample} the input tensor.
 
@@ -1364,7 +1364,7 @@ class Resample(nn.Module):
         >>> # Make a 2D tensor ~N(0, 1) with batch and channel dims
         >>> input_tensor = torch.randn(1, 1, 128, 128)
         >>> # Downsample 2x in 1st dim and 4x in second dim. Upsample the same way 
-        >>> resampled_tensor = Resample(
+        >>> resampled_tensor = ResampleAnisotropic(
         ...    downsample_stride=(2, 4),
         ...    upsample_scale_factor=(2, 4)
         ... )(input_tensor)
@@ -1376,7 +1376,7 @@ class Resample(nn.Module):
         >>> # Make a 3D tensor ~N(0, 1) with batch and channel dims
         >>> input_tensor = torch.randn(1, 1, 32, 32, 32)
         >>> # Downsample 2x then upsample 6x
-        >>> resampled_tensor = Resample(
+        >>> resampled_tensor = ResampleAnisotropic(
         ...    downsample_stride=2,
         ...    upsample_scale_factor=6,
         ...    mode='trilinear'
@@ -1398,7 +1398,7 @@ class Resample(nn.Module):
         Perform the forward pass of the `Resample`.
         """
 
-        return ne.utils.utils.resample(
+        return nef.resample_anisotropic(
             input_tensor=input_tensor,
             resample_dimension=self.resample_dimension,
             downsample_stride=self.downsample_stride,

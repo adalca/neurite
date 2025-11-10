@@ -467,7 +467,7 @@ def upsample(
     )
 
 
-def resample(
+def resample_anisotropic(
     input_tensor: torch.Tensor,
     resample_dimension: Union[int, Sequence[int], None] = None,
     downsample_stride: Union[int, Sequence[int]] = 2,
@@ -484,7 +484,7 @@ def resample(
     Parameters
     ----------
     input_tensor : torch.Tensor
-        The tensor to resample.
+        The tensor to resample anisotropically.
     resample_dimension : int, Sequence[int], or None, default=None
         The dimension(s) that should be resampled. If None, all dimensions are resampled.
     downsample_stride : int or Sequence[int], default=2
@@ -499,15 +499,15 @@ def resample(
     Returns
     -------
     torch.Tensor
-        The resampled tensor with the same batch and channel dims as `input_tensor` and spatial dims
-        equal to `shape`.
+        The anisotropically resampled tensor with the same batch and channel dims as `input_tensor`
+        and spatial dims equal to `shape`.
 
     Examples
     --------
     >>> import torch
     >>> input_tensor = torch.randn(1, 3, 32, 32)
     >>> # Subsample rows/cols by 2, then upsample to (64, 64)
-    >>> res = resample(
+    >>> res = resample_anisotropic(
     ...     input_tensor, shape=(64, 64),
     ...     subsampling_dimension=2, stride=2,
     ...     mode='bilinear'
@@ -517,7 +517,10 @@ def resample(
     """
 
     resampled = subsample(
-        input_tensor, subsampling_dimension=resample_dimension, stride=downsample_stride)
+        input_tensor,
+        subsampling_dimension=resample_dimension,
+        stride=downsample_stride
+    )
 
     resampled = upsample(resampled, shape=shape, mode=mode, scale_factor=upsample_scale_factor)
 
