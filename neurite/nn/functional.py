@@ -1146,41 +1146,6 @@ def reduce(
     return ne.reduce(tensor, reduction=reduction, dim=dim, keepdims=keepdims)
 
 
-def infer_linear_interpolation_mode(
-    num_spatial: Literal[1, 2, 3]
-):
-    """
-    Infer the interpolation mode for `F.interpolate()` from tensor dimensions.
-
-    Parameters
-    ----------
-    num_spatial : {1, 2, 3}
-        Tensor with batch and channel dimensions, and with {1, 2, 3} spatial dimensions.
-
-    Returns
-    -------
-    mode : str
-        Interpolation mode string:
-        - 'linear' for 1D
-        - 'bilinear' for 2D
-        - 'trilinear' for 3D
-
-    Examples
-    --------
-    >>> # Look at output for different number of spatial dims
-    >>> infer_linear_interpolation_mode(1)
-    'linear'
-    >>> infer_linear_interpolation_mode(3)
-    'trilinear'
-    """
-    if num_spatial == 1:
-        return 'linear'
-    elif num_spatial == 2:
-        return 'bilinear'
-    elif num_spatial == 3:
-        return 'trilinear'
-
-
 # Map normalization types to PyTorch classes
 NORMALIZATION_MAP = {
     "batch": {
@@ -1484,3 +1449,4 @@ def bw_grid(
         "bw_grid() has been moved to neurite_sandbox. "
         "Please use: from neurite_sandbox.etienne_chollet.nn.functional import bw_grid"
     )
+
