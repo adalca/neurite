@@ -711,50 +711,6 @@ def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> tor
     return ne.filter_dim(tensor, dim=dim, verbose=verbose)
 
 
-def crop_to_nearest_multiple(tensor, multiple=128):
-    """
-    Crop the spatial dimensions of a tensor to the nearest multiple of
-    `multiple`. Supports 1D, 2D, or 3D spatial dimensions.
-
-    Parameters
-    ----------
-    tensor : torch.Tensor
-        The input tensor with shape (B, C, *spatial_dims), where `spatial_dims`
-        can represent 1D, 2D, or 3D spatial dimensions.
-    multiple : int, default=128
-        The multiple to which spatial dimensions are cropped.
-
-    Returns
-    -------
-    torch.Tensor
-        The tensor with spatial dimensions cropped to the nearest multiple of
-        `multiple`.
-
-    Examples
-    --------
-    >>> import torch
-    >>> tensor_1d = torch.randn(1, 3, 250)  # 1D spatial tensor
-    >>> cropped_1d = crop_to_nearest_multiple(tensor_1d, multiple=64)
-    >>> cropped_1d.shape
-    torch.Size([1, 3, 192])
-
-    >>> tensor_2d = torch.randn(1, 3, 250, 330)  # 2D spatial tensor
-    >>> cropped_2d = crop_to_nearest_multiple(tensor_2d, multiple=128)
-    >>> cropped_2d.shape
-    torch.Size([1, 3, 128, 256])
-
-    >>> tensor_3d = torch.randn(1, 3, 100, 250, 330)  # 3D spatial tensor
-    >>> cropped_3d = crop_to_nearest_multiple(tensor_3d, multiple=64)
-    >>> cropped_3d.shape
-    torch.Size([1, 3, 64, 192, 320])
-    """
-    raise NotImplementedError(
-        "crop_to_nearest_multiple() has been moved to neurite_sandbox. "
-        "Please use: from neurite_sandbox.etienne_chollet.nn.functional "
-        "import crop_to_nearest_multiple"
-    )
-
-
 def logistic(
     logits: torch.Tensor,  # TODO: Should this be called `input_tensor` to make it more general?
     slope: float = 1.0,
