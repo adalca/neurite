@@ -180,13 +180,52 @@ def test_volshape_to_ndgrid_sizes():
 def test_functional_volshape_to_ndgrid_sizes():
     B, C = 2, 3
     size = (B, C, 43, 9, 10)
-    the_grid = ne.nn.functional.volshape_to_ndgrid(size=size, stack=True)
+    the_grid = nef.volshape_to_ndgrid(size=size, stack=True)
     assert tuple(the_grid.shape) == (B, C, 43, 9, 10, 3) 
 
 
-def test_gaussian():
-    tensor = torch.ones(1, 1, 128, 128, 128)
-    smoothed = ne.nn.functional.gaussian_smoothing(tensor)
+def test_gaussian_kernel_sums_to_one():
+    """Make sure base kernel is normalized (sums to 1)."""
+    kernel = ne.gaussian_kernel(
+        kernel_size=(7, 7),
+        sigma=2.5,
+    )
 
-    print(tensor.std())
-    print(smoothed.std())
+    total = kernel.sum()
+
+    assert torch.allclose(total, torch.tensor(1.0), atol=1e-6)
+
+
+def test_gaussian_kernel_orthogonal_slice_symmetry():
+    """
+    Test that orthogonal slices through the center of a Gaussian kernel are identical,
+    demonstrating rotational symmetry.
+    """
+    kernel_size = (5, 5, 5)
+    sigma = 1.0
+    kernel = ne.gaussian_kernel(kernel_size=kernel_size, sigma=sigma)
+
+    # For a symmetric Gaussian, slices through the center along different axes
+    # should have the same values at corresponding positions
+    center_idx = 2  # Middle of 5x5x5 kernel
+
+    # Get center slices along each axis
+    slice_xy = kernel[center_idx, :, :]  # z=center, varying x,y
+    slice_xz = kernel[:, center_idx, :]  # y=center, varying x,z
+    slice_yz = kernel[:, :, center_idx]  # x=center, varying y,z
+
+    # All center slices should be identical for isotropic Gaussian
+    assert torch.allclose(slice_xy, slice_xz, atol=1e-6)
+    assert torch.allclose(slice_xy, slice_yz, atol=1e-6)
+    assert torch.allclose(slice_xz, slice_yz, atol=1e-6)
+
+
+def test_gaussian_kernel_center_is_maximum():
+    """Test that the center of the Gaussian kernel has the maximum value."""
+    kernel_3d = ne.gaussian_kernel(kernel_size=(7, 7, 7), sigma=1.0)
+    center_3d = (3, 3, 3)
+    assert kernel_3d[center_3d] == kernel_3d.max()
+
+    kernel_2d = ne.gaussian_kernel(kernel_size=(9, 9), sigma=1.5)
+    center_2d = (4, 4)
+    assert kernel_2d[center_2d] == kernel_2d.max()

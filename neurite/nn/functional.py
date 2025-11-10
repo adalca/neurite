@@ -69,16 +69,20 @@ def gaussian_smoothing(
 
     # Infer spatial dimensionality (subtract batch and channel dims)
     ndim = input_tensor.dim() - 2
+    nchannels = input_tensor.shape[1]
 
-    gaussian_kernel_ = gaussian_kernel(
-        kernel_size=kernel_size, sigma=sigma, ndim=ndim, nchannels=input_tensor.shape[1])
+    if isinstance(kernel_size, int):
+        kernel_size = tuple([kernel_size] * ndim)
 
-    if isinstance(kernel_size, Sequence):
-        padding_per_dim = [ks // 2 for ks in kernel_size]
-    else:
-        padding_per_dim = [kernel_size // 2] * ndim
+    kernel = ne.gaussian_kernel(kernel_size=kernel_size, sigma=sigma)
 
-    # F.pad expects padding in reverse order: [left, right, top, bottom, front, back]
+    # Add channel dimensions for depthwise convolution: (nchannels, 1, *spatial)
+    kernel = kernel.unsqueeze(0).unsqueeze(0)
+    if nchannels > 1:
+        kernel = kernel.repeat(nchannels, 1, *([1] * ndim))
+
+    padding_per_dim = [ks // 2 for ks in kernel_size]
+
     padding = []
     for pad in reversed(padding_per_dim):
         padding.extend([pad, pad])
@@ -87,11 +91,9 @@ def gaussian_smoothing(
     padding = tuple(padding)
     padded_input_tensor = F.pad(input_tensor, padding, mode='reflect')
 
-    # Apply the smoothig operation using depthwise convolution
-    # groups==nchannels ensures each channel is blurred independently
+    # Depthwise: groups==nchannels ensures each channel is blurred independently
     conv_fn = {1: F.conv1d, 2: F.conv2d, 3: F.conv3d}[ndim]
-    smoothed_tensor = conv_fn(
-        input=padded_input_tensor, weight=gaussian_kernel_, padding=0, groups=input_tensor.shape[1])
+    smoothed_tensor = conv_fn(input=padded_input_tensor, weight=kernel, padding=0, groups=nchannels)
 
     return smoothed_tensor
 
@@ -1449,4 +1451,3 @@ def bw_grid(
         "bw_grid() has been moved to neurite_sandbox. "
         "Please use: from neurite_sandbox.etienne_chollet.nn.functional import bw_grid"
     )
-

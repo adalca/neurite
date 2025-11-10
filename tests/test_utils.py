@@ -53,45 +53,37 @@ def test_soft_quantize_clipping():
     assert torch.all(output_tensor <= 1.0)
 
 
-def test_create_gaussian_kernel_sums_to_one():
-    """Make sure kernel is normalized (sums to 1)"""
+def test_base_gaussian_kernel_no_batch_channel():
+    """Test that base gaussian_kernel returns only spatial dimensions."""
+    kernel = ne.gaussian_kernel(kernel_size=(5, 5), sigma=1.0)
 
-    kernel = ne.utils.utils.gaussian_kernel(
-        kernel_size=7,
-        sigma=2.5,
-        ndim=2,
-        nchannels=1
-    )
-
-    total = kernel.sum()
-
-    assert torch.allclose(total, torch.tensor(1.0), atol=1e-6)
+    # Should have only spatial dimensions, no batch/channel
+    assert kernel.shape == (5, 5)
+    assert kernel.dim() == 2
 
 
-def test_create_gaussian_kernel_shape_and_symmetry():
-    """
-    For nchannels>1, kernel shape should be nchannels, 1, *spatial_dims] for depthwise convolution,
-    and each channel kernel should be identical.
-    """
+def test_base_gaussian_kernel_sums_to_one():
+    """Test that base gaussian_kernel is normalized."""
+    kernel = ne.gaussian_kernel(kernel_size=(7, 7, 7), sigma=2.5)
 
-    nchannels = 3
-    kernel_size, sigma, ndim = 5, 1.0, 3
-    kernel = ne.utils.utils.gaussian_kernel(
-        kernel_size=kernel_size,
-        sigma=sigma,
-        ndim=ndim,
-        nchannels=nchannels
-    )
+    # Should sum to 1
+    assert torch.allclose(kernel.sum(), torch.tensor(1.0), atol=1e-6)
 
-    # shape check for depthwise convolution
-    expected = (nchannels, 1) + (kernel_size,) * ndim
-    assert kernel.shape == expected
 
-    # spatial kernels for each channel should be identical
-    spatial_0 = kernel[0, 0]
-    spatial_1 = kernel[1, 0]
+def test_base_gaussian_kernel_different_ndims():
+    """Test that base gaussian_kernel works for 1D, 2D, and 3D."""
+    kernel_1d = ne.gaussian_kernel(kernel_size=(5,), sigma=1.0)
+    kernel_2d = ne.gaussian_kernel(kernel_size=(5, 5), sigma=1.0)
+    kernel_3d = ne.gaussian_kernel(kernel_size=(5, 5, 5), sigma=1.0)
 
-    assert torch.allclose(spatial_0, spatial_1)
+    assert kernel_1d.shape == (5,)
+    assert kernel_2d.shape == (5, 5)
+    assert kernel_3d.shape == (5, 5, 5)
+
+    # All should sum to 1
+    assert torch.allclose(kernel_1d.sum(), torch.tensor(1.0), atol=1e-6)
+    assert torch.allclose(kernel_2d.sum(), torch.tensor(1.0), atol=1e-6)
+    assert torch.allclose(kernel_3d.sum(), torch.tensor(1.0), atol=1e-6)
 
 
 def test_subsample_tensor_magnitudes():

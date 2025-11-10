@@ -1,9 +1,8 @@
 """
 Single tensor operations (no B, C dimension assumption)
 """
-
 # Standard library imports
-from typing import Union, Sequence, Tuple, Literal
+from typing import Union, Sequence, Tuple, Literal, Optional
 
 # Third party imports
 import torch
@@ -24,6 +23,7 @@ __all__ = [
     "sample_image_from_labels",
     "upsample",
     "filter_dim",
+    "gaussian_kernel",
 ]
 
 
@@ -834,3 +834,105 @@ def _parse_non_spatial_dims(
     num_spatial = tensor_ndim - num_non_spatial
 
     return num_non_spatial, num_spatial
+
+
+def gaussian_kernel(
+    kernel_size: Sequence[int],
+    sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
+    device: Optional[torch.device] = None,
+    dtype: Optional[torch.dtype] = torch.float32,
+) -> torch.Tensor:
+    """
+    Create a {1D, 2D, 3D} Gaussian kernel.
+
+    Shape-agnostic implementation that returns a kernel with only spatial dimensions,
+    no batch or channel dimensions. Dimensionality is inferred from the length of
+    `kernel_size`.
+
+    Parameters
+    ----------
+    kernel_size : Sequence[int]
+        Size of each spatial dimension in the Gaussian kernel. Length determines
+        dimensionality (1D, 2D, or 3D).
+    sigma : float, int, or Sequence[float or int], optional
+        Standard deviation of the Gaussian kernel. If float/int, same sigma is used for all
+        dimensions. If Sequence, different sigmas can be specified per dimension. Default is 1.
+    device : torch.device, optional
+        Device on which to create the kernel tensor. Default is None.
+    dtype : torch.dtype, optional
+        Data type of the kernel tensor. Default is torch.float32.
+
+    Returns
+    -------
+    torch.Tensor
+        Tensor representing the {1D, 2D, 3D} Gaussian kernel with shape (*kernel_size).
+        No batch or channel dimensions.
+
+    Examples
+    --------
+    >>> import torch
+    # Make a 3D kernel
+    >>> gaussian_kernel_ = gaussian_kernel(kernel_size=(3, 3, 3), sigma=1)
+    # Print shape (no batch/channel dimensions)
+    >>> gaussian_kernel_.shape
+    torch.Size([3, 3, 3])
+
+    # Make a 2D kernel with different sizes per dimension
+    >>> gaussian_kernel_ = gaussian_kernel(kernel_size=(3, 5), sigma=(0.5, 1.0))
+    >>> gaussian_kernel_.shape
+    torch.Size([3, 5])
+
+    # Make a 1D kernel
+    >>> gaussian_kernel_ = gaussian_kernel(kernel_size=(7,), sigma=2.0)
+    >>> gaussian_kernel_.shape
+    torch.Size([7])
+    """
+    # Validate kernel_size is a sequence
+    if not isinstance(kernel_size, (list, tuple)):
+        raise TypeError(
+            f"kernel_size must be a sequence (list or tuple), got {type(kernel_size)}"
+        )
+
+    kernel_size_list = list(kernel_size)
+    ndim = len(kernel_size_list)
+
+    # Validate ndim
+    if ndim not in [1, 2, 3]:
+        raise ValueError(
+            f"kernel_size length determines dimensionality and must be 1, 2, or 3. "
+            f"Got length {ndim}"
+        )
+
+    # Create coordinate grid centered at zero
+    coords = [
+        torch.arange(ks, device=device, dtype=dtype).float() - (ks - 1) / 2
+        for ks in kernel_size_list
+    ]
+
+    grid = torch.stack(
+        torch.meshgrid(coords, indexing='ij'), dim=-1
+    ).to(device=device, dtype=dtype)
+
+    # Handle sigma parameter
+    if isinstance(sigma, (float, int)):
+        sigma_list = [sigma] * ndim
+    elif isinstance(sigma, Sequence):
+        if len(sigma) != ndim:
+            raise ValueError(
+                f"If sigma is a sequence, it must have length equal to kernel_size length "
+                f"({ndim}). Got length {len(sigma)}"
+            )
+        sigma_list = list(sigma)
+    else:
+        raise TypeError(f"sigma must be a number or sequence, got {type(sigma)}")
+
+    # Convert sigma to tensor on device
+    sigma_tensor = torch.tensor(sigma_list, device=device, dtype=dtype)
+
+    # Calculate the Gaussian function: exp(-0.5 * sum((x / sigma)^2))
+    kernel = torch.exp(-0.5 * (grid ** 2 / sigma_tensor**2).sum(dim=-1))
+
+    # Normalize the kernel so that it sums to 1
+    kernel /= kernel.sum()
+
+    return kernel
