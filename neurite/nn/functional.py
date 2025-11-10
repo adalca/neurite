@@ -631,53 +631,6 @@ def volshape_to_ndgrid(
     return grid
 
 
-def cross_expand(
-    x1: torch.Tensor, x2: torch.Tensor, return_batched: bool = True
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Expands `x1` and `x2` along new dimensions to create pairwise combinations.
-
-    Each slice in `x1` is expanded along a new axis to match every slice in `x2`, and vice versa.
-    This is essentially just taking the cartesian product of two tensors at their second dimension.
-
-    Parameters
-    ----------
-    x1 : torch.Tensor
-        Input tensor of shape (B, Sx1, Cx1, ...), where Sx1 is the number of slices or subimages.
-    x2 : torch.Tensor
-        Input tensor of shape (B, Sx2, Cx2, ...), where Sx2 is the number of slices or subimages.
-    return_batched : bool, default=True
-        Return paired expanded tensors patched into the batch dimension.
-
-    Returns
-    -------
-    torch.Tensor or Tuple[torch.Tensor, torch.Tensor]
-        - If `return_batched=True`, returns:
-            - `batched_paired_tensors` paired expanded tensors patched into the batch dimension.
-        - If `return_batched=False`, returns
-            - `x1_expanded` of shape (B, Sx1, Sx2, Cx1, ...) where each slice in `x1` is expanded.
-            - `x2_expanded` of shape (B, Sx1, Sx2, Cx2, ...) where each slice in `x2` is expanded.
-
-    References
-    ----------
-    J. G. Ortiz et al., "UniverSeg: Universal Medical Image Segmentation,"
-    GitHub repository, 2023. Available: https://github.com/JJGO/UniverSeg
-
-    Examples
-    --------
-    ### Cross expansion of two 2D tensors
-    >>> x1 = torch.randn(1, 3, 4, 5, 6)
-    >>> x2 = torch.randn(1, 7, 8, 9, 10)
-    >>> x1_cross_expanded, x2_cross_expanded = cross_expand(x1, x2)
-    >>> print(x1_cross_expanded.shape, x2_cross_expanded.shape)
-    torch.Size([1, 3, 7, 4, 5, 6]) torch.Size([1, 3, 7, 8, 9, 10])
-    """
-    raise NotImplementedError(
-        "cross_expand() has been moved to neurite_sandbox. "
-        "Please use: from neurite_sandbox.etienne_chollet.nn.functional import cross_expand"
-    )
-
-
 def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> torch.Tensor:
     """
     Filter slices of a tensor that contain NaNs, infinite values, or are entirely zero.
