@@ -5,6 +5,7 @@ Tests for `neurite` modules.
 import pytest
 import torch
 import neurite as ne
+import neurite.nn.functional as nef
 
 
 @pytest.mark.parametrize("ndim", [1, 2, 3])
@@ -19,7 +20,7 @@ def test_norm_instance(ndim: int):
     x = torch.randn(8, 4, *spatial) * 5 + 10
 
     # Initialize the normalization layer
-    norm_layer = ne.utils.build_normalization(
+    norm_layer = nef.build_normalization(
         normalization_type='instance',
         ndim=ndim,
         num_features=4,
@@ -65,7 +66,7 @@ def test_norm_batch(ndim: int):
     x = torch.randn(4, 8, *spatial) * 5 + 10
 
     # Initialize the normalization layer
-    norm_layer = ne.utils.build_normalization(
+    norm_layer = nef.build_normalization(
         normalization_type='batch',
         ndim=ndim,
         num_features=8,

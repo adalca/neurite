@@ -942,34 +942,35 @@ def build_normalization(
     eps: float = 1e-5,
     affine: bool = True,
     **kwargs
-) -> nn.Module:
+) -> Union[nn.Module, None]:
+
     """
     Factory for various normalization layers.
 
     Parameters
     ----------
-    normalization_type : str, Type[nn.Module], nn.Module, or None
+    normalization_type : str or nn.Module
         Type of normalization. Must be one of 'batch', 'instance', 'layer', 'group', or a custom
         `nn.Module` class.
-        `batch` performs normalization per channel. The mean and variance are calculated
-        across the B, and *spatial dimensions for each channel C.
-    ndim : int, default=None
+            - `batch` performs normalization per channel. The mean and variance are calculated
+            across the B, and *spatial dimensions for each channel C.
+    ndim : int, optional
         Dimensionality for batch/instance normalization:
         - 1 -> *Norm1d
         - 2 -> *Norm2d
         - 3 -> *Norm3d
         Required for 'batch' or 'instance' normalizations.
-    num_features : int, default=None
+    num_features : int, optional
         Number of input features or channels. Required for 'batch', 'instance', 'layer', and 'group'
         normalizations. For layer normalization, this is the size of the normalized dimension. For
         batch and instance normalizations, this is typically the number of channels/features.
-    num_groups : int, default=None
+    num_groups : int, optional
         Number of groups for GroupNorm. Required for 'group' normalization.
-    eps : float, default=1e-5
-        A value added to the denominator for numerical stability.
-    affine : bool, default=True
-        If True, the layer has learnable affine parameters.
-    **kwargs : dict
+    eps : float, optional
+        A value added to the denominator for numerical stability. Default is 1e-5.
+    affine : bool, optional
+        If True, the layer has learnable affine parameters. Default is True.
+    **kwargs : dict, optional
         Additional keyword arguments are passed directly to the normalization class constructor.
         This enables further customization without modifying this class.
 
@@ -1001,12 +1002,15 @@ def build_normalization(
     ...
     """
 
+    # Normalization object has been instantiated with parameters
     if ne.utils.is_instantiated_normalization(normalization_type):
         normalization = normalization_type
         return
 
+    # Normalization object has been provided but not instantiated
     if isinstance(normalization_type, type) and issubclass(normalization_type, nn.Module):
 
+        # Assume user provided a custom normalization class directly
         if num_features is None:
             raise ValueError("`num_features` must be specified for custom normalizations.")
 
@@ -1015,6 +1019,7 @@ def build_normalization(
         )
         return
 
+    # Handle known norm_types
     if normalization_type not in NORMALIZATION_MAP:
 
         raise ValueError(
@@ -1022,6 +1027,7 @@ def build_normalization(
             f"{list(NORMALIZATION_MAP.keys())} or a custom nn.Module subclass."
         )
 
+    # Batch and instance normalization require an input dimensionality
     if normalization_type in ("batch", "instance"):
 
         if ndim not in (1, 2, 3):
@@ -1030,6 +1036,7 @@ def build_normalization(
                 "For 'batch' or 'instance' normalization, ndim must be 1, 2, or 3."
             )
 
+        # They also require the number of features
         if num_features is None:
             raise ValueError(
                 "`num_features` must be specified for 'batch' or 'instance' normalization."
