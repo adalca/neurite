@@ -11,57 +11,6 @@ import neurite.nn.functional as nef
 
 
 # =============================================================================
-# Tests for random_clear_label()
-# =============================================================================
-
-def test_random_clear_label_deterministic():
-    """Test random_clear_label with fixed seed produces consistent results."""
-    torch.manual_seed(42)
-
-    # Create simple label tensor with known labels
-    label_tensor = torch.tensor([
-        [[0, 1, 1, 2],
-         [0, 1, 1, 2],
-         [3, 3, 4, 4],
-         [3, 3, 4, 4]]
-    ]).unsqueeze(0).float()  # Shape: (1, 1, 4, 4)
-
-    # Input tensor has values corresponding to labels
-    input_tensor = label_tensor.clone() * 10.0  # Multiply by 10 so we can see clearing
-
-    # Apply with prob=0.5 - some labels should be cleared
-    torch.manual_seed(42)
-    result = nef.random_clear_label(input_tensor, label_tensor, prob=0.5, exclude_zero=True)
-
-    # Verify some regions were cleared (should have zeros where labels were cleared)
-    # The original had some zeros, but we should have more after clearing
-    assert (result == 0).sum() >= (input_tensor == 0).sum()
-
-    # Where label_tensor is 0, result should still have original values (if exclude_zero=True)
-    zero_mask = (label_tensor == 0)
-    assert torch.allclose(result[zero_mask], input_tensor[zero_mask])
-
-
-def test_random_clear_label_exclude_zero():
-    """Test that exclude_zero=True preserves regions with label=0."""
-    label_tensor = torch.tensor([
-        [[0, 1, 2],
-         [0, 3, 4],
-         [0, 5, 6]]
-    ]).unsqueeze(0).float()
-
-    # Input has non-zero values everywhere (including where label=0)
-    input_tensor = torch.ones_like(label_tensor) * 100.0
-
-    torch.manual_seed(42)
-    result = nef.random_clear_label(input_tensor, label_tensor, prob=0.5, exclude_zero=True)
-
-    # Regions where label=0 should keep their original values (not be cleared)
-    zero_label_mask = (label_tensor == 0)
-    assert torch.allclose(result[zero_label_mask], input_tensor[zero_label_mask])
-
-
-# =============================================================================
 # Tests for subsample_random_dims()
 # =============================================================================
 
