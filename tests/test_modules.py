@@ -44,7 +44,7 @@ def test_norm_instance(ndim: int):
     if not torch.allclose(y_mean, torch.zeros_like(y_mean), atol=tol):
         pytest.fail(
             f"Some means of instance normalization are not within +/- {tol} of zero. Got\n{y_mean}"
-    )
+        )
 
     # Ensure variances are close to one
     if not torch.allclose(y_var, torch.ones_like(y_var), atol=tol):
@@ -90,7 +90,7 @@ def test_norm_batch(ndim: int):
     if not torch.allclose(y_mean, torch.zeros_like(y_mean), atol=tol):
         pytest.fail(
             f"Some means of batch normalization are not within +/- {tol} of zero. Got\n{y_mean}"
-    )
+        )
 
     # Ensure variances are close to one
     if not torch.allclose(y_var, torch.ones_like(y_var), atol=tol):
