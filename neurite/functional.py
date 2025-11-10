@@ -530,7 +530,7 @@ def apply_bernoulli_mask(
     ```
     """
     # Sample the Bernoulli mask with parameter `p`
-    bernoulli_mask = ne.utils.utils.bernoulli(p=p, shape=input_tensor.shape)
+    bernoulli_mask = ne.utils.bernoulli(p=p, shape=input_tensor.shape)
     masked = torch.clone(input_tensor)
 
     # Get successes or failures
@@ -579,7 +579,7 @@ def random_flip(dim: int, *args, prob: float = 0.5):
     >>> y = torch.tensor([[5, 6], [7, 8]])
     >>> flipped_x, flipped_y = random_flip(dim=0, x, y, prob=1.0)
     """
-    result = tuple([arg.flip([dim]) for arg in args]) if ne.utils.utils.bernoulli(prob) else args
+    result = tuple([arg.flip([dim]) for arg in args]) if ne.utils.bernoulli(prob) else args
     if len(args) == 1:
         return result[0]
     return result
@@ -707,7 +707,7 @@ def upsample(
 
     # Infer interpolation mode for linear interpolation
     if mode == 'linear':
-        mode = ne.utils.utils.infer_linear_interpolation_mode(spatial_ndim)
+        mode = ne.utils.infer_linear_interpolation_mode(spatial_ndim)
 
     # F.interpolate requires exactly one of size or scale_factor
     if size is not None:

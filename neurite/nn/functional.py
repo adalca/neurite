@@ -70,8 +70,8 @@ def gaussian_smoothing(
     # Infer spatial dimensionality (subtract batch and channel dims)
     ndim = input_tensor.dim() - 2
 
-    gaussian_kernel_ = ne.utils.utils.gaussian_kernel(
-        kernel_size=kernel_size, sigma=sigma, ndim=ndim, nchannels=input_tensor.shape[1]).float()
+    gaussian_kernel_ = gaussian_kernel(
+        kernel_size=kernel_size, sigma=sigma, ndim=ndim, nchannels=input_tensor.shape[1])
 
     if isinstance(kernel_size, Sequence):
         padding_per_dim = [ks // 2 for ks in kernel_size]

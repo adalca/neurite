@@ -184,7 +184,7 @@ def test_grid_normalized(grid_shape: tuple):
     (3, 'trilinear'),
 ])
 def test_infer_linear_interpolation_mode(n, mode):
-    assert ne.utils.utils.infer_linear_interpolation_mode(n) == mode
+    assert ne.utils.infer_linear_interpolation_mode(n) == mode
 
 
 def test_apply_bernoulli_mask_all_keep():

@@ -390,7 +390,7 @@ class ConvBlock(nn.Sequential):
                 conv_id += 1
 
             elif operation == 'n' and normalization is not None:
-                layers[f'normalization{norm_id}'] = ne.utils.utils.build_normalization(
+                layers[f'normalization{norm_id}'] = ne.utils.build_normalization(
                     normalization_type=normalization,
                     ndim=ndim,
                     num_features=in_channels,
@@ -762,7 +762,7 @@ class UpsampleConvBlock(nn.Module):
             )
         else:
             if upsample_mode == 'linear':
-                upsample_mode = ne.utils.utils.infer_linear_interpolation_mode(ndim)
+                upsample_mode = ne.utils.infer_linear_interpolation_mode(ndim)
 
             align = None if upsample_mode == 'nearest' else True
             self.upsample = nn.Upsample(
