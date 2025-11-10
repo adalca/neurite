@@ -36,104 +36,13 @@ import neurite as ne
 
 
 __all__ = [
-    "gaussian_kernel",
     "bernoulli",
-    "make_range",
     "is_instantiated_normalization",
     "infer_linear_interpolation_mode",
     "build_normalization",
     "downsampling_conv_blocks",
     "upsampling_conv_blocks"
 ]
-
-
-def gaussian_kernel(
-    kernel_size: Union[int, Sequence[int]] = 3,
-    sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
-    ndim: int = 3,
-    nchannels: int = 1,
-    device: Optional[torch.device] = None,
-    dtype: Optional[torch.dtype] = torch.float32,
-) -> torch.Tensor:
-    """
-    Create a {1D, 2D, 3D} Gaussian kernel.
-
-    Parameters
-    ----------
-    kernel_size : int, optional
-        Size of each dimension in the Gaussian kernel. Default is 3.
-    sigma : float or int, optional
-        Standard deviation of the Gaussian kernel. Default is 1.
-    ndim : int
-        Dimensionality of the gaussian kernel. Default is 3.
-    nchannels : int, optional
-        Number of channels for the kernel. Default is 1.
-    device : torch.device, optional
-        Device on which to create the kernel tensor. Default is None.
-    dtype : torch.dtype, optional
-        Data type of the kernel tensor. Default is torch.float32.
-
-    Returns
-    -------
-    torch.Tensor
-        Tensor representing the {1D, 2D, 3D} Gaussian kernel with batch and channel dimensions.
-
-    Examples
-    --------
-    >>> import torch
-    # Make the kernel!
-    >>> gaussian_kernel_ = gaussian_kernel(3, 1, 3)
-    # Print shape (should have batch and channel dimensions)
-    >>> gaussian_kernel_.shape
-    torch.Size([1, 1, 3, 3, 3])
-    """
-
-    # Create a coordinate grid centered at zero
-    if isinstance(kernel_size, list):
-        if len(kernel_size) != ndim:
-            raise ValueError("If coords is a list, it must have length equal to `ndim`.")
-        coords = [
-            torch.arange(
-                ks, device=device, dtype=dtype
-            ).float() - (ks - 1) / 2
-            for ks in kernel_size
-        ]
-    else:
-        torch_range = torch.arange(kernel_size, device=device, dtype=dtype).float()
-        coords = [torch_range - (kernel_size - 1) / 2] * ndim
-        kernel_size = [kernel_size] * ndim
-
-    grid = torch.stack(
-        torch.meshgrid(coords, indexing='ij'), -1
-    ).to(device=device, dtype=dtype)
-
-    # print(f'ndim: {ndim}, grid.shape: {grid.shape}, sigma: {sigma}')
-    # Per-dimension sigma
-    if isinstance(sigma, (float, int)):
-        sigma = [sigma] * ndim
-
-    elif isinstance(sigma, Collection):
-        if len(sigma) != ndim:
-            raise ValueError("If sigma is a collection, it must have length equal to `ndim`.")
-
-    # Make the sigmas on device
-    sigma = torch.tensor(sigma, device=device, dtype=dtype)
-
-    # Calculate the Gaussian function. Make the kernel by integrating over all spatial dimensions.
-    kernel = torch.exp(-0.5 * (grid ** 2 / sigma**2).sum(-1))
-
-    # Normalize the kernel so that it sums to 1
-    kernel /= kernel.sum()
-
-    # Reshape to 5D tensor for conv3d
-    kernel = kernel.view(1, 1, *kernel_size)
-
-    # Repeat the kernel for each channel (depthwise convolution)
-    # For depthwise conv, kernel shape should be (nchannels, 1, *kernel_size)
-    if nchannels > 1:
-        kernel = kernel.repeat(nchannels, 1, *([1] * ndim))
-
-    return kernel
 
 
 def bernoulli(p: float = 0.5, shape: tuple = (1,)) -> torch.Tensor:
@@ -171,79 +80,6 @@ def bernoulli(p: float = 0.5, shape: tuple = (1,)) -> torch.Tensor:
     bernoulli_result = torch.bernoulli(sampling_domain)
 
     return bernoulli_result
-
-
-def make_range(*args, **kwargs) -> tuple:
-    """
-    Creates a tuple specigying the bounds for a range of numbers `(min, max)`.
-
-    Generate a tuple containing the min and max values for a range. The range can be defined through
-    positional and/or keyword arguments. If only one positional argument is provided, it is
-    interpreted as `max` with `min` defaulting to 0. Keyword arguments can be used to explicitly set
-    `min` and/or `max`, overriding positional arguments.
-
-    Parameters
-    ----------
-    min : int or float, optional
-        The minimum value of the range.
-    max : int or float, optional
-        The maximum value of the range.
-
-    Returns
-    -------
-    tuple of (int or float, int or float)
-        A tuple containing the minimum and maximum values `(min, max)`.
-
-    Examples
-    --------
-    >>> # Using two positional arguments
-    >>> rng = make_range(0, 19.7)
-    >>> print(rng)
-    (0, 19.7)
-    >>> # Using one positional argument
-    >>> rng = make_range(5)
-    >>> print(rng)
-    (0, 5)
-    >>> # Using keyword arguments
-    >>> rng = make_range(min=0.6, 1)
-    >>> print(rng)
-    (0.6, 1)
-    """
-    # Return arguments of type {list, tuple} as-is
-    for arg in args:
-        if isinstance(arg, (list, tuple)):
-            return arg
-
-    # Return keyword arguments of type {list, tuple} as-is
-    for arg in kwargs.values():
-        if isinstance(arg, (list, tuple)):
-            return arg
-
-    # Setting default values
-    min, max = 0, 1
-    # Handle positional arguments
-    if len(args) == 2:
-        min, max = args
-
-    elif len(args) == 1:
-        if isinstance(args[0], list | tuple):
-            # if the argument is a list, unpack it:
-            min, max = args[0]
-        else:
-            # if only one input arg is defined, interpret it as `max`
-            min, max = 0, args[0]
-
-    # Handle kwargs (if they exist)
-    if 'min' in kwargs:
-        min = kwargs['min']
-    if 'max' in kwargs:
-        max = kwargs['max']
-
-    # Thrown an error if min is greater than max
-    if max <= min:
-        raise ValueError("`max` must be greater than `min`.")
-
-    return (min, max)
 
 
 def is_instantiated_normalization(obj: object) -> bool:
