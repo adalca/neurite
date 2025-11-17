@@ -94,7 +94,7 @@ def test_subsample_tensor_magnitudes():
     input_tensor = torch.arange(25).view(1, 1, 5, 5).float()
     subsampled_gt = torch.tensor([0, 2, 4, 10, 12, 14, 20, 22, 24]).view(1, 1, 3, 3).float()
 
-    subsampled_tensor = nef.subsample(input_tensor, stride=2)
+    subsampled_tensor = ne.subsample(input_tensor, stride=2, non_spatial_dims=(0, 1))
 
     torch.allclose(subsampled_tensor, subsampled_gt)
 
@@ -119,10 +119,11 @@ def test_subsample_tensor_strides(
 
     # input_tensor = torch.randn(1, 1, *[32] * len(stride))
 
-    nef.subsample(
+    ne.subsample(
         input_tensor,
         stride=stride,
         subsampling_dimension=subsampling_dimension,
+        non_spatial_dims=(0, 1)
     )
 
 
