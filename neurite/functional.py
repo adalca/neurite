@@ -23,6 +23,8 @@ __all__ = [
     "resample",
     "filter_dim",
     "gaussian_kernel",
+    "crop",
+    "clip",
 ]
 
 
@@ -945,3 +947,175 @@ def gaussian_kernel(
     kernel /= kernel.sum()
 
     return kernel
+
+
+def crop(
+    input_tensor: torch.Tensor,
+    size: Union[int, Sequence[int], None] = None,
+    scale_factor: Union[float, Sequence[float], None] = None,
+    non_spatial_dims: Union[Tuple[int, ...], None] = None,
+    offset: Union[int, Sequence[int]] = 0,
+) -> torch.Tensor:
+    """
+    Crop tensor to specified size.
+
+    Parameters
+    ----------
+    input_tensor : torch.Tensor
+        Tensor to crop.
+    size : int, Sequence[int], or None, default=None
+        Target spatial size after cropping. If int, same size used for all spatial dimensions.
+        If Sequence, per-dimension sizes. If None, `scale_factor` must be specified.
+    scale_factor : float, Sequence[float], or None, default=None
+        Multiplicative factor for spatial size. If float, same factor for all spatial dimensions.
+        If Sequence, per-dimension factors. Output size = input size * scale_factor. If None,
+        `size` must be specified.
+    non_spatial_dims : Tuple[int, ...] or None, default=None
+        Dimensions not to crop (e.g., (0, 1) for batch and channel). If None, crops all dimensions.
+    offset : int or Sequence[int], default=0
+        Starting position for crop. If int, same offset for all spatial dimensions.
+        If Sequence, per-dimension offsets.
+
+    Returns
+    -------
+    torch.Tensor
+        Cropped tensor.
+
+    Raises
+    ------
+    ValueError
+        If both `size` and `scale_factor` are specified or both are None. If crop size exceeds
+        input size for any dimension. If offset is out of valid range.
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite as ne
+    >>> x = torch.randn(64, 64, 64)
+    >>> # Crop from origin (0, 0, 0)
+    >>> cropped = ne.crop(x, size=32)
+    >>> cropped.shape
+    torch.Size([32, 32, 32])
+    >>> # Crop from offset (10, 10, 10)
+    >>> cropped = ne.crop(x, size=32, offset=10)
+    >>> cropped.shape
+    torch.Size([32, 32, 32])
+    >>> # Per-dimension offsets
+    >>> cropped = ne.crop(x, size=(32, 48, 64), offset=(10, 5, 0))
+    >>> cropped.shape
+    torch.Size([32, 48, 64])
+    >>> # Random crop (user controls randomness)
+    >>> random_offset = torch.randint(0, 33, (3,)).tolist()
+    >>> cropped = ne.crop(x, size=32, offset=random_offset)
+    """
+    if size is None and scale_factor is None:
+        raise ValueError("Either size or scale_factor must be specified")
+    if size is not None and scale_factor is not None:
+        raise ValueError("size and scale_factor are mutually exclusive")
+
+    # Handle non-spatial dimensions
+    num_non_spatial, num_spatial = _parse_non_spatial_dims(non_spatial_dims, input_tensor.dim())
+    spatial_dims = list(range(num_non_spatial, input_tensor.dim()))
+
+    if size is not None:
+        if isinstance(size, int):
+            crop_sizes = [size] * num_spatial
+        else:
+            if len(size) != num_spatial:
+                raise ValueError(
+                    f"size length {len(size)} doesn't match number of spatial dims {num_spatial}"
+                )
+            crop_sizes = list(size)
+    else:
+        if isinstance(scale_factor, (int, float)):
+            scale_factors = [scale_factor] * num_spatial
+        else:
+            if len(scale_factor) != num_spatial:
+                raise ValueError(
+                    f"scale_factor length {len(scale_factor)} doesn't match spatial"
+                    f"dims {num_spatial}"
+                )
+            scale_factors = list(scale_factor)
+
+        # Compute crop sizes from scale factors
+        crop_sizes = []
+        for dim_idx, dim in enumerate(spatial_dims):
+            input_size = input_tensor.shape[dim]
+            crop_size = round(input_size * scale_factors[dim_idx])
+            crop_sizes.append(crop_size)
+
+    # Validate crop sizes
+    for dim_idx, dim in enumerate(spatial_dims):
+        input_size = input_tensor.shape[dim]
+        if crop_sizes[dim_idx] > input_size:
+            raise ValueError(
+                f"Crop size {crop_sizes[dim_idx]} exceeds input size {input_size} at dim {dim}"
+            )
+
+    # Parse offset
+    if isinstance(offset, int):
+        offsets = [offset] * num_spatial
+    else:
+        if len(offset) != num_spatial:
+            raise ValueError(
+                f"offset length {len(offset)} doesn't match number of spatial dims {num_spatial}"
+            )
+        offsets = list(offset)
+
+    # Validate offsets
+    for dim_idx, dim in enumerate(spatial_dims):
+        input_size = input_tensor.shape[dim]
+        crop_size = crop_sizes[dim_idx]
+        max_valid_offset = input_size - crop_size
+        if offsets[dim_idx] < 0 or offsets[dim_idx] > max_valid_offset:
+            raise ValueError(
+                f"offset {offsets[dim_idx]} out of range [0, {max_valid_offset}] for dim {dim}"
+            )
+
+    slices = [slice(None)] * input_tensor.dim()
+    for dim_idx, dim in enumerate(spatial_dims):
+        crop_size = crop_sizes[dim_idx]
+        dim_offset = offsets[dim_idx]
+        slices[dim] = slice(dim_offset, dim_offset + crop_size)
+
+    return input_tensor[tuple(slices)]
+
+
+def clip(
+    input_tensor: torch.Tensor,
+    min: Union[float, int, None] = None,
+    max: Union[float, int, None] = None,
+) -> torch.Tensor:
+    """
+    Clip tensor values to specified range.
+
+    Element-wise operation - works on any tensor shape. Thin wrapper around
+    torch.clamp with consistent naming.
+
+    Parameters
+    ----------
+    input_tensor : torch.Tensor
+        Tensor to clip.
+    min : float, int, or None, default=None
+        Minimum value. If None, no lower bound.
+    max : float, int, or None, default=None
+        Maximum value. If None, no upper bound.
+
+    Returns
+    -------
+    torch.Tensor
+        Clipped tensor (non-inplace).
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite as ne
+    >>> x = torch.randn(10) * 5
+    >>> # Clip to [-1, 1]
+    >>> clipped = ne.clip(x, min=-1, max=1)
+    >>> # Clip only minimum
+    >>> clipped = ne.clip(x, min=0)
+    >>> # Clip only maximum
+    >>> clipped = ne.clip(x, max=1)
+    """
+    return torch.clamp(input_tensor, min=min, max=max)

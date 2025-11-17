@@ -84,44 +84,10 @@ def random_crop(
     torch.Size([2, 3, 64, 32])
     """
 
-    if seed is not None:
-        torch.manual_seed(seed)
-
-    # Calculate the list of allowable dimensions
-    allowed_dims = [x for x in range(input_tensor.dim()) if x not in forbidden_dims]
-
-    # Make empty list of slices which we will modify
-    slices = [slice(None)] * input_tensor.dim()
-
-    # I think `translation_min` will always be zero. Keep it as such.
-    translation_min = 0
-
-    # Iterate through each dimension and make croppings for them independently.
-    for dim in allowed_dims:
-
-        # Decide if we are to crop the current dimension (Bernoulli trial)
-        if torch.rand(1).item() < prob:
-
-            dim_size = input_tensor.shape[dim]
-            sampled_proportion = torch.rand(1).item() * crop_proportion
-            crop_size = round((1 - sampled_proportion) * dim_size)
-
-            translation_max = dim_size - crop_size
-
-            # Prevent errors in the case of no translation
-            if translation_min != translation_max:
-
-                # Sample a valid translation (can't be out of bounds!)
-                translation = torch.randint(translation_min, translation_max + 1, (1,)).item()
-
-            else:
-
-                translation = 0
-
-            # Make the slice and override the current (presumably null) slice.
-            slices[dim] = slice(translation, crop_size + translation)
-
-    return input_tensor[slices]
+    raise NotImplementedError(
+        "random_crop is deprecated. Use neurite.nn.functional.crop with "
+        "size or scale_factor instead.",
+    )
 
 
 def random_clip(
@@ -168,13 +134,6 @@ def random_clip(
     >>> print(clipped_tensor1 is clipped_tensor2)
     True
     """
-    # Initialize random seed if provided
-    if seed is not None:
-        torch.manual_seed(seed)
-
-    # Sample Bernoulli trial to determine whether to clip
-    if torch.rand(1).item() < clip_prob:
-        # Apply clips
-        return input_tensor.clip_(clip_min, clip_max)
-    else:
-        return input_tensor
+    raise NotImplementedError(
+        "random_clip is deprecated. Use neurite.nn.functional.clip with "
+    )

@@ -1189,135 +1189,85 @@ class ResampleVoxelDimensions(nn.Module):
         )
 
 
-class RandomCrop(nn.Module):
+class Crop(nn.Module):
     """
-    Randomly crop the input tensor along allowed dimensions.
+    Crop layer that crops spatial dimensions.
 
-    This module randomly selects a subset of the allowed dimensions (excluding `forbidden_dims`)
-    and crops each independently by a proportion that is randomly drawn from a distribution. The
-    proportion to crop can either be fixed or sampled from a specified distribution. Each allowed
-    dimension has a probability `prob` of being cropped based on the results of independent
-    Bernoulli trials.
-    """
+    Parameters
+    ----------
+    size : int, Sequence[int], or None, default=None
+        Target spatial size(s). If None, `scale_factor` must be specified.
+    scale_factor : float, Sequence[float], or None, default=None
+        Multiplicative factor for spatial size. If None, `size` must be specified.
+    offset : int or Sequence[int], default=0
+        Starting position for crop. If int, same offset for all spatial dimensions. If Sequence,
+        per-dimension offsets.
 
-    def __init__(
-        self,
-        crop_proportion: Union[float, int] = 0.5,
-        prob: Union[float, int] = 1,
-        forbidden_dims: Union[Tuple, Sequence] = (0, 1),
-        seed: Union[int, None] = None,
-    ):
-        """
-        Initialize the `RandomCrop` module.
-
-        Parameters
-        ----------
-        crop_proportion : float or int, default=0.5
-            The proportion that is randomly cropped from any allowed dimension.
-            Represents the maximum proportion (0 to 1) to crop, sampled from independent uniform
-            distributions for each allowed dimension. A value of `0.5` means up to 50% of each
-            dimension can be cropped.
-        prob : float or int, default=1
-            The probability of cropping each allowed dimension.
-            Used as a fixed probability for all eligible dimensions.
-        forbidden_dims : Tuple or Sequence, default=(0, 1)
-            Dimensions that should never be cropped (batch and channel dimensions).
-        seed : int or None, default=None
-            A random seed to control the randomness of cropping operations. If provided,
-            it ensures reproducibility of the cropping.
-        """
-        super().__init__()
-        self.crop_proportion = crop_proportion
-        self.prob = prob
-        self.forbidden_dims = forbidden_dims
-        self.seed = seed
-
-    def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
-        """
-        Performs the forward pass of the `RandomCrop` module.
-
-        Parameters
-        ----------
-        input_tensor : torch.Tensor
-            The tensor to be randomly cropped. It is assumed to have batch and channel dimensions.
-
-        Returns
-        -------
-        torch.Tensor
-            The tensor that has been randomly cropped.
-        """
-
-        return ne.utils.augment.random_crop(
-            input_tensor=input_tensor,
-            crop_proportion=self.crop_proportion,
-            prob=self.prob,
-            forbidden_dims=self.forbidden_dims,
-            seed=self.seed
-        )
-
-
-class RandomClip(nn.Module):
-    """
-    Randomly clip the intensities of the input tensor.
+    Examples
+    --------
+    >>> import torch
+    >>> from neurite.nn.modules import Crop
+    >>> # Crop from origin
+    >>> crop_layer = Crop(size=32)
+    >>> x = torch.randn(2, 3, 64, 64)
+    >>> cropped = crop_layer(x)
+    >>> cropped.shape
+    torch.Size([2, 3, 32, 32])
+    >>> # Crop from offset
+    >>> crop_layer = Crop(size=32, offset=16)
+    >>> cropped = crop_layer(x)
+    >>> cropped.shape
+    torch.Size([2, 3, 32, 32])
     """
 
     def __init__(
         self,
-        clip_min: Union[float, int] = 0,
-        clip_max: Union[float, int] = 1,
-        clip_prob: Union[float, int] = 0.5,
-        seed: Union[int, None] = None,
+        size: Union[int, Sequence[int], None] = None,
+        scale_factor: Union[float, Sequence[float], None] = None,
+        offset: Union[int, Sequence[int]] = 0,
     ):
-        """
-        Initialize `RandomClip` with specified clipping bounds and sampling probability.
-
-        Parameters
-        ----------
-        clip_min : float or int, default=0
-            The lower bound for clipping. Elements less than `clip_min` are set to `clip_min`.
-        clip_max : float or int, default=1
-            The upper bound for clipping. Elements greater than `clip_max` are set to `clip_max`.
-        clip_prob : float or int, default=0.5
-            Probability of applying this operation.
-        seed : int or None, default=None
-            Seed for random number generation to ensure reproducibility.
-
-        Examples
-        --------
-        ### Initialize `RandomClip` and apply it deterministically to a tensor:
-        >>> random_clip = RandomClip(clip_min=0.1, clip_max=0.9, clip_prob=0.5)
-        >>> input_tensor = torch.randn(3, 3)
-        >>> output_tensor = random_clip(input_tensor)
-        >>> print(output_tensor)
-        """
         super().__init__()
-        self.clip_min = clip_min
-        self.clip_max = clip_max
-        self.clip_prob = clip_prob
-        self.seed = seed
+        self.size = size
+        self.scale_factor = scale_factor
+        self.offset = offset
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass of `RandomClip`.
+        return nef.crop(input_tensor, self.size, self.scale_factor, self.offset)
 
-        Parameters
-        ----------
-        input_tensor : torch.Tensor
-            The tensor to be clipped.
 
-        Returns
-        -------
-        torch.Tensor
-            The clipped tensor (if Bernoulli trial defined by parameter `clip_prob` is successful).
-        """
+class Clip(nn.Module):
+    """
+    Clip layer that clamps values to a specified range.
 
-        return ne.utils.augment.random_clip(
-            input_tensor=input_tensor,
-            clip_min=self.clip_min,
-            clip_max=self.clip_max,
-            clip_prob=self.clip_prob,
-            seed=self.seed
-        )
+    Parameters
+    ----------
+    min : float, int, or None, default=None
+        Minimum value. If None, no lower bound.
+    max : float, int, or None, default=None
+        Maximum value. If None, no upper bound.
+
+    Examples
+    --------
+    >>> import torch
+    >>> from neurite.nn.modules import Clip
+    >>> clip_layer = Clip(min=0, max=1)
+    >>> x = torch.randn(2, 3, 32, 32) * 5
+    >>> clipped = clip_layer(x)
+    >>> float(clipped.min()), float(clipped.max())
+    (0.0, 1.0)
+    """
+
+    def __init__(
+        self,
+        min: Union[float, int, None] = None,
+        max: Union[float, int, None] = None,
+    ):
+        super().__init__()
+        self.min = min
+        self.max = max
+
+    def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
+        return ne.functional.clip(input_tensor, self.min, self.max)
 
 
 class RandomIntensityLookup(nn.Module):

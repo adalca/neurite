@@ -938,3 +938,101 @@ def bw_grid(
         "bw_grid() has been moved to neurite_sandbox. "
         "Please use: from neurite_sandbox.etienne_chollet.nn.functional import bw_grid"
     )
+
+
+def crop(
+    input_tensor: torch.Tensor,
+    size: Union[int, Sequence[int], None] = None,
+    scale_factor: Union[float, Sequence[float], None] = None,
+    offset: Union[int, Sequence[int]] = 0,
+) -> torch.Tensor:
+    """
+    Crop tensor to specified size.
+
+    Batch and channel dimensions are preserved. Mirrors torch.nn.functional.interpolate
+    API: specify either `size` or `scale_factor` (mutually exclusive).
+
+    Parameters
+    ----------
+    input_tensor : torch.Tensor
+        Tensor with shape (B, C, *spatial_dims).
+    size : int, Sequence[int], or None, default=None
+        Target spatial size(s). If int, same size for all spatial dims.
+        If Sequence, per-dimension sizes. If None, `scale_factor` must be specified.
+    scale_factor : float, Sequence[float], or None, default=None
+        Multiplicative factor for spatial size. Output size = input size * scale_factor.
+        If None, `size` must be specified.
+    offset : int or Sequence[int], default=0
+        Starting position for crop. If int, same offset for all spatial dimensions.
+        If Sequence, per-dimension offsets.
+
+    Returns
+    -------
+    torch.Tensor
+        Cropped tensor with shape (B, C, *cropped_spatial_dims).
+        Batch and channel dimensions preserved.
+
+    Raises
+    ------
+    ValueError
+        If both `size` and `scale_factor` are specified or both are None.
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite.nn.functional as nef
+    >>> x = torch.randn(2, 3, 64, 64)
+    >>> # Crop from origin
+    >>> cropped = nef.crop(x, size=32)
+    >>> cropped.shape
+    torch.Size([2, 3, 32, 32])
+    >>> # Crop from offset
+    >>> cropped = nef.crop(x, size=32, offset=16)
+    >>> cropped.shape
+    torch.Size([2, 3, 32, 32])
+    >>> # Random crop (user controls randomness)
+    >>> offset = torch.randint(0, 33, (2,)).tolist()
+    >>> cropped = nef.crop(x, size=32, offset=offset)
+    """
+    return ne.crop(
+        input_tensor=input_tensor,
+        size=size,
+        scale_factor=scale_factor,
+        non_spatial_dims=(0, 1),
+        offset=offset
+    )
+
+
+def clip(
+    input_tensor: torch.Tensor,
+    min: Union[float, int, None] = None,
+    max: Union[float, int, None] = None,
+) -> torch.Tensor:
+    """
+    Clip tensor values to specified range.
+
+    Parameters
+    ----------
+    input_tensor : torch.Tensor
+        Tensor with shape (B, C, *spatial_dims).
+    min : float, int, or None, default=None
+        Minimum value. If None, no lower bound.
+    max : float, int, or None, default=None
+        Maximum value. If None, no upper bound.
+
+    Returns
+    -------
+    torch.Tensor
+        Clipped tensor with same shape as input.
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite.nn.functional as nef
+    >>> x = torch.randn(2, 3, 32, 32) * 5
+    >>> # Clip to [0, 1]
+    >>> clipped = nef.clip(x, min=0, max=1)
+    >>> clipped.shape
+    torch.Size([2, 3, 32, 32])
+    """
+    return ne.clip(input_tensor, min=min, max=max)
