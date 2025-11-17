@@ -98,123 +98,6 @@ def gaussian_smoothing(
     return smoothed_tensor
 
 
-def gaussian_antialiasing(
-    input_tensor: torch.Tensor,
-    stride: Union[int, Sequence[int]] = 2,
-    kernel_size: Union[int, Sequence[int], None] = None,
-    sigma: Union[float, int, Sequence[float], Sequence[int], None] = None,
-    subsampling_dimension: Union[List[int], int, None] = None
-) -> torch.Tensor:
-    """
-    Apply Gaussian antialiasing by combining Gaussian blur with downsampling.
-
-    This function reduces aliasing artifacts when downsampling by first applying
-    a Gaussian blur filter followed by subsampling. This is particularly important
-    in medical imaging to preserve structural information during downsampling operations.
-
-    Parameters
-    ----------
-    input_tensor : torch.Tensor
-        The input tensor to be downsampled with antialiasing, assumed to be 1D, 2D, or 3D.
-    stride : int or Sequence[int], default=2
-        Downsampling stride. If int, the same stride is applied to all spatial dimensions.
-        If Sequence[int], different strides can be specified per dimension.
-    kernel_size : int, Sequence[int], default=None
-        Size of the Gaussian kernel for antialiasing. If int, same size is used for all
-        dimensions. If Sequence[int], different sizes can be specified per dimension.
-        If None, automatically computed as 2 * stride + 1 per dimension.
-    sigma : float, int, Sequence[float], Sequence[int], default=None
-        Standard deviation of the Gaussian kernel. If float/int, same sigma is used for
-        all dimensions. If Sequence, different sigmas can be specified per dimension.
-        If None, automatically computed as stride / 2 per dimension.
-    subsampling_dimension : Sequence[int], int, or None, default=None
-        Dimensions to apply antialiasing and subsampling. If None, applies to all
-        spatial dimensions.
-
-    Returns
-    -------
-    torch.Tensor
-        Antialiased and downsampled tensor with reduced spatial dimensions.
-
-    Examples
-    --------
-    >>> import torch
-    >>> import neurite.nn.functional as nef
-    >>> # Create a 3D medical image tensor
-    >>> input_tensor = torch.randn(1, 1, 64, 64, 64)
-    >>> # Apply Gaussian antialiasing with 2x downsampling
-    >>> antialiased_tensor = nef.gaussian_antialiasing(input_tensor, stride=2)
-    >>> print(antialiased_tensor.shape)
-    torch.Size([1, 1, 32, 32, 32])
-
-    >>> # Apply different strides per dimension
-    >>> antialiased_tensor = nef.gaussian_antialiasing(
-    ...     input_tensor, stride=[2, 2, 4], sigma=1.5
-    ... )
-    >>> print(antialiased_tensor.shape)
-    torch.Size([1, 1, 32, 32, 16])
-
-    >>> # Apply per-dimension antialiasing parameters
-    >>> antialiased_tensor = nef.gaussian_antialiasing(
-    ...     input_tensor,
-    ...     stride=[2, 2, 4],
-    ...     kernel_size=[5, 5, 9],
-    ...     sigma=[1.0, 1.0, 2.0]
-    ... )
-    >>> print(antialiased_tensor.shape)
-    torch.Size([1, 1, 32, 32, 16])
-    """
-    # Infer spatial dimensionality
-    ndim = input_tensor.dim() - 2
-    if ndim not in [1, 2, 3]:
-        raise ValueError(
-            f"Unsupported spatial dimensions: {ndim}. Only 1D, 2D, and 3D are supported.")
-
-    # Convert stride to list if it's a single int
-    if isinstance(stride, int):
-        if stride <= 0:
-            raise ValueError(f"Stride must be positive, got {stride}")
-        strides = [stride] * ndim
-
-    else:
-        strides = list(stride)
-        if len(strides) != ndim:
-            raise ValueError(
-                f"Stride list length {len(strides)} must match spatial dimensions {ndim}")
-        if any(s <= 0 for s in strides):
-            raise ValueError(f"All strides must be positive, got {strides}")
-
-    # Auto-compute kernel size if not provided
-    if kernel_size is None:
-        kernel_size = [2 * s + 1 for s in strides]
-
-    # Validate kernel_size if provided as list
-    elif isinstance(kernel_size, list):
-        if len(kernel_size) != ndim:
-            raise ValueError(
-                f"kernel_size list length {len(kernel_size)} must match spatial dimensions {ndim}")
-        if any(ks <= 0 for ks in kernel_size):
-            raise ValueError(f"All kernel sizes must be positive, got {kernel_size}")
-
-    if sigma is None:
-        # Compute per-dimension sigmas: stride / 2 for each dimension
-        sigma = [s / 2.0 for s in strides]
-    elif isinstance(sigma, list):
-        if len(sigma) != ndim:
-            raise ValueError(f"sigma list length {len(sigma)} must match spatial dimensions {ndim}")
-        if any(s <= 0 for s in sigma):
-            raise ValueError(f"All sigma values must be positive, got {sigma}")
-
-    # Apply Gaussian smoothing first for antialiasing
-    smoothed_tensor = gaussian_smoothing(
-        input_tensor=input_tensor, kernel_size=kernel_size, sigma=sigma)
-
-    antialiased_tensor = subsample(
-        input_tensor=smoothed_tensor, stride=strides, subsampling_dimension=subsampling_dimension)
-
-    return antialiased_tensor
-
-
 def apply_bernoulli_mask(
     input_tensor: torch.Tensor,
     p: Union[float, int] = 0.5,
@@ -281,53 +164,6 @@ def apply_bernoulli_mask(
     ```
     """
     return ne.apply_bernoulli_mask(input_tensor, p=p, returns=returns)
-
-
-def subsample(
-    input_tensor: torch.Tensor,
-    stride: Union[Sequence[int], int, None] = 2,
-    subsampling_dimension: Union[Sequence[int], Literal[0, 1, 2], int, None] = None,
-) -> torch.Tensor:
-    """
-    Subsamples `input_tensor` by a factor `stride` along the specified dimension.
-
-    Parameters
-    ----------
-    input_tensor : torch.Tensor
-        The tensor to sample from, with shape (B, C, *spatial).
-    stride : Sequence[int], int, or None, default=2
-        Factor by which to subsample (interleave dropouts).
-    subsampling_dimension : Sequence[int], Literal[0, 1, 2], int, or None, default=None
-        The spatial dimension(s) to subsample (0-indexed among spatial dims). If None, subsamples
-        all spatial dimensions.
-
-    Returns
-    -------
-    torch.Tensor
-        Tensor that has been subsampled.
-
-    Examples
-    --------
-    >>> import torch
-    # Define tensor of shape (1, 1, 5, 5)
-    >>> input_tensor = torch.arange(25).view(1, 1, 5, 5)
-    # Subsample along spatial dimension 1 (width)
-    >>> subsampled = subsample(input_tensor, stride=2, subsampling_dimension=1)
-    >>> print(subsampled.shape)
-    torch.Size([1, 1, 5, 3])
-
-    # Subsample all spatial dimensions
-    >>> input_tensor = torch.randn(2, 3, 32, 32)
-    >>> subsampled = subsample(input_tensor, stride=2)
-    >>> print(subsampled.shape)
-    torch.Size([2, 3, 16, 16])
-    """
-    return ne.subsample(
-        input_tensor=input_tensor,
-        stride=stride,
-        subsampling_dimension=subsampling_dimension,
-        non_spatial_dims=(0, 1)
-    )
 
 
 def subsample_random_dims(
@@ -414,62 +250,81 @@ def subsample_random_dims(
 
     for dimension in dimensions_to_subsample:
         # Adjust dimension index to account for batch and channel dims
-        input_tensor = subsample(
-            input_tensor=input_tensor, subsampling_dimension=int(dimension) - 2, stride=stride)
+        input_tensor = ne.subsample(
+            input_tensor=input_tensor,
+            subsampling_dimension=int(dimension) - 2,
+            stride=stride,
+            non_spatial_dims=(0, 1)
+        )
 
     return input_tensor
 
 
-def upsample(
+def resample(
     input_tensor: torch.Tensor,
-    scale_factor: Union[int, float, Sequence[Union[int, float]]] = 2,
-    shape: Union[Sequence[int], None] = None,
+    size: Union[Sequence[int], None] = None,
+    scale_factor: Union[int, float, Sequence[Union[int, float]], None] = None,
     mode: Literal['linear', 'nearest', 'bicubic', 'area', 'nearest-exact'] = 'linear',
+    antialias: bool = False
 ) -> torch.Tensor:
     """
-    Upsample 1D, 2D, or 3D tensors to a given `shape`.
+    Resample 1D, 2D, or 3D tensors to a given size or scale factor.
+
+    Wraps `neurite.functional.resample()` with automatic mode inference for linear interpolation.
+    Handles both upsampling (scale > 1) and downsampling (scale < 1).
 
     Parameters
     ----------
     input_tensor : torch.Tensor
-        The input tensor to be upsampled, with shape (B, C, *spatial).
-    scale_factor : int, float, Sequence[int], or Sequence[float], default=2
-        The factor by which to upsample each spatial dimension.
-    shape : Sequence[int] or None, default=None
-        Spatial dimensions (without batch or channel dimensions) to upsample `input_tensor` into.
+        The input tensor to be resampled, with shape (B, C, *spatial_dims).
+    size : Sequence[int] or None, default=None
+        Target spatial dimensions. If None, `scale_factor` must be specified.
+    scale_factor : int, float, Sequence[int], Sequence[float], or None, default=None
+        Factor by which to resample each spatial dimension. If None, `size` must be specified.
     mode : {'linear', 'nearest', 'bicubic', 'area', 'nearest-exact'}, default='linear'
-        Interpolation mode for upsampling.
+        Interpolation mode. 'linear' is automatically converted to 'linear'/'bilinear'/'trilinear'
+        based on spatial dimensionality.
+    antialias : bool, default=False
+        If True, apply antialiasing when downsampling. Only supported with 'bilinear' and
+        'bicubic' modes.
 
     Returns
     -------
     torch.Tensor
-        The upsampled tensor with shape (B, C, *upsampled_spatial).
+        The resampled tensor with shape (B, C, *resampled_spatial_dims).
 
     Examples
     --------
     >>> import torch
-    # 2D Upsampling
-    >>> input_tensor = torch.randn(1, 3, 32, 32)  # (B, C, H, W)
-    >>> upsampled_tensor = upsample(input_tensor, shape=(64, 64))
-    >>> print(upsampled_tensor.shape)
-    torch.Size([1, 3, 64, 64])
+    >>> # Downsample a 2D image by factor of 2
+    >>> input_tensor = torch.randn(1, 3, 64, 64)
+    >>> downsampled = resample(input_tensor, scale_factor=0.5)
+    >>> print(downsampled.shape)
+    torch.Size([1, 3, 32, 32])
 
-    # 3D Upsampling
-    >>> input_tensor = torch.randn(1, 3, 32, 32, 32)  # (B, C, D, H, W)
-    >>> upsampled_tensor = upsample(input_tensor, shape=(64, 64, 64))
-    >>> print(upsampled_tensor.shape)
-    torch.Size([1, 3, 64, 64, 64])
+    >>> # Upsample a 3D volume to specific size
+    >>> input_tensor = torch.randn(1, 1, 32, 32, 32)
+    >>> upsampled = resample(input_tensor, size=(64, 64, 64))
+    >>> print(upsampled.shape)
+    torch.Size([1, 1, 64, 64, 64])
+
+    >>> # Downsample with antialiasing
+    >>> input_tensor = torch.randn(2, 1, 128, 128)
+    >>> downsampled = resample(input_tensor, scale_factor=0.25, antialias=True)
+    >>> print(downsampled.shape)
+    torch.Size([2, 1, 32, 32])
     """
-    return ne.upsample(
+    return ne.resample(
         input_tensor=input_tensor,
+        size=size,
         scale_factor=scale_factor,
-        size=shape,
         mode=mode,
-        non_spatial_dims=(0, 1)
+        non_spatial_dims=(0, 1),
+        antialias=antialias
     )
 
 
-def resample_anisotropic(
+def resample_voxel_dimensions(
     input_tensor: torch.Tensor,
     resample_dimension: Union[int, Sequence[int], None] = None,
     downsample_stride: Union[int, Sequence[int]] = 2,
@@ -478,15 +333,16 @@ def resample_anisotropic(
     shape: Union[Sequence[int], None] = None,
 ) -> torch.Tensor:
     """
-    Subsample `input_tensor` by a factor `stride`, then upsample it by `scale_factor`.
+    Resample tensor to simulate different voxel dimensions.
 
-    Combines `subsample` and `upsample` by first subsampling `input_tensor` along a
-    given dimension by `stride`, then upsampling back to `shape`.
+    Combines downsampling and upsampling by first subsampling `input_tensor` along
+    specified dimensions by `downsample_stride`, then upsampling back to `shape`.
+    This is useful for simulating anisotropic voxel dimensions in medical imaging.
 
     Parameters
     ----------
     input_tensor : torch.Tensor
-        The tensor to resample anisotropically.
+        The tensor to resample, with shape (B, C, *spatial_dims).
     resample_dimension : int, Sequence[int], or None, default=None
         The dimension(s) that should be resampled. If None, all dimensions are resampled.
     downsample_stride : int or Sequence[int], default=2
@@ -501,7 +357,7 @@ def resample_anisotropic(
     Returns
     -------
     torch.Tensor
-        The anisotropically resampled tensor with the same batch and channel dims as `input_tensor`
+        The resampled tensor with the same batch and channel dims as `input_tensor`
         and spatial dims equal to `shape`.
 
     Examples
@@ -509,22 +365,29 @@ def resample_anisotropic(
     >>> import torch
     >>> input_tensor = torch.randn(1, 3, 32, 32)
     >>> # Subsample rows/cols by 2, then upsample to (64, 64)
-    >>> res = resample_anisotropic(
+    >>> res = resample_voxel_dimensions(
     ...     input_tensor, shape=(64, 64),
-    ...     subsampling_dimension=2, stride=2,
-    ...     mode='bilinear'
+    ...     downsample_stride=2,
+    ...     mode='linear'
     ... )
     >>> print(res.shape)
     torch.Size([1, 3, 64, 64])
     """
 
-    resampled = subsample(
+    resampled = ne.subsample(
         input_tensor,
         subsampling_dimension=resample_dimension,
-        stride=downsample_stride
+        stride=downsample_stride,
+        non_spatial_dims=(0, 1)
     )
 
-    resampled = upsample(resampled, shape=shape, mode=mode, scale_factor=upsample_scale_factor)
+    resampled = ne.upsample(
+        resampled,
+        size=shape,
+        mode=mode,
+        scale_factor=upsample_scale_factor,
+        non_spatial_dims=(0, 1)
+    )
 
     return resampled
 
