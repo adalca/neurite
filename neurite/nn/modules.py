@@ -1105,104 +1105,13 @@ class GaussianBlur(nn.Module):
         )
 
 
-class GaussianAntialiasing(nn.Module):
+class ResampleVoxelDimensions(nn.Module):
     """
-    Apply Gaussian antialiasing by combining Gaussian blur with downsampling.
+    Resample tensor to simulate different voxel dimensions.
 
-    This module reduces aliasing artifacts when downsampling by first applying
-    a Gaussian blur filter followed by subsampling. This is particularly important
-    in medical imaging to preserve structural information during downsampling operations.
-    """
-    def __init__(
-        self,
-        stride: Union[int, Sequence[int]] = 2,
-        kernel_size: Union[int, Sequence[int], None] = None,
-        sigma: Union[float, int, Sequence[float], Sequence[int], None] = None,
-        subsampling_dimension: Union[Sequence[int], int, None] = None
-    ):
-        """
-        Initialize `GaussianAntialiasing`.
-
-        Parameters
-        ----------
-        stride : int or Sequence[int], default=2
-            Downsampling stride. If int, the same stride is applied to all spatial dimensions.
-            If Sequence[int], different strides can be specified per dimension.
-        kernel_size : int, Sequence[int], or None, default=None
-            Size of the Gaussian kernel for antialiasing. If int, same size is used for all
-            dimensions. If Sequence[int], different sizes can be specified per dimension.
-            If None, automatically computed as 2 * stride + 1 per dimension.
-        sigma : float, int, Sequence[float], Sequence[int], or None, default=None
-            Standard deviation of the Gaussian kernel. If float/int, same sigma is used for
-            all dimensions. If Sequence, different sigmas can be specified per dimension.
-            If None, automatically computed as stride / 2 per dimension.
-        subsampling_dimension : Sequence[int], int, or None, default=None
-            Dimensions to apply antialiasing and subsampling. If None, applies to all
-            spatial dimensions.
-
-        Examples
-        --------
-        >>> import torch
-        >>> # Create a 3D medical image tensor
-        >>> input_tensor = torch.randn(1, 1, 64, 64, 64)
-        >>> # Apply Gaussian antialiasing with 2x downsampling
-        >>> antialiasing_layer = GaussianAntialiasing(stride=2)
-        >>> antialiased_tensor = antialiasing_layer(input_tensor)
-        >>> print(antialiased_tensor.shape)
-        torch.Size([1, 1, 32, 32, 32])
-
-        >>> # Apply different strides per dimension with custom sigma
-        >>> antialiasing_layer = GaussianAntialiasing(stride=[2, 2, 4], sigma=1.5)
-        >>> antialiased_tensor = antialiasing_layer(input_tensor)
-        >>> print(antialiased_tensor.shape)
-        torch.Size([1, 1, 32, 32, 16])
-
-        >>> # Apply per-dimension antialiasing parameters
-        >>> antialiasing_layer = GaussianAntialiasing(
-        ...     stride=[2, 2, 4],
-        ...     kernel_size=[5, 5, 9],
-        ...     sigma=[1.0, 1.0, 2.0]
-        ... )
-        >>> antialiased_tensor = antialiasing_layer(input_tensor)
-        >>> print(antialiased_tensor.shape)
-        torch.Size([1, 1, 32, 32, 16])
-        """
-        super().__init__()
-        self.stride = stride
-        self.kernel_size = kernel_size
-        self.sigma = sigma
-        self.subsampling_dimension = subsampling_dimension
-
-    def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
-        """
-        Perform the forward pass of `GaussianAntialiasing`.
-
-        Parameters
-        ----------
-        input_tensor : torch.Tensor
-            The input tensor to be downsampled with antialiasing, assumed to be 1D, 2D, or 3D.
-
-        Returns
-        -------
-        torch.Tensor
-            Antialiased and downsampled tensor with reduced spatial dimensions.
-        """
-        return nef.gaussian_antialiasing(
-            input_tensor=input_tensor,
-            stride=self.stride,
-            kernel_size=self.kernel_size,
-            sigma=self.sigma,
-            subsampling_dimension=self.subsampling_dimension
-        )
-
-
-class ResampleAnisotropic(nn.Module):
-    """
-    Spatially {subsample, resample} the input tensor.
-
-    This module resamples the input tensor by a factor of `stride` along the specified spatial
-    dimension(s) by interleaving dropouts (keeping every `stride`'th element), then upsamples to
-    restore it to its original dimensions.
+    This module resamples the input tensor by downsampling along specified spatial
+    dimensions, then upsampling back to restore the original or target dimensions.
+    This is useful for simulating anisotropic voxel dimensions in medical imaging.
     """
 
     def __init__(
@@ -1214,7 +1123,7 @@ class ResampleAnisotropic(nn.Module):
         shape: Union[tuple, None] = None,
     ):
         """
-        Initialize `Resample`.
+        Initialize `ResampleVoxelDimensions`.
 
         Parameters
         ----------
@@ -1235,8 +1144,8 @@ class ResampleAnisotropic(nn.Module):
         ### Subsample with custom stride
         >>> # Make a 2D tensor ~N(0, 1) with batch and channel dims
         >>> input_tensor = torch.randn(1, 1, 128, 128)
-        >>> # Downsample 2x in 1st dim and 4x in second dim. Upsample the same way 
-        >>> resampled_tensor = ResampleAnisotropic(
+        >>> # Downsample 2x in 1st dim and 4x in second dim. Upsample the same way
+        >>> resampled_tensor = ResampleVoxelDimensions(
         ...    downsample_stride=(2, 4),
         ...    upsample_scale_factor=(2, 4)
         ... )(input_tensor)
@@ -1248,10 +1157,10 @@ class ResampleAnisotropic(nn.Module):
         >>> # Make a 3D tensor ~N(0, 1) with batch and channel dims
         >>> input_tensor = torch.randn(1, 1, 32, 32, 32)
         >>> # Downsample 2x then upsample 6x
-        >>> resampled_tensor = ResampleAnisotropic(
+        >>> resampled_tensor = ResampleVoxelDimensions(
         ...    downsample_stride=2,
         ...    upsample_scale_factor=6,
-        ...    mode='trilinear'
+        ...    mode='linear'
         ... )(input_tensor)
         >>> # Ensure dimensions are (1, 1, 96, 96, 96)
         >>> print(resampled_tensor.shape)
@@ -1267,10 +1176,10 @@ class ResampleAnisotropic(nn.Module):
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
-        Perform the forward pass of the `Resample`.
+        Perform the forward pass of `ResampleVoxelDimensions`.
         """
 
-        return nef.resample_anisotropic(
+        return nef.resample_voxel_dimensions(
             input_tensor=input_tensor,
             resample_dimension=self.resample_dimension,
             downsample_stride=self.downsample_stride,
