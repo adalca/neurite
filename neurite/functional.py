@@ -17,11 +17,10 @@ __all__ = [
     "dice",
     "reduce",
     "volshape_to_ndgrid",
-    "subsample",
     "apply_bernoulli_mask",
     "random_flip",
     "sample_image_from_labels",
-    "upsample",
+    "resample",
     "filter_dim",
     "gaussian_kernel",
 ]
@@ -637,60 +636,68 @@ def sample_image_from_labels(
     return sampled_image
 
 
-def upsample(
+def resample(
     input_tensor: torch.Tensor,
-    scale_factor: Union[int, float, Sequence[Union[int, float]], None] = 2,
     size: Union[Sequence[int], None] = None,
+    scale_factor: Union[int, float, Sequence[Union[int, float]], None] = None,
     mode: Literal['linear', 'nearest', 'bicubic', 'area', 'nearest-exact'] = 'linear',
-    non_spatial_dims: Union[Tuple[int, ...], None] = None
+    non_spatial_dims: Union[Tuple[int, ...], None] = None,
+    antialias: bool = False
 ) -> torch.Tensor:
     """
-    Upsample a tensor to a given size or scale factor.
+    Resample a tensor to a given size or scale factor.
 
-    Shape-agnostic upsampling that works on tensors with any dimensionality. The `non_spatial_dims`
-    parameter specifies which leading dimensions are non-spatial (e.g., batch and channel).
+    Shape-agnostic resampling that wraps F.interpolate. Handles both upsampling (scale > 1)
+    and downsampling (scale < 1). The `non_spatial_dims` parameter specifies which leading
+    dimensions are non-spatial (e.g., batch and channel).
 
     Parameters
     ----------
     input_tensor : torch.Tensor
-        The input tensor to be upsampled.
-    scale_factor : int, float, Sequence[int], Sequence[float], or None, default=2
-        The factor by which to upsample each spatial dimension. If None, `size` must be specified.
+        The input tensor to be resampled.
     size : Sequence[int] or None, default=None
-        Target size for the spatial dimensions. If None, `scale_factor` is used.
+        Target size for the spatial dimensions. If None, `scale_factor` must be specified.
+    scale_factor : int, float, Sequence[int], Sequence[float], or None, default=None
+        The factor by which to resample each spatial dimension. If None, `size` must be specified.
     mode : {'linear', 'nearest', 'bicubic', 'area', 'nearest-exact'}, default='linear'
-        Interpolation mode for upsampling. 'linear' will be automatically converted to the
+        Interpolation mode for resampling. 'linear' will be automatically converted to the
         appropriate mode ('linear', 'bilinear', or 'trilinear') based on spatial dimensionality.
     non_spatial_dims : Tuple[int, ...] or None, default=None
         Indices of non-spatial dimensions. Must be a contiguous sequence starting from 0.
         Valid values: `()`, `(0,)`, or `(0, 1)`. If None, assumes all dimensions are spatial
         and will add 2 leading dimensions for batch and channel.
+    antialias : bool, default=False
+        If True, apply antialiasing when downsampling. Only supported with 'bilinear' and
+        'bicubic' modes.
 
     Returns
     -------
     torch.Tensor
-        The upsampled tensor with the same number of dimensions as the input.
+        The resampled tensor with the same number of dimensions as the input.
 
     Examples
     --------
-    # Upsample a 3D tensor to specific size
-    >>> tensor_3d = torch.randn(16, 16, 16)
-    >>> upsampled = upsample(tensor_3d, size=(32, 32, 32))
-    >>> print(upsampled.shape)
+    # Downsample a 3D tensor by factor of 2
+    >>> tensor_3d = torch.randn(64, 64, 64)
+    >>> downsampled = resample(tensor_3d, scale_factor=0.5)
+    >>> print(downsampled.shape)
     torch.Size([32, 32, 32])
 
     # Upsample tensor with batch and channel dims
     >>> tensor_with_bc = torch.randn(2, 3, 32, 32)
-    >>> upsampled = upsample(tensor_with_bc, scale_factor=2, non_spatial_dims=(0, 1))
+    >>> upsampled = resample(tensor_with_bc, scale_factor=2, non_spatial_dims=(0, 1))
     >>> print(upsampled.shape)
     torch.Size([2, 3, 64, 64])
 
-    # Upsample with different scale factors per dimension
-    >>> tensor_2d = torch.randn(10, 20)
-    >>> upsampled = upsample(tensor_2d, scale_factor=(2, 3))
-    >>> print(upsampled.shape)
-    torch.Size([20, 60])
+    # Resample to specific size with antialiasing
+    >>> tensor_2d = torch.randn(10, 100, 100)
+    >>> resampled = resample(tensor_2d, size=(50, 50), antialias=True, non_spatial_dims=(0,))
+    >>> print(resampled.shape)
+    torch.Size([10, 50, 50])
     """
+    if size is None and scale_factor is None:
+        raise ValueError("Either size or scale_factor must be specified")
+
     num_non_spatial, _ = _parse_non_spatial_dims(non_spatial_dims, input_tensor.ndim)
     dims_to_add = 2 - num_non_spatial
 
@@ -711,15 +718,17 @@ def upsample(
 
     # F.interpolate requires exactly one of size or scale_factor
     if size is not None:
-        upsampled = F.interpolate(input=input_tensor, size=size, mode=mode)
+        resampled = F.interpolate(input=input_tensor, size=size, mode=mode, antialias=antialias)
     else:
-        upsampled = F.interpolate(input=input_tensor, scale_factor=scale_factor, mode=mode)
+        resampled = F.interpolate(
+            input=input_tensor, scale_factor=scale_factor, mode=mode, antialias=antialias
+        )
 
     # Remove added dimensions to match original tensor shape
     for _ in range(dims_to_add):
-        upsampled = upsampled.squeeze(0)
+        resampled = resampled.squeeze(0)
 
-    return upsampled
+    return resampled
 
 
 def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> torch.Tensor:
