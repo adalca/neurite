@@ -390,7 +390,7 @@ class ConvBlock(nn.Sequential):
                 conv_id += 1
 
             elif operation == 'n' and normalization is not None:
-                layers[f'normalization{norm_id}'] = nef.build_normalization(
+                layers[f'normalization{norm_id}'] = ne.utils.build_normalization(
                     normalization_type=normalization,
                     ndim=ndim,
                     num_features=in_channels,
