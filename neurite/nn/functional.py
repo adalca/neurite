@@ -11,12 +11,11 @@ Notes
 
 # Standard library imports
 from collections.abc import Sequence
-from typing import Union, List, Tuple, Literal, Type, Optional
+from typing import Union, Tuple, Literal
 
 # Third party imports
 import torch
 import numpy as np
-from torch import nn
 import torch.nn.functional as F
 
 # Custom imports
