@@ -21,29 +21,31 @@ specific language governing permissions and limitations under the License.
 """
 
 # Standard library imports
-from typing import Union, List, Any
+from typing import Union, List, Any, Sequence, Dict
 
 # Third party imports
 import numpy as np
+import torch
 import matplotlib.pyplot as plt
+from matplotlib.colors import Colormap
 import matplotlib.cm as cm
 from matplotlib.colors import Normalize
 from mpl_toolkits.axes_grid1 import make_axes_locatable  # plotting
 
 
 def slices(
-    slices_in: Any,           # the 2D slices
-    titles: Union[str, List[str]] = None,         # list of titles
-    cmaps=None,          # list of colormaps
-    norms=None,          # list of normalizations
-    do_colorbars=False,  # option to show colorbars on each slice
-    grid=False,          # option to plot the images in a grid or a single row
-    width=15,            # width in in
-    show=True,           # option to actually show the plot (plt.show())
-    axes_off=True,
-    plot_block=True,     # option to plt.show()
-    facecolor=None,
-    imshow_args=None
+    slices_in: Union[np.ndarray, torch.Tensor, Sequence[Union[np.ndarray, torch.Tensor]]],
+    titles: Union[str, List[str], None] = None,
+    cmaps=Sequence[Union[str, Colormap]],
+    norms=None,
+    do_colorbars: bool = False,
+    grid: bool = False,          # option to plot the images in a grid or a single row
+    width: int = 15,            # width in in
+    show: bool = True,           # option to actually show the plot (plt.show())
+    axes_off: bool = True,
+    plot_block: bool = True,     # option to plt.show()
+    facecolor: Any = None,
+    imshow_args: Union[Dict, None] = None,
 ):
     '''
     Plot a grid of 2D image slices.
@@ -99,30 +101,32 @@ def slices(
     ... )
     '''
 
-    # input processing
-    if isinstance(slices_in, np.ndarray):
+    if isinstance(slices_in, (np.ndarray, torch.Tensor)):
         slices_in = [slices_in]
+
     nb_plots = len(slices_in)
     slices_in = list(map(np.squeeze, slices_in))
-    for si, slice_in in enumerate(slices_in):
+
+    for _, slice_in in enumerate(slices_in):
         if len(slice_in.shape) != 2:
             assert len(slice_in.shape) == 3 and slice_in.shape[-1] == 3, \
                 'each slice has to be 2d or RGB (3 channels)'
 
     def input_check(inputs, nb_plots, name, default=None):
-        ''' change input from None/single-link '''
+        """change input from None/single-link"""
         assert (inputs is None) or (len(inputs) == nb_plots) or (len(inputs) == 1), \
             'number of %s is incorrect' % name
         if inputs is None:
             inputs = [default]
         if len(inputs) == 1:
-            inputs = [inputs[0] for i in range(nb_plots)]
+            inputs = [inputs[0] for _ in range(nb_plots)]
         return inputs
 
     titles = input_check(titles, nb_plots, 'titles')
     cmaps = input_check(cmaps, nb_plots, 'cmaps', default='gray')
     norms = input_check(norms, nb_plots, 'norms')
     imshow_args = input_check(imshow_args, nb_plots, 'imshow_args')
+
     for idx, ia in enumerate(imshow_args):
         imshow_args[idx] = {} if ia is None else ia
 
