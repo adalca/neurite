@@ -6,7 +6,7 @@ components of the neurite for streamlined object construction.
 
 # Standard library imports
 from __future__ import annotations
-from typing import List, Union, Callable, Literal, Sequence
+from typing import Union, Callable, Literal, Sequence
 
 # Third party imports
 import torch
@@ -127,7 +127,7 @@ class BasicUNet(nn.Module):
         self.skip_connections = skip_connections
 
         # Asymmetric: [[downsampling_features], [upsampling_features]]
-        if isinstance(nb_features[0], (list, tuple)):
+        if isinstance(nb_features[0], Sequence) and isinstance(nb_features[1], Sequence):
 
             if len(nb_features) != 2:
                 raise ValueError(
@@ -143,6 +143,11 @@ class BasicUNet(nn.Module):
             downsampling_features = list(nb_features)
             upsampling_features = list(reversed(nb_features))
 
+        for idx, ele in enumerate(downsampling_features):
+            assert isinstance(ele, int), (
+                f'All elements in downsampling_features must be int. Got {ele} for idx {idx}'
+            )
+
         # Store feature specifications as immutable attributes
         self.downsampling_features = tuple(downsampling_features)
         self.upsampling_features = tuple(upsampling_features)
@@ -150,10 +155,14 @@ class BasicUNet(nn.Module):
         # Normalization layers
         if not isinstance(normalizations, list):
             self.normalizations = [normalizations] * len(downsampling_features)
+        else:
+            self.normalizations = normalizations
 
         # Activation layers
         if not isinstance(activations, list):
             self.activations = [activations] * len(downsampling_features)
+        else:
+            self.activations = activations
 
         # Original sequence for downsampling conv blocks
         self.nb_features = [in_channels, *downsampling_features]
