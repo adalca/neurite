@@ -249,13 +249,11 @@ def subsample_random_dims(
         input_tensor=dimensions_to_subsample, p=p, returns='successes')
 
     for dimension in dimensions_to_subsample:
-        # Adjust dimension index to account for batch and channel dims
-        input_tensor = ne.subsample(
-            input_tensor=input_tensor,
-            subsampling_dimension=int(dimension) - 2,
-            stride=stride,
-            non_spatial_dims=(0, 1)
-        )
+        # Apply subsampling using slice notation
+        dim_idx = int(dimension)
+        slices = [slice(None)] * input_tensor.dim()
+        slices[dim_idx] = slice(None, None, stride)
+        input_tensor = input_tensor[tuple(slices)]
 
     return input_tensor
 

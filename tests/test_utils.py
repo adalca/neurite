@@ -86,47 +86,6 @@ def test_base_gaussian_kernel_different_ndims():
     assert torch.allclose(kernel_3d.sum(), torch.tensor(1.0), atol=1e-6)
 
 
-def test_subsample_tensor_magnitudes():
-    """
-    Ensure subsampling produces expected magnitudes/skips.
-    """
-
-    input_tensor = torch.arange(25).view(1, 1, 5, 5).float()
-    subsampled_gt = torch.tensor([0, 2, 4, 10, 12, 14, 20, 22, 24]).view(1, 1, 3, 3).float()
-
-    subsampled_tensor = ne.subsample(input_tensor, stride=2, non_spatial_dims=(0, 1))
-
-    torch.allclose(subsampled_tensor, subsampled_gt)
-
-
-@pytest.mark.parametrize(
-    "stride, subsampling_dimension, input_tensor",
-    [
-        (2, None, torch.randn(1, 1, 32, 32, 32)),
-        ([2], [0], torch.randn(1, 1, 32)),
-        ((2, 4), (0, 1), torch.randn(1, 1, 32, 32)),
-        ((2, 4, 6), [0, 1, 2], torch.randn(1, 1, 32, 32, 32)),
-    ],
-)
-def test_subsample_tensor_strides(
-    stride,
-    subsampling_dimension,
-    input_tensor,
-):
-    """
-    Ensure subsampling produces expected magnitudes/skips.
-    """
-
-    # input_tensor = torch.randn(1, 1, *[32] * len(stride))
-
-    ne.subsample(
-        input_tensor,
-        stride=stride,
-        subsampling_dimension=subsampling_dimension,
-        non_spatial_dims=(0, 1)
-    )
-
-
 @pytest.mark.parametrize(
     'grid_shape, expected_out_shape',
     (

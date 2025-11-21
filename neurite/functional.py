@@ -383,86 +383,17 @@ def subsample(
     non_spatial_dims: Union[Tuple[int, ...], None] = None
 ) -> torch.Tensor:
     """
-    Subsamples `input_tensor` by a factor `stride` along the specified dimension.
+    Deprecated: This function has been removed in favor of the `ne.functional.resample()` API.
 
-    Downsample a specified dimension of a PyTorch tensor by a given stride. This is achieved by
-    interleaving dropouts, meaning that every `stride`-th element along the selected dimension is
-    kept, while the others are discarded.
+    The `resample()` function provides a more comprehensive and flexible resampling interface
+    with support for multiple interpolation modes, and antialiasing
 
-    Parameters
-    ----------
-    input_tensor : torch.Tensor
-        The tensor to sample from.
-    stride : int, Sequence[int], or None, default=2
-        Factor by which to subsample (interleave dropouts). If int, same stride is used for all
-        subsampled dimensions. If Sequence, must match the number of spatial dimensions.
-    subsampling_dimension : int, Sequence[int], or None, default=None
-        The spatial dimension(s) to subsample (0-indexed among spatial dims). If None, subsamples
-        all spatial dimensions.
-    non_spatial_dims : Tuple[int, ...] or None, default=None
-        Indices of non-spatial dimensions. Must be a contiguous sequence starting from 0.
-        Valid values: `()`, `(0,)`, or `(0, 1)`. If None, assumes all dimensions are spatial.
 
-    Returns
-    -------
-    torch.Tensor
-        Tensor that has been subsampled.
-
-    Examples
-    --------
-    >>> import torch
-    # Subsample a 2D tensor (no batch/channel dims)
-    >>> input_tensor = torch.arange(25).view(5, 5)
-    >>> subsampled = subsample(input_tensor, stride=2, subsampling_dimension=1)
-    >>> print(subsampled.shape)
-    torch.Size([5, 3])
-
-    # Subsample with batch and channel dims
-    >>> input_tensor = torch.randn(2, 3, 32, 32)
-    >>> subsampled = subsample(input_tensor, stride=2, non_spatial_dims=(0, 1))
-    >>> print(subsampled.shape)
-    torch.Size([2, 3, 16, 16])
     """
-    if isinstance(subsampling_dimension, torch.Tensor):
-        raise TypeError(
-            "subsampling_dimension must be an int, list, tuple, or None, not a Tensor"
-        )
-
-    num_non_spatial, num_spatial = _parse_non_spatial_dims(non_spatial_dims, input_tensor.ndim)
-    ndim = input_tensor.ndim
-    slices = [slice(None)] * ndim
-
-    # Dimensions to subsample
-    if subsampling_dimension is None:
-        spatial_dims_to_subsample = list(range(num_spatial))
-    elif isinstance(subsampling_dimension, int):
-        spatial_dims_to_subsample = [subsampling_dimension]
-    else:
-        spatial_dims_to_subsample = list(subsampling_dimension)
-
-    if isinstance(stride, int):
-        strides = [stride] * num_spatial
-    elif isinstance(stride, (tuple, list)):
-        strides = list(stride)
-        if len(strides) != num_spatial:
-            raise ValueError(
-                f"stride length {len(strides)} must match number of spatial dimensions "
-                f"{num_spatial}"
-            )
-    else:
-        strides = [2] * num_spatial  # Default stride
-
-    # Convert spatial dimension indices to absolute tensor indices and apply subsampling
-    for spatial_idx in spatial_dims_to_subsample:
-        if spatial_idx < 0 or spatial_idx >= num_spatial:
-            raise ValueError(
-                f"subsampling_dimension index {spatial_idx} out of range for {num_spatial} "
-                "spatial dims"
-            )
-        absolute_idx = num_non_spatial + spatial_idx
-        slices[absolute_idx] = slice(None, None, strides[spatial_idx])
-
-    return input_tensor[tuple(slices)]
+    raise DeprecationWarning(
+        "subsample() has been removed in favor of the resample() API. "
+        "Please use resample() for all downsampling/upsampling operations."
+    )
 
 
 def apply_bernoulli_mask(
