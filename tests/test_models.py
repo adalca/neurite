@@ -222,3 +222,108 @@ def test_basicunet_forward_mps():
     # Ensure output is on MPS
     assert y.device.type == "mps"
     assert y.shape == (1, out_ch, 32, 32)
+
+
+def test_basicunet_list_normalizations():
+    """
+    Test that BasicUNet accepts a list of different normalizations per level.
+
+    This tests the fix for Bug #1: Previously, passing a list would cause
+    an AttributeError because self.normalizations was only set when
+    normalizations was NOT a list.
+    """
+    ndim = 2
+    in_ch = 1
+    out_ch = 1
+
+    # Create model with different normalizations per level
+    model = ne.nn.models.BasicUNet(
+        ndim=ndim,
+        in_channels=in_ch,
+        out_channels=out_ch,
+        nb_features=[16, 32, 64],
+        normalizations=['batch', 'instance', None],
+        activations=['relu', 'elu', 'relu'],
+        skip_connections=True,
+    )
+
+    # Verify attributes were set correctly
+    assert model.normalizations == ['batch', 'instance', None]
+    assert model.activations == ['relu', 'elu', 'relu']
+
+    # Test forward pass
+    x = torch.randn(1, in_ch, 32, 32)
+    y = model(x)
+
+    assert y.shape == (1, out_ch, 32, 32)
+
+
+def test_upsampling_normalization_order():
+    """
+    Test that upsampling blocks use normalizations in reversed order.
+
+    This tests the fix for Bug #2: Previously, normalizations[-i] when i=0
+    would access normalizations[0] instead of normalizations[-1], breaking
+    the expected encoder-decoder symmetry.
+    """
+    from neurite.utils.utils import upsampling_conv_blocks
+
+    ndim = 2
+    nb_features = [64, 32, 16]
+    normalizations = ['batch', 'instance', None]
+
+    # Create upsampling blocks
+    blocks = upsampling_conv_blocks(
+        ndim=ndim,
+        nb_features=nb_features,
+        normalizations=normalizations,
+        activations='relu',
+        accepts_skip=False,
+    )
+
+    # The blocks should be created with reversed normalizations
+    # Expected order: [None, instance, batch]
+    assert len(blocks) == 3
+
+    # Test forward pass
+    x = torch.randn(1, 64, 16, 16)
+    for block in blocks:
+        x = block(x)
+
+    # Final output should be at original spatial resolution (upsampled 3 times)
+    assert x.shape[2] == 128  # 16 -> 32 -> 64 -> 128
+    assert x.shape[3] == 128
+
+
+def test_basicunet_symmetric_normalization():
+    """
+    Test that symmetric UNet with different normalizations works correctly.
+
+    For a symmetric UNet, the upsampling path should mirror the downsampling
+    path in terms of normalizations (in reverse order).
+    """
+    ndim = 2
+    in_ch = 1
+    out_ch = 1
+
+    model = ne.nn.models.BasicUNet(
+        ndim=ndim,
+        in_channels=in_ch,
+        out_channels=out_ch,
+        nb_features=[8, 16, 32],
+        normalizations=['batch', 'instance', None],
+        skip_connections=True,
+    )
+
+    # Test forward and backward pass
+    x = torch.randn(2, in_ch, 64, 64, requires_grad=True)
+    y = model(x)
+
+    assert y.shape == (2, out_ch, 64, 64)
+
+    # Test gradient flow
+    loss = y.sum()
+    loss.backward()
+
+    assert x.grad is not None
+    assert x.grad.shape == x.shape
