@@ -59,7 +59,7 @@ class BasicUNet(nn.Module):
         upsample_mode: Literal['linear', 'transposed', 'nearest'] = 'linear',
         normalizations: Union[Sequence[Union[Callable, str]], Callable, str, None] = None,
         activations: Union[Sequence[Union[Callable, str]], Callable, str, None] = nn.ReLU,
-        order: str = 'caca',
+        order: str = 'ca',
         final_activation: Union[str, nn.Module, None] = None,
         skip_connections: bool = True,
     ):
@@ -91,7 +91,7 @@ class BasicUNet(nn.Module):
         activations : Sequence[Union[Callable, str]], Callable, str, or None, default=nn.ReLU
             Activation functions to use in each block. Can be a callable,
             a string, or a sequence of strings/callables.
-        order : str, default='caca'
+        order : str, default='ca'
             Order of operations in each convolutional block (e.g., 'ncaca').
         final_activation : Union[str, nn.Module, None], default=None
             Activation function applied after the final output layer.
