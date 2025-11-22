@@ -323,9 +323,8 @@ def resample(
 
 def resample_voxel_dimensions(
     input_tensor: torch.Tensor,
-    resample_dimension: Union[int, Sequence[int], None] = None,
-    downsample_stride: Union[int, Sequence[int]] = 2,
-    upsample_scale_factor: Union[Union[int, float], Sequence[Union[int, float]]] = 2,
+    downsample_scale: Union[Union[int, float], Sequence[Union[int, float]]] = 0.5,
+    upsample_scale: Union[Union[int, float], Sequence[Union[int, float]]] = 2,
     mode: Literal['linear', 'nearest', 'bicubic', 'area', 'nearest-exact'] = 'linear',
     shape: Union[Sequence[int], None] = None,
 ) -> torch.Tensor:
@@ -340,8 +339,6 @@ def resample_voxel_dimensions(
     ----------
     input_tensor : torch.Tensor
         The tensor to resample, with shape (B, C, *spatial_dims).
-    resample_dimension : int, Sequence[int], or None, default=None
-        The dimension(s) that should be resampled. If None, all dimensions are resampled.
     downsample_stride : int or Sequence[int], default=2
         Factor by which to subsample.
     upsample_scale_factor : int, float, or Sequence[int or float], default=2
@@ -371,20 +368,8 @@ def resample_voxel_dimensions(
     torch.Size([1, 3, 64, 64])
     """
 
-    resampled = ne.subsample(
-        input_tensor,
-        subsampling_dimension=resample_dimension,
-        stride=downsample_stride,
-        non_spatial_dims=(0, 1)
-    )
-
-    resampled = ne.upsample(
-        resampled,
-        size=shape,
-        mode=mode,
-        scale_factor=upsample_scale_factor,
-        non_spatial_dims=(0, 1)
-    )
+    resampled = resample(input_tensor, scale_factor=downsample_scale)
+    resampled = resample(resampled, scale_factor=upsample_scale, size=shape, mode=mode)
 
     return resampled
 
