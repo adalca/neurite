@@ -31,7 +31,6 @@ def gaussian_smoothing(
     input_tensor: torch.Tensor,
     sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
     truncate: Union[int, float, Sequence[Union[int, float]]] = 3,
-    padding_mode: Literal['same', 'reflect', 'zeros'] = 'same',
 ) -> torch.Tensor:
     """
     Apply Gaussian smoothing to the {1D, 2D, 3D} input tensor.
@@ -88,27 +87,15 @@ def gaussian_smoothing(
     # Create Gaussian kernel with automatic sizing
     kernel = ne.gaussian_kernel(sigma=sigma, truncate=truncate, ndim=ndim)
 
-    # Get kernel sizes for padding calculation
-    kernel_size = kernel.shape
-
     # Add channel dimensions for depthwise convolution: (nchannels, 1, *spatial)
     kernel = kernel.unsqueeze(0).unsqueeze(0)
     if nchannels > 1:
         kernel = kernel.repeat(nchannels, 1, *([1] * ndim))
 
-    padding_per_dim = [ks // 2 for ks in kernel_size]
-
-    padding = []
-    for pad in reversed(padding_per_dim):
-        padding.extend([pad, pad])
-
-    # Pad input tensor
-    padding = tuple(padding)
-    padded_input_tensor = F.pad(input_tensor, padding, mode=padding_mode)
-
     # Depthwise: groups==nchannels ensures each channel is blurred independently
+    # Use padding="same" to maintain output shape (zero-padding)
     conv_fn = {1: F.conv1d, 2: F.conv2d, 3: F.conv3d}[ndim]
-    smoothed_tensor = conv_fn(input=padded_input_tensor, weight=kernel, padding=0, groups=nchannels)
+    smoothed_tensor = conv_fn(input=input_tensor, weight=kernel, padding="same", groups=nchannels)
 
     return smoothed_tensor
 
