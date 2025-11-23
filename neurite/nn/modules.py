@@ -1063,26 +1063,40 @@ class MSE(nn.Module):
 class GaussianBlur(nn.Module):
     """
     Apply a {1D, 2D, 3D} gaussian blur to the input tensor by convolving it with a Gaussian kernel.
+
+    Kernel size is automatically determined as 2 * int(truncate * sigma + 0.5) + 1 for each
+    dimension. This ensures the kernel captures the appropriate number of standard deviations
+    (default: 3 sigma, which captures ~99.7% of the Gaussian distribution).
     """
 
     def __init__(
         self,
-        kernel_size: int = 3,
-        sigma: float = 1,
+        sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
+        truncate: Union[int, float, Sequence[Union[int, float]]] = 3,
     ):
         """
         Initialize `GaussianBlur`.
 
         Parameters
         ----------
-        kernel_size : int, default=3
-            Size of the Gaussian kernel.
-        sigma : float or int, default=1
-            Standard deviation of the Gaussian kernel.
+        sigma : float, int, or Sequence[float or int], default=1
+            Standard deviation of the Gaussian kernel. If float/int, same sigma is used
+            for all dimensions. If Sequence, different sigmas can be specified per dimension.
+        truncate : int, float, or Sequence[int or float], default=3
+            Number of standard deviations at which to truncate the kernel. If scalar, same
+            truncate value is used for all dimensions. If Sequence, different truncate values
+            can be specified per dimension (must match sigma length).
+
+        Notes
+        -----
+        The automatic kernel sizing follows the formula used in scipy and VoxelMorph:
+        kernel_size = 2 * int(truncate * sigma + 0.5) + 1
+
+        This ensures proper Gaussian kernel coverage regardless of sigma value.
         """
         super().__init__()
-        self.kernel_size = kernel_size
         self.sigma = sigma
+        self.truncate = truncate
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
@@ -1091,17 +1105,18 @@ class GaussianBlur(nn.Module):
         Parameters
         ----------
         input_tensor : torch.Tensor
-            The input tensor, assumed to have 1, 2, or 3 spatial dimensions.
+            The input tensor, assumed to have 1, 2, or 3 spatial dimensions with
+            shape (B, C, *spatial).
 
         Returns
         -------
         torch.Tensor
-            The smoothed tensor.
+            The smoothed tensor with the same shape as input_tensor.
         """
         return nef.gaussian_smoothing(
             input_tensor=input_tensor,
-            kernel_size=self.kernel_size,
-            sigma=self.sigma
+            sigma=self.sigma,
+            truncate=self.truncate
         )
 
 
