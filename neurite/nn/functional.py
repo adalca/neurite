@@ -29,51 +29,67 @@ def identity(input_argument):
 
 def gaussian_smoothing(
     input_tensor: torch.Tensor,
-    kernel_size: Union[int, Sequence[int]] = 3,
     sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
+    truncate: Union[int, float, Sequence[Union[int, float]]] = 3,
+    padding_mode: Literal['same', 'reflect', 'zeros'] = 'same',
 ) -> torch.Tensor:
     """
     Apply Gaussian smoothing to the {1D, 2D, 3D} input tensor.
 
+    Kernel size is automatically determined as 2 * int(truncate * sigma + 0.5) + 1 for each
+    dimension. This ensures the kernel captures the appropriate number of standard deviations
+    (default: 3 sigma, which captures ~99.7% of the Gaussian distribution).
+
     Parameters
     ----------
     input_tensor : torch.Tensor
-        The input tensor, assumed to be 1D, 2D, or 3D.
-    kernel_size : int, List[int], or optional
-        Size of the Gaussian kernel. If int, same size is used for all dimensions.
-        If Sequence[int], different sizes can be specified per dimension.
-    sigma : float, int, Sequence[float], Sequence[int], default=1
+        The input tensor, assumed to be 1D, 2D, or 3D with shape (B, C, *spatial).
+    sigma : float, int, or Sequence[float or int], default=1
         Standard deviation of the Gaussian kernel. If float/int, same sigma is used
         for all dimensions. If Sequence, different sigmas can be specified per dimension.
+    truncate : int, float, or Sequence[int or float], default=3
+        Number of standard deviations at which to truncate the kernel. If scalar, same
+        truncate value is used for all dimensions. If Sequence, different truncate values
+        can be specified per dimension (must match sigma length).
 
     Returns
     -------
     smoothed_tensor : torch.Tensor
-        The smoothed tensor.
+        The smoothed tensor with the same shape as input_tensor.
 
     Examples
     --------
     >>> import torch
-    >>> # Make an input tensor ~N(1, 0)
+    >>> # Make an input tensor
     >>> input_tensor = torch.rand(1, 1, 16, 16, 16)
-    >>> # Smooth it with uniform kernel
+    >>> # Smooth with default parameters (sigma=1, truncate=3)
     >>> smoothed_tensor = gaussian_smoothing(input_tensor)
-    >>> # Smooth with per-dimension parameters
+    >>> # Smooth with per-dimension sigma values
     >>> smoothed_tensor = gaussian_smoothing(
     ...     input_tensor,
-    ...     kernel_size=[3, 5, 7],
     ...     sigma=[0.5, 1.0, 1.5]
     ... )
+    >>> # Smooth with custom truncate
+    >>> smoothed_tensor = gaussian_smoothing(input_tensor, sigma=2.0, truncate=4)
+
+    Notes
+    -----
+    The automatic kernel sizing follows the formula used in scipy and VoxelMorph:
+    kernel_size = 2 * int(truncate * sigma + 0.5) + 1
+
+    This ensures proper Gaussian kernel coverage regardless of sigma value, preventing
+    the mathematical errors that occur when kernel_size is too small for the given sigma.
     """
 
     # Infer spatial dimensionality (subtract batch and channel dims)
     ndim = input_tensor.dim() - 2
     nchannels = input_tensor.shape[1]
 
-    if isinstance(kernel_size, int):
-        kernel_size = tuple([kernel_size] * ndim)
+    # Create Gaussian kernel with automatic sizing
+    kernel = ne.gaussian_kernel(sigma=sigma, truncate=truncate, ndim=ndim)
 
-    kernel = ne.gaussian_kernel(kernel_size=kernel_size, sigma=sigma)
+    # Get kernel sizes for padding calculation
+    kernel_size = kernel.shape
 
     # Add channel dimensions for depthwise convolution: (nchannels, 1, *spatial)
     kernel = kernel.unsqueeze(0).unsqueeze(0)
@@ -88,7 +104,7 @@ def gaussian_smoothing(
 
     # Pad input tensor
     padding = tuple(padding)
-    padded_input_tensor = F.pad(input_tensor, padding, mode='reflect')
+    padded_input_tensor = F.pad(input_tensor, padding, mode=padding_mode)
 
     # Depthwise: groups==nchannels ensures each channel is blurred independently
     conv_fn = {1: F.conv1d, 2: F.conv2d, 3: F.conv3d}[ndim]
