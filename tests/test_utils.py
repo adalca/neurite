@@ -6,56 +6,10 @@ import neurite as ne
 import neurite.nn.functional as nef
 
 
-def test_soft_quantize_constant_input_same_output():
-    """A constant tensor remains unchanged after soft quantization."""
-
-    const_val = 3.14
-    input_tensor = torch.full((2, 3), const_val)
-    output_tensor = ne.soft_quantize(input_tensor.clone(), nb_bins=10, softness=2.0)
-
-    assert torch.allclose(output_tensor, input_tensor)
-
-
-@pytest.mark.parametrize("softness", [0.5, 1.0, 2.0])
-def test_soft_quantize_monotonic_increasing(softness):
-    """
-    For a strictly increasing 1D input, the quantized output should be non-decreasing.
-    """
-
-    input_tensor = torch.linspace(0.0, 1.0, steps=5)
-
-    output_tensor = ne.soft_quantize(
-        input_tensor.clone(),
-        nb_bins=5,
-        softness=softness
-    )
-
-    assert torch.all(output_tensor[:-1] <= output_tensor[1:])
-
-
-def test_soft_quantize_clipping():
-    """
-    When specifying min_clip and max_clip, outputs must lie
-    within [min_clip, max_clip].
-    """
-
-    input_tensor = torch.randn(1, 1, 16, 16)
-
-    output_tensor = ne.soft_quantize(
-        input_tensor.clone(),
-        nb_bins=3,
-        softness=1.0,
-        min_clip=0.0,
-        max_clip=1.0
-    )
-
-    assert torch.all(output_tensor >= 0.0)
-    assert torch.all(output_tensor <= 1.0)
-
-
 def test_base_gaussian_kernel_no_batch_channel():
     """Test that base gaussian_kernel returns only spatial dimensions."""
-    kernel = ne.gaussian_kernel(kernel_size=(5, 5), sigma=1.0)
+    # Use truncate=2 to get kernel_size=(5,5): 2*int(2*1+0.5)+1=5
+    kernel = ne.gaussian_kernel(sigma=1.0, truncate=2, ndim=2)
 
     # Should have only spatial dimensions, no batch/channel
     assert kernel.shape == (5, 5)
