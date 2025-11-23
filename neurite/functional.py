@@ -779,7 +779,6 @@ def gaussian_kernel(
     >>> import torch
     # Make a 3D kernel with automatic sizing
     >>> gaussian_kernel_ = gaussian_kernel(sigma=1.0, ndim=3)
-    # Kernel size automatically computed as 2*int(3*1.0+0.5)+1 = 7 per dimension
     >>> gaussian_kernel_.shape
     torch.Size([7, 7, 7])
 
@@ -791,7 +790,6 @@ def gaussian_kernel(
 
     # Make a 1D kernel with custom truncate
     >>> gaussian_kernel_ = gaussian_kernel(sigma=2.0, truncate=4, ndim=1)
-    # Kernel size: 2*int(4*2.0+0.5)+1 = 17
     >>> gaussian_kernel_.shape
     torch.Size([17])
 
@@ -809,7 +807,6 @@ def gaussian_kernel(
     This ensures the kernel is always odd-sized and captures the specified number of
     standard deviations. A truncate value of 3 captures ~99.7% of the Gaussian distribution.
     """
-    # Handle sigma parameter and infer dimensionality
     if isinstance(sigma, (float, int)):
         if ndim is None:
             raise ValueError(
@@ -818,6 +815,7 @@ def gaussian_kernel(
         if ndim not in [1, 2, 3]:
             raise ValueError(f"ndim must be 1, 2, or 3, got {ndim}")
         sigma_list = [float(sigma)] * ndim
+
     elif isinstance(sigma, Sequence):
         sigma_list = [float(s) for s in sigma]
         ndim = len(sigma_list)
@@ -829,9 +827,9 @@ def gaussian_kernel(
     else:
         raise TypeError(f"sigma must be a number or sequence, got {type(sigma)}")
 
-    # Handle truncate parameter
     if isinstance(truncate, (int, float)):
         truncate_list = [float(truncate)] * ndim
+
     elif isinstance(truncate, Sequence):
         if len(truncate) != ndim:
             raise ValueError(
@@ -843,10 +841,7 @@ def gaussian_kernel(
         raise TypeError(f"truncate must be a number or sequence, got {type(truncate)}")
 
     # Compute kernel size for each dimension: 2 * int(truncate * sigma + 0.5) + 1
-    kernel_size_list = [
-        2 * int(t * s + 0.5) + 1
-        for s, t in zip(sigma_list, truncate_list)
-    ]
+    kernel_size_list = [2 * int(t * s + 0.5) + 1 for s, t in zip(sigma_list, truncate_list)]
 
     # Create coordinate grid centered at zero
     coords = [
@@ -854,17 +849,11 @@ def gaussian_kernel(
         for ks in kernel_size_list
     ]
 
-    grid = torch.stack(
-        torch.meshgrid(coords, indexing='ij'), dim=-1
-    ).to(device=device, dtype=dtype)
-
-    # Convert sigma to tensor on device
+    grid = torch.stack(torch.meshgrid(coords, indexing='ij'), dim=-1).to(device=device, dtype=dtype)
     sigma_tensor = torch.tensor(sigma_list, device=device, dtype=dtype)
 
     # Calculate the Gaussian function: exp(-0.5 * sum((x / sigma)^2))
     kernel = torch.exp(-0.5 * (grid ** 2 / sigma_tensor**2).sum(dim=-1))
-
-    # Normalize the kernel so that it sums to 1
     kernel /= kernel.sum()
 
     return kernel
