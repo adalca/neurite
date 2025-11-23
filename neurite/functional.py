@@ -733,26 +733,36 @@ def _parse_non_spatial_dims(
 
 
 def gaussian_kernel(
-    kernel_size: Sequence[int],
     sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
+    truncate: Union[int, float, Sequence[Union[int, float]]] = 3,
+    ndim: Optional[int] = None,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = torch.float32,
 ) -> torch.Tensor:
     """
-    Create a {1D, 2D, 3D} Gaussian kernel.
+    Create a {1D, 2D, 3D} Gaussian kernel with automatic kernel sizing.
+
+    Kernel size is automatically determined as 2 * int(truncate * sigma + 0.5) + 1 for each
+    dimension. This ensures the kernel captures the appropriate number of standard deviations
+    (default: 3 sigma, which captures ~99.7% of the Gaussian distribution).
 
     Shape-agnostic implementation that returns a kernel with only spatial dimensions,
-    no batch or channel dimensions. Dimensionality is inferred from the length of
-    `kernel_size`.
+    no batch or channel dimensions. Dimensionality is inferred from the length of `sigma`
+    if it is a sequence, or from the `ndim` parameter if `sigma` is scalar.
 
     Parameters
     ----------
-    kernel_size : Sequence[int]
-        Size of each spatial dimension in the Gaussian kernel. Length determines
-        dimensionality (1D, 2D, or 3D).
     sigma : float, int, or Sequence[float or int], optional
         Standard deviation of the Gaussian kernel. If float/int, same sigma is used for all
-        dimensions. If Sequence, different sigmas can be specified per dimension. Default is 1.
+        dimensions. If Sequence, different sigmas can be specified per dimension and length
+        determines dimensionality (1D, 2D, or 3D). Default is 1.
+    truncate : int, float, or Sequence[int or float], optional
+        Number of standard deviations at which to truncate the kernel. If scalar, same
+        truncate value is used for all dimensions. If Sequence, different truncate values
+        can be specified per dimension (must match sigma length). Default is 3.
+    ndim : int, optional
+        Number of spatial dimensions (1, 2, or 3). Only required when sigma is scalar.
+        If sigma is a sequence, ndim is inferred from its length. Default is None.
     device : torch.device, optional
         Device on which to create the kernel tensor. Default is None.
     dtype : torch.dtype, optional
@@ -761,43 +771,82 @@ def gaussian_kernel(
     Returns
     -------
     torch.Tensor
-        Tensor representing the {1D, 2D, 3D} Gaussian kernel with shape (*kernel_size).
-        No batch or channel dimensions.
+        Tensor representing the {1D, 2D, 3D} Gaussian kernel with automatically computed
+        shape. No batch or channel dimensions.
 
     Examples
     --------
     >>> import torch
-    # Make a 3D kernel
-    >>> gaussian_kernel_ = gaussian_kernel(kernel_size=(3, 3, 3), sigma=1)
-    # Print shape (no batch/channel dimensions)
+    # Make a 3D kernel with automatic sizing
+    >>> gaussian_kernel_ = gaussian_kernel(sigma=1.0, ndim=3)
+    # Kernel size automatically computed as 2*int(3*1.0+0.5)+1 = 7 per dimension
     >>> gaussian_kernel_.shape
-    torch.Size([3, 3, 3])
+    torch.Size([7, 7, 7])
 
-    # Make a 2D kernel with different sizes per dimension
-    >>> gaussian_kernel_ = gaussian_kernel(kernel_size=(3, 5), sigma=(0.5, 1.0))
+    # Make a 2D kernel with different sigmas per dimension
+    >>> gaussian_kernel_ = gaussian_kernel(sigma=(0.5, 2.0))
+    # Kernel sizes: [5, 13]
     >>> gaussian_kernel_.shape
-    torch.Size([3, 5])
+    torch.Size([5, 13])
 
-    # Make a 1D kernel
-    >>> gaussian_kernel_ = gaussian_kernel(kernel_size=(7,), sigma=2.0)
+    # Make a 1D kernel with custom truncate
+    >>> gaussian_kernel_ = gaussian_kernel(sigma=2.0, truncate=4, ndim=1)
+    # Kernel size: 2*int(4*2.0+0.5)+1 = 17
     >>> gaussian_kernel_.shape
-    torch.Size([7])
+    torch.Size([17])
+
+    # Per-dimension truncate values
+    >>> gaussian_kernel_ = gaussian_kernel(sigma=(1.0, 2.0, 3.0), truncate=(3, 4, 5))
+    # Kernel sizes: [7, 17, 31]
+    >>> gaussian_kernel_.shape
+    torch.Size([7, 17, 31])
+
+    Notes
+    -----
+    The automatic kernel sizing follows the formula used in scipy and VoxelMorph:
+    kernel_size = 2 * int(truncate * sigma + 0.5) + 1
+
+    This ensures the kernel is always odd-sized and captures the specified number of
+    standard deviations. A truncate value of 3 captures ~99.7% of the Gaussian distribution.
     """
-    # Validate kernel_size is a sequence
-    if not isinstance(kernel_size, (list, tuple)):
-        raise TypeError(
-            f"kernel_size must be a sequence (list or tuple), got {type(kernel_size)}"
-        )
+    # Handle sigma parameter and infer dimensionality
+    if isinstance(sigma, (float, int)):
+        if ndim is None:
+            raise ValueError(
+                "When sigma is a scalar, ndim must be specified to determine dimensionality"
+            )
+        if ndim not in [1, 2, 3]:
+            raise ValueError(f"ndim must be 1, 2, or 3, got {ndim}")
+        sigma_list = [float(sigma)] * ndim
+    elif isinstance(sigma, Sequence):
+        sigma_list = [float(s) for s in sigma]
+        ndim = len(sigma_list)
+        if ndim not in [1, 2, 3]:
+            raise ValueError(
+                f"sigma length determines dimensionality and must be 1, 2, or 3. "
+                f"Got length {ndim}"
+            )
+    else:
+        raise TypeError(f"sigma must be a number or sequence, got {type(sigma)}")
 
-    kernel_size_list = list(kernel_size)
-    ndim = len(kernel_size_list)
+    # Handle truncate parameter
+    if isinstance(truncate, (int, float)):
+        truncate_list = [float(truncate)] * ndim
+    elif isinstance(truncate, Sequence):
+        if len(truncate) != ndim:
+            raise ValueError(
+                f"If truncate is a sequence, it must have length equal to sigma length "
+                f"({ndim}). Got length {len(truncate)}"
+            )
+        truncate_list = [float(t) for t in truncate]
+    else:
+        raise TypeError(f"truncate must be a number or sequence, got {type(truncate)}")
 
-    # Validate ndim
-    if ndim not in [1, 2, 3]:
-        raise ValueError(
-            f"kernel_size length determines dimensionality and must be 1, 2, or 3. "
-            f"Got length {ndim}"
-        )
+    # Compute kernel size for each dimension: 2 * int(truncate * sigma + 0.5) + 1
+    kernel_size_list = [
+        2 * int(t * s + 0.5) + 1
+        for s, t in zip(sigma_list, truncate_list)
+    ]
 
     # Create coordinate grid centered at zero
     coords = [
@@ -808,19 +857,6 @@ def gaussian_kernel(
     grid = torch.stack(
         torch.meshgrid(coords, indexing='ij'), dim=-1
     ).to(device=device, dtype=dtype)
-
-    # Handle sigma parameter
-    if isinstance(sigma, (float, int)):
-        sigma_list = [sigma] * ndim
-    elif isinstance(sigma, Sequence):
-        if len(sigma) != ndim:
-            raise ValueError(
-                f"If sigma is a sequence, it must have length equal to kernel_size length "
-                f"({ndim}). Got length {len(sigma)}"
-            )
-        sigma_list = list(sigma)
-    else:
-        raise TypeError(f"sigma must be a number or sequence, got {type(sigma)}")
 
     # Convert sigma to tensor on device
     sigma_tensor = torch.tensor(sigma_list, device=device, dtype=dtype)
