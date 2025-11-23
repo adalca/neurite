@@ -186,13 +186,8 @@ def test_functional_volshape_to_ndgrid_sizes():
 
 def test_gaussian_kernel_sums_to_one():
     """Make sure base kernel is normalized (sums to 1)."""
-    kernel = ne.gaussian_kernel(
-        kernel_size=(7, 7),
-        sigma=2.5,
-    )
-
+    kernel = ne.gaussian_kernel(sigma=2.5, ndim=2,)
     total = kernel.sum()
-
     assert torch.allclose(total, torch.tensor(1.0), atol=1e-6)
 
 
@@ -201,12 +196,10 @@ def test_gaussian_kernel_orthogonal_slice_symmetry():
     Test that orthogonal slices through the center of a Gaussian kernel are identical,
     demonstrating rotational symmetry.
     """
-    kernel_size = (5, 5, 5)
     sigma = 1.0
-    kernel = ne.gaussian_kernel(kernel_size=kernel_size, sigma=sigma)
+    truncate = 2
+    kernel = ne.gaussian_kernel(sigma=sigma, truncate=truncate, ndim=3)
 
-    # For a symmetric Gaussian, slices through the center along different axes
-    # should have the same values at corresponding positions
     center_idx = 2  # Middle of 5x5x5 kernel
 
     # Get center slices along each axis
@@ -222,10 +215,12 @@ def test_gaussian_kernel_orthogonal_slice_symmetry():
 
 def test_gaussian_kernel_center_is_maximum():
     """Test that the center of the Gaussian kernel has the maximum value."""
-    kernel_3d = ne.gaussian_kernel(kernel_size=(7, 7, 7), sigma=1.0)
+    # sigma=1.0, truncate=3: kernel_size = 2*int(3*1+0.5)+1 = 7
+    kernel_3d = ne.gaussian_kernel(sigma=1.0, ndim=3)
     center_3d = (3, 3, 3)
     assert kernel_3d[center_3d] == kernel_3d.max()
 
-    kernel_2d = ne.gaussian_kernel(kernel_size=(9, 9), sigma=1.5)
-    center_2d = (4, 4)
+    # sigma=1.5, truncate=3: kernel_size = 2*int(3*1.5+0.5)+1 = 11
+    kernel_2d = ne.gaussian_kernel(sigma=1.5, ndim=2)
+    center_2d = (5, 5)
     assert kernel_2d[center_2d] == kernel_2d.max()
