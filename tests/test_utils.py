@@ -18,7 +18,7 @@ def test_base_gaussian_kernel_no_batch_channel():
 
 def test_base_gaussian_kernel_sums_to_one():
     """Test that base gaussian_kernel is normalized."""
-    kernel = ne.gaussian_kernel(kernel_size=(7, 7, 7), sigma=2.5)
+    kernel = ne.gaussian_kernel(sigma=2.5, truncate=1, ndim=3)
 
     # Should sum to 1
     assert torch.allclose(kernel.sum(), torch.tensor(1.0), atol=1e-6)
@@ -26,9 +26,9 @@ def test_base_gaussian_kernel_sums_to_one():
 
 def test_base_gaussian_kernel_different_ndims():
     """Test that base gaussian_kernel works for 1D, 2D, and 3D."""
-    kernel_1d = ne.gaussian_kernel(kernel_size=(5,), sigma=1.0)
-    kernel_2d = ne.gaussian_kernel(kernel_size=(5, 5), sigma=1.0)
-    kernel_3d = ne.gaussian_kernel(kernel_size=(5, 5, 5), sigma=1.0)
+    kernel_1d = ne.gaussian_kernel(sigma=1.0, truncate=2, ndim=1)
+    kernel_2d = ne.gaussian_kernel(sigma=1.0, truncate=2, ndim=2)
+    kernel_3d = ne.gaussian_kernel(sigma=1.0, truncate=2, ndim=3)
 
     assert kernel_1d.shape == (5,)
     assert kernel_2d.shape == (5, 5)
