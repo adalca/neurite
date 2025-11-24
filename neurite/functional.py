@@ -1029,5 +1029,3 @@ def clip(
     >>> clipped = ne.clip(x, max=1)
     """
     return torch.clamp(input_tensor, min=min, max=max)
-
-
