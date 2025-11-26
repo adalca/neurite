@@ -229,25 +229,29 @@ def reduce(
     tensor(4.1831)
     """
 
+    # Handle None reduction (return tensor unchanged)
+    if reduction is None:
+        return tensor
+
     # PyTorch multidimensional reductions (also work for single dimensions)
     torch_multidim_reductions = [
-        'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean', None
+        'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'
     ]
 
     # PyTorch single-dimension-only reductions
     torch_singledim_reductions = ['argmin', 'argmax']
 
     if reduction in torch_multidim_reductions:
-        return getattr(torch, reduction)(tensor, dim=dim, keepdims=keepdims)
+        return getattr(torch, reduction)(tensor, dim=dim, keepdim=keepdims)
 
     elif reduction in torch_singledim_reductions:
 
         assert isinstance(dim, int), (
-            f"Reduction type {reduction} is only compatable with one reduction dimension. Got "
+            f"Reduction type {reduction} is only compatible with one reduction dimension. Got "
             f"{dim}"
         )
 
-        return getattr(torch, reduction)(tensor, dim=dim, keepdims=keepdims)
+        return getattr(torch, reduction)(tensor, dim=dim, keepdim=keepdims)
 
     else:
         raise ValueError(
@@ -851,7 +855,7 @@ def gaussian_kernel(
         for ks in kernel_size_list
     ]
 
-    grid = torch.stack(torch.meshgrid(coords, indexing='ij'), dim=-1).to(device=device, dtype=dtype)
+    grid = torch.stack(torch.meshgrid(*coords, indexing='ij'), dim=-1)
     sigma_tensor = torch.tensor(sigma_list, device=device, dtype=dtype)
 
     # Calculate the Gaussian function: exp(-0.5 * sum((x / sigma)^2))
