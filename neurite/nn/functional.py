@@ -646,6 +646,97 @@ def dice(
     )
 
 
+def ncc(
+    tensor1: torch.Tensor,
+    tensor2: torch.Tensor,
+    window_size: Union[int, Sequence[int]] = 9,
+    eps: float = 1e-5,
+    reduction: Union[str, None] = 'mean',
+    reduction_dim: Union[int, Tuple[int, ...]] = (0, 1),
+    keepdims: bool = True,
+) -> torch.Tensor:
+    """
+    Compute local normalized cross-correlation (NCC) for tensors with shape (B, C, *spatial_dims).
+
+    Parameters
+    ----------
+    tensor1 : torch.Tensor
+        First input tensor with shape (B, C, *spatial_dims).
+    tensor2 : torch.Tensor
+        Second input tensor with same shape as tensor1.
+    window_size : int or Sequence[int], default=9
+        Size of local window for computing correlation. If int, same size for all
+        spatial dimensions. If Sequence, per-dimension window sizes.
+    eps : float, default=1e-5
+        Small constant for numerical stability in division.
+    reduction : str or None, default='mean'
+        Reduction to apply over batch and channel dimensions. Supported values:
+        'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'.
+        If None, returns shape (B, C).
+    reduction_dim : int or tuple of ints, default=(0, 1)
+        Dimension(s) over which to apply the reduction.
+    keepdims : bool, default=True
+        Whether to retain reduced dimensions as singletons.
+
+    Returns
+    -------
+    torch.Tensor
+        NCC values (squared correlation coefficients) in range [0, 1].
+        If reduction=None, returns shape (B, C). Otherwise, reduced as specified.
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite.nn.functional as nef
+    # Compute mean NCC across batch and channels
+    >>> t1 = torch.rand(2, 3, 64, 64)
+    >>> t2 = torch.rand(2, 3, 64, 64)
+    >>> score = nef.ncc(t1, t2)
+    >>> print(score.shape)
+    torch.Size([1, 1])
+
+    # Compute per-batch-and-channel NCC (no reduction)
+    >>> score = nef.ncc(t1, t2, reduction=None)
+    >>> print(score.shape)
+    torch.Size([2, 3])
+
+    # Compute NCC with custom window size
+    >>> score = nef.ncc(t1, t2, window_size=5)
+    >>> print(score.shape)
+    torch.Size([1, 1])
+
+    Notes
+    -----
+    The NCC is computed as the squared Pearson correlation coefficient:
+        NCC = (cov(I, J))^2 / (var(I) * var(J))
+
+    Values close to 1 indicate high similarity, values close to 0 indicate low similarity.
+
+    References
+    ----------
+    .. [1] Balakrishnan et al., "VoxelMorph: A Learning Framework for Deformable
+           Medical Image Registration", IEEE TMI, 2019.
+    """
+    # Compute NCC using base implementation with (B, C) preserved
+    ncc_score = ne.ncc(
+        tensor1=tensor1,
+        tensor2=tensor2,
+        window_size=window_size,
+        non_spatial_dims=(0, 1),
+        eps=eps,
+    )
+
+    if reduction is None:
+        return ncc_score
+
+    return reduce(
+        tensor=ncc_score,
+        reduction=reduction,
+        dim=reduction_dim,
+        keepdims=keepdims,
+    )
+
+
 def log_dice(
     *segs,
     smooth_numerator: float = 1e-12,

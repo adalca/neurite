@@ -187,10 +187,6 @@ def ncc(
     """
     Compute local normalized cross-correlation (NCC) between two tensors.
 
-    Shape-agnostic implementation that computes the squared Pearson correlation
-    coefficient over local windows. This is commonly used as a similarity metric
-    in image registration.
-
     Parameters
     ----------
     tensor1 : torch.Tensor
@@ -268,10 +264,8 @@ def ncc(
             f"Only 1D, 2D, 3D spatial dimensions supported. Got {num_spatial}D"
         )
 
-    # Add B/C dimensions if needed for convolution
     tensor1, dims_added = pad_batch_channel(tensor1, non_spatial_dims)
     tensor2, _ = pad_batch_channel(tensor2, non_spatial_dims)
-
     num_channels = tensor1.shape[1]
 
     # Parse window size
@@ -285,7 +279,6 @@ def ncc(
             )
 
     # Create sum filter for grouped convolution: (num_channels, 1, *win)
-    # Each channel processed independently
     sum_filt = torch.ones(num_channels, 1, *win, device=tensor1.device, dtype=tensor1.dtype)
 
     # Convolution parameters for "same" output size
