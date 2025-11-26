@@ -458,8 +458,7 @@ def build_normalization(
     """
     # Normalization object has been instantiated with parameters
     if ne.utils.is_instantiated_normalization(normalization_type):
-        normalization = normalization_type
-        return
+        return normalization_type
 
     # Normalization object has been provided but not instantiated
     if isinstance(normalization_type, type) and issubclass(normalization_type, nn.Module):
@@ -468,10 +467,9 @@ def build_normalization(
         if num_features is None:
             raise ValueError("`num_features` must be specified for custom normalizations.")
 
-        normalization = normalization_type(
+        return normalization_type(
             num_features=num_features, eps=eps, affine=affine, **kwargs
         )
-        return
 
     # Handle known norm_types
     if normalization_type not in NORMALIZATION_MAP:
