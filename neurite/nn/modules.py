@@ -1150,6 +1150,83 @@ class NCC(nn.Module):
         )
 
 
+class SpatialGradient(nn.Module):
+    """
+    Compute spatial gradient penalty for smoothness regularization.
+
+    Computes finite differences along each spatial dimension and applies L1 or L2
+    penalty.
+
+    Examples
+    --------
+    # Example 1: L2 smoothness loss for displacement field
+    >>> grad_loss = SpatialGradient(penalty='l2')
+    >>> displacement = torch.rand(2, 3, 64, 64, 64)  # (B, ndim, D, H, W)
+    >>> loss = grad_loss(displacement)
+    >>> print(loss.shape)
+    torch.Size([])
+
+    # Example 2: L1 penalty (promotes sparse gradients)
+    >>> grad_loss = SpatialGradient(penalty='l1')
+    >>> loss = grad_loss(displacement)
+    """
+
+    def __init__(
+        self,
+        penalty: Literal['l1', 'l2'] = 'l2',
+        reduction: Union[str, None] = 'mean',
+        reduction_dim: Union[int, Tuple[int, ...], None] = None,
+        keepdims: bool = False,
+    ) -> None:
+        """
+        Initialize `SpatialGradient`.
+
+        Parameters
+        ----------
+        penalty : {'l1', 'l2'}, default='l2'
+            Penalty type to apply to gradients:
+            - 'l1': absolute value (promotes sparsity)
+            - 'l2': squared value (promotes smoothness)
+        reduction : str or None, default='mean'
+            Reduction to apply. Supported values:
+            'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var'.
+            If None, returns raw penalty values for each spatial dimension.
+        reduction_dim : int, tuple of ints, or None, default=None
+            Dimension(s) over which to apply the reduction. If None, reduces
+            over all dimensions.
+        keepdims : bool, default=False
+            Whether to retain reduced dimensions as singletons.
+        """
+        super().__init__()
+
+        self.penalty = penalty
+        self.reduction = reduction
+        self.reduction_dim = reduction_dim
+        self.keepdims = keepdims
+
+    def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
+        """
+        Compute spatial gradient penalty.
+
+        Parameters
+        ----------
+        input_tensor : torch.Tensor
+            Input tensor with shape (B, C, *spatial_dims).
+
+        Returns
+        -------
+        torch.Tensor
+            Gradient penalty (scalar by default, or shaped by reduction settings).
+        """
+        return nef.spatial_gradient(
+            input_tensor=input_tensor,
+            penalty=self.penalty,
+            reduction=self.reduction,
+            reduction_dim=self.reduction_dim,
+            keepdims=self.keepdims,
+        )
+
+
 class GaussianBlur(nn.Module):
     """
     Apply a {1D, 2D, 3D} gaussian blur to the input tensor by convolving it with a Gaussian kernel.
