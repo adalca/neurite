@@ -737,6 +737,85 @@ def ncc(
     )
 
 
+def spatial_gradient(
+    input_tensor: torch.Tensor,
+    penalty: Literal['l1', 'l2'] = 'l2',
+    reduction: Union[str, None] = 'mean',
+    reduction_dim: Union[int, Tuple[int, ...], None] = None,
+    keepdims: bool = False,
+) -> torch.Tensor:
+    """
+    Compute spatial gradient penalty for tensors with shape (B, C, *spatial_dims).
+
+    Parameters
+    ----------
+    input_tensor : torch.Tensor
+        Input tensor with shape (B, C, *spatial_dims), e.g., displacement field.
+    penalty : {'l1', 'l2'}, default='l2'
+        Penalty type to apply to gradients:
+        - 'l1': absolute value (promotes sparsity)
+        - 'l2': squared value (promotes smoothness)
+    reduction : str or None, default='mean'
+        Reduction to apply. Supported values:
+        'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var'.
+        If None, returns the raw penalty values for each spatial dimension.
+    reduction_dim : int, tuple of ints, or None, default=None
+        Dimension(s) over which to apply the reduction. If None, reduces over
+        all dimensions.
+    keepdims : bool, default=False
+        Whether to retain reduced dimensions as singletons.
+
+    Returns
+    -------
+    torch.Tensor
+        If reduction is None: list of penalty tensors (one per spatial dim).
+        Otherwise: reduced scalar or tensor depending on reduction_dim.
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite.nn.functional as nef
+    # Compute L2 gradient penalty (smoothness loss)
+    >>> displacement = torch.rand(2, 3, 64, 64, 64)  # (B, ndim, D, H, W)
+    >>> loss = nef.spatial_gradient(displacement, penalty='l2')
+    >>> print(loss.shape)
+    torch.Size([])
+
+    # Compute L1 gradient penalty
+    >>> loss = nef.spatial_gradient(displacement, penalty='l1')
+    >>> print(loss.shape)
+    torch.Size([])
+
+    References
+    ----------
+    .. [1] Balakrishnan et al., "VoxelMorph: A Learning Framework for Deformable
+           Medical Image Registration", IEEE TMI, 2019.
+    """
+    if penalty not in ['l1', 'l2']:
+        raise ValueError(f"penalty must be 'l1' or 'l2', got '{penalty}'")
+
+    # Compute spatial gradients (list of tensors, one per spatial dim)
+    grads = ne.spatial_gradient(input_tensor, non_spatial_dims=(0, 1))
+
+    # Apply penalty
+    if penalty == 'l1':
+        penalties = [g.abs() for g in grads]
+    else:  # l2
+        penalties = [g * g for g in grads]
+
+    if reduction is None:
+        return penalties
+
+    # Reduce each penalty tensor and average across spatial dimensions
+    reduced = []
+    for p in penalties:
+        r = reduce(tensor=p, reduction=reduction, dim=reduction_dim, keepdims=keepdims)
+        reduced.append(r)
+
+    # Average across spatial dimensions
+    return sum(reduced) / len(reduced)
+
+
 def log_dice(
     *segs,
     smooth_numerator: float = 1e-12,
