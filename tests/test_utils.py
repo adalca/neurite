@@ -174,3 +174,27 @@ def test_resize_nearest():
     resized_img_gt = img.reshape(1, 8, 8).float()
 
     assert torch.allclose(resized_img, resized_img_gt, atol=1e-8)
+
+
+def test_build_normalization_returns_module():
+    """
+    Regression test: build_normalization must return a module, not None.
+    Bug: bare `return` statements returned None instead of the normalization.
+    """
+    # Test instantiated input
+    norm = torch.nn.InstanceNorm2d(16)
+    assert ne.utils.build_normalization(norm) is norm
+
+    # Test uninstantiated class input
+    result = ne.utils.build_normalization(torch.nn.BatchNorm2d, num_features=16)
+    assert isinstance(result, torch.nn.BatchNorm2d)
+
+
+def test_reduce_keepdim_parameter():
+    """
+    Regression test: reduce() must use keepdim (not keepdims) for PyTorch API.
+    Bug: used `keepdims=` which is not a valid PyTorch parameter name.
+    """
+    tensor = torch.randn(2, 3, 4)
+    result = ne.reduce(tensor, reduction='mean', dim=1, keepdims=True)
+    assert result.shape == (2, 1, 4)
