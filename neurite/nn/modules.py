@@ -46,7 +46,7 @@ class Dice(nn.Module):
     --------
     # Example 1: Computing the hard dice score with binary seg maps
     >>> # Instantiate the dice score module
-    >>> dice_module = ne.losses.Dice()
+    >>> dice_module = ne.nn.modules.Dice()
     >>> # Randomly sample binary tensors with 3 batches and 4 channels
     >>> seg1 = torch.randint(0, 2, (3, 4, 128, 128))
     >>> seg2 = torch.randint(0, 2, (3, 4, 128, 128))
@@ -1159,16 +1159,16 @@ class SpatialGradient(nn.Module):
 
     Examples
     --------
-    # Example 1: L2 smoothness loss for displacement field
-    >>> grad_loss = SpatialGradient(penalty='l2')
+    # Example 1: L2 smoothness for displacement field
+    >>> gradient_func = SpatialGradient(penalty='l2')
     >>> displacement = torch.rand(2, 3, 64, 64, 64)  # (B, ndim, D, H, W)
-    >>> loss = grad_loss(displacement)
-    >>> print(loss.shape)
+    >>> gradient = gradient_func(displacement)
+    >>> print(gradient.shape)
     torch.Size([])
 
     # Example 2: L1 penalty (promotes sparse gradients)
-    >>> grad_loss = SpatialGradient(penalty='l1')
-    >>> loss = grad_loss(displacement)
+    >>> gradient_func = SpatialGradient(penalty='l1')
+    >>> gradient = gradient_func(displacement)
     """
 
     def __init__(
@@ -1206,7 +1206,7 @@ class SpatialGradient(nn.Module):
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
-        Compute spatial gradient penalty.
+        Compute spatial gradient
 
         Parameters
         ----------
@@ -1216,7 +1216,7 @@ class SpatialGradient(nn.Module):
         Returns
         -------
         torch.Tensor
-            Gradient penalty (scalar by default, or shaped by reduction settings).
+            Gradient (scalar by default, or shaped by reduction settings).
         """
         return nef.spatial_gradient(
             input_tensor=input_tensor,
