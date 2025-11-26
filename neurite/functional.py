@@ -14,6 +14,7 @@ import neurite as ne
 __all__ = [
     "mse",
     "dice",
+    "ncc",
     "reduce",
     "volshape_to_ndgrid",
     "apply_bernoulli_mask",
@@ -174,6 +175,165 @@ def dice(
     dice_score = (nsegs * intersection + smooth_numerator) / (union + smooth_denominator)
 
     return dice_score
+
+
+def ncc(
+    tensor1: torch.Tensor,
+    tensor2: torch.Tensor,
+    window_size: Union[int, Sequence[int]] = 9,
+    non_spatial_dims: Union[Tuple[int, ...], None] = None,
+    eps: float = 1e-5,
+) -> torch.Tensor:
+    """
+    Compute local normalized cross-correlation (NCC) between two tensors.
+
+    Shape-agnostic implementation that computes the squared Pearson correlation
+    coefficient over local windows. This is commonly used as a similarity metric
+    in image registration.
+
+    Parameters
+    ----------
+    tensor1 : torch.Tensor
+        First input tensor.
+    tensor2 : torch.Tensor
+        Second input tensor with same shape as tensor1.
+    window_size : int or Sequence[int], default=9
+        Size of local window for computing correlation. If int, same size for all
+        spatial dimensions. If Sequence, per-dimension window sizes (must match
+        number of spatial dimensions).
+    non_spatial_dims : Tuple[int, ...] or None, default=None
+        Indices of non-spatial dimensions. Must be a contiguous sequence starting from 0.
+        Valid values: None, (0,), or (0, 1). If None, assumes all dimensions are spatial
+        and computes a single scalar NCC score.
+    eps : float, default=1e-5
+        Small constant for numerical stability in division.
+
+    Returns
+    -------
+    torch.Tensor
+        NCC values (squared correlation coefficients) in range [0, 1].
+        Shape depends on non_spatial_dims:
+        - If None: scalar
+        - If (0,): shape (N,) where N is size of dim 0
+        - If (0, 1): shape (N, M) where N, M are sizes of dims 0, 1
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite as ne
+    # Compute global NCC for two 2D tensors
+    >>> t1 = torch.rand(64, 64)
+    >>> t2 = torch.rand(64, 64)
+    >>> score = ne.ncc(t1, t2)
+    >>> print(score.shape)
+    torch.Size([])
+
+    # Compute per-batch NCC
+    >>> t1 = torch.rand(4, 64, 64)
+    >>> t2 = torch.rand(4, 64, 64)
+    >>> score = ne.ncc(t1, t2, non_spatial_dims=(0,))
+    >>> print(score.shape)
+    torch.Size([4])
+
+    # Compute per-batch-and-channel NCC with custom window
+    >>> t1 = torch.rand(2, 3, 64, 64)
+    >>> t2 = torch.rand(2, 3, 64, 64)
+    >>> score = ne.ncc(t1, t2, window_size=5, non_spatial_dims=(0, 1))
+    >>> print(score.shape)
+    torch.Size([2, 3])
+
+    Notes
+    -----
+    The NCC is computed as the squared Pearson correlation coefficient:
+        NCC = (cov(I, J))^2 / (var(I) * var(J))
+
+    where covariance and variance are computed locally over the specified window.
+    Values close to 1 indicate high similarity, values close to 0 indicate low similarity.
+
+    References
+    ----------
+    .. [1] Balakrishnan et al., "VoxelMorph: A Learning Framework for Deformable
+           Medical Image Registration", IEEE TMI, 2019.
+    """
+    if tensor1.shape != tensor2.shape:
+        raise ValueError(
+            f"Tensors must have same shape. Got {tensor1.shape} and {tensor2.shape}"
+        )
+
+    # Parse non_spatial_dims
+    num_non_spatial, num_spatial = _parse_non_spatial_dims(non_spatial_dims, tensor1.ndim)
+
+    if num_spatial not in [1, 2, 3]:
+        raise ValueError(
+            f"Only 1D, 2D, 3D spatial dimensions supported. Got {num_spatial}D"
+        )
+
+    # Add B/C dimensions if needed for convolution
+    tensor1, dims_added = pad_batch_channel(tensor1, non_spatial_dims)
+    tensor2, _ = pad_batch_channel(tensor2, non_spatial_dims)
+
+    num_channels = tensor1.shape[1]
+
+    # Parse window size
+    if isinstance(window_size, int):
+        win = [window_size] * num_spatial
+    else:
+        win = list(window_size)
+        if len(win) != num_spatial:
+            raise ValueError(
+                f"window_size length {len(win)} doesn't match spatial dims {num_spatial}"
+            )
+
+    # Create sum filter for grouped convolution: (num_channels, 1, *win)
+    # Each channel processed independently
+    sum_filt = torch.ones(num_channels, 1, *win, device=tensor1.device, dtype=tensor1.dtype)
+
+    # Convolution parameters for "same" output size
+    padding = [w // 2 for w in win]
+    stride = [1] * num_spatial
+
+    # Select conv function based on spatial dimensionality
+    conv_fn = {1: F.conv1d, 2: F.conv2d, 3: F.conv3d}[num_spatial]
+
+    # Compute products
+    Ii = tensor1
+    Ji = tensor2
+    I2 = Ii * Ii
+    J2 = Ji * Ji
+    IJ = Ii * Ji
+
+    # Local sums using grouped convolution (each channel independent)
+    I_sum = conv_fn(Ii, sum_filt, stride=stride, padding=padding, groups=num_channels)
+    J_sum = conv_fn(Ji, sum_filt, stride=stride, padding=padding, groups=num_channels)
+    I2_sum = conv_fn(I2, sum_filt, stride=stride, padding=padding, groups=num_channels)
+    J2_sum = conv_fn(J2, sum_filt, stride=stride, padding=padding, groups=num_channels)
+    IJ_sum = conv_fn(IJ, sum_filt, stride=stride, padding=padding, groups=num_channels)
+
+    # Window size for normalization
+    win_size = torch.tensor(win, device=tensor1.device, dtype=tensor1.dtype).prod()
+
+    # Local means
+    u_I = I_sum / win_size
+    u_J = J_sum / win_size
+
+    # Cross-correlation: cov(I, J) * win_size
+    cross = IJ_sum - u_J * I_sum - u_I * J_sum + u_I * u_J * win_size
+
+    # Variances: var(I) * win_size, var(J) * win_size
+    I_var = I2_sum - 2 * u_I * I_sum + u_I * u_I * win_size
+    J_var = J2_sum - 2 * u_J * J_sum + u_J * u_J * win_size
+
+    # Squared correlation coefficient
+    cc = cross * cross / (I_var * J_var + eps)
+
+    # Average over spatial dimensions (keep non-spatial structure)
+    spatial_dims = tuple(range(2, 2 + num_spatial))
+    ncc_score = cc.mean(dim=spatial_dims)
+
+    # Remove added dimensions to restore original non-spatial structure
+    ncc_score = unpad_batch_channel(ncc_score, dims_added)
+
+    return ncc_score
 
 
 def reduce(
