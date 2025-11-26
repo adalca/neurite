@@ -24,6 +24,8 @@ __all__ = [
     "gaussian_kernel",
     "crop",
     "clip",
+    "pad_batch_channel",
+    "unpad_batch_channel",
 ]
 
 
@@ -694,7 +696,7 @@ def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> tor
 
 
 def _parse_non_spatial_dims(
-    non_spatial_dims: Union[Tuple[int, ...], None],
+    non_spatial_dims: Union[Sequence[int], None],
     tensor_ndim: int
 ) -> Tuple[int, int]:
     """
@@ -1029,3 +1031,32 @@ def clip(
     >>> clipped = ne.clip(x, max=1)
     """
     return torch.clamp(input_tensor, min=min, max=max)
+
+
+def pad_batch_channel(
+    tensor: torch.Tensor,
+    non_spatial_dims: Union[Sequence[int], None]
+) -> Tuple[torch.Tensor, int]:
+    """
+    Add leading dims to reach (B, C, *spatial) format
+    """
+    if non_spatial_dims is None:
+        num_non_spatial = 0
+    else:
+        num_non_spatial = len(non_spatial_dims)
+
+    dims_added = 2 - num_non_spatial
+
+    for _ in range(dims_added):
+        tensor = tensor.unsqueeze(0)
+    return tensor, dims_added
+
+
+def unpad_batch_channel(tensor: torch.Tensor, dims_added: int) -> torch.Tensor:
+    """
+    Remove leading dims added by pad_to_batch_channel.
+    """
+    for _ in range(dims_added):
+        tensor = tensor.squeeze(0)
+
+    return tensor
