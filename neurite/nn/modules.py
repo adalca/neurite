@@ -1060,6 +1060,96 @@ class MSE(nn.Module):
         return ne.nn.functional.mse(tensor1=input_tensor, tensor2=target_tensor)
 
 
+class NCC(nn.Module):
+    """
+    Compute local normalized cross-correlation (NCC) between two tensors.
+
+    Examples
+    --------
+    # Example 1: Computing NCC with default reduction
+    >>> ncc_module = NCC()
+    >>> t1 = torch.rand(2, 1, 64, 64)
+    >>> t2 = torch.rand(2, 1, 64, 64)
+    >>> score = ncc_module(t1, t2)
+    >>> print(score.shape)
+    torch.Size([1, 1])
+
+    # Example 2: Computing NCC without reduction
+    >>> ncc_module = NCC(reduction=None)
+    >>> t1 = torch.rand(2, 3, 64, 64)
+    >>> t2 = torch.rand(2, 3, 64, 64)
+    >>> score = ncc_module(t1, t2)
+    >>> print(score.shape)
+    torch.Size([2, 3])
+    """
+
+    def __init__(
+        self,
+        window_size: Union[int, Sequence[int]] = 9,
+        eps: float = 1e-5,
+        reduction: Union[str, None] = 'mean',
+        reduction_dim: Union[int, Tuple[int, ...]] = (0, 1),
+        keepdims: bool = True,
+    ) -> None:
+        """
+        Initialize `NCC`.
+
+        Parameters
+        ----------
+        window_size : int or Sequence[int], default=9
+            Size of local window for computing correlation. If int, same size for all
+            spatial dimensions. If Sequence, per-dimension window sizes.
+        eps : float, default=1e-5
+            Small constant for numerical stability in division.
+        reduction : str or None, default='mean'
+            Reduction to apply over batch and channel dimensions. Supported values:
+            'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'.
+            If None, returns shape (B, C).
+        reduction_dim : int or tuple of ints, default=(0, 1)
+            Dimension(s) over which to apply the reduction.
+        keepdims : bool, default=True
+            Whether to retain reduced dimensions as singletons.
+        """
+        super().__init__()
+
+        self.window_size = window_size
+        self.eps = eps
+        self.reduction = reduction
+        self.reduction_dim = reduction_dim
+        self.keepdims = keepdims
+
+    def forward(
+        self,
+        tensor1: torch.Tensor,
+        tensor2: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Compute NCC between two tensors.
+
+        Parameters
+        ----------
+        tensor1 : torch.Tensor
+            First input tensor with shape (B, C, *spatial_dims).
+        tensor2 : torch.Tensor
+            Second input tensor with same shape as tensor1.
+
+        Returns
+        -------
+        torch.Tensor
+            NCC values (squared correlation coefficients) in range [0, 1].
+            Shape depends on reduction settings.
+        """
+        return nef.ncc(
+            tensor1=tensor1,
+            tensor2=tensor2,
+            window_size=self.window_size,
+            eps=self.eps,
+            reduction=self.reduction,
+            reduction_dim=self.reduction_dim,
+            keepdims=self.keepdims,
+        )
+
+
 class GaussianBlur(nn.Module):
     """
     Apply a {1D, 2D, 3D} gaussian blur to the input tensor by convolving it with a Gaussian kernel.
