@@ -15,6 +15,7 @@ __all__ = [
     "mse",
     "dice",
     "ncc",
+    "spatial_gradient",
     "reduce",
     "volshape_to_ndgrid",
     "apply_bernoulli_mask",
@@ -327,6 +328,66 @@ def ncc(
     ncc_score = unpad_batch_channel(ncc_score, dims_added)
 
     return ncc_score
+
+
+def spatial_gradient(
+    input_tensor: torch.Tensor,
+    non_spatial_dims: Union[Tuple[int, ...], None] = None,
+) -> list[torch.Tensor]:
+    """
+    Compute spatial gradients using finite differences along each spatial dimension.
+
+    Shape-agnostic implementation that computes first-order forward differences
+    along each spatial dimension.
+
+    Parameters
+    ----------
+    input_tensor : torch.Tensor
+        Input tensor (e.g., displacement field, velocity field, or image).
+    non_spatial_dims : Tuple[int, ...] or None, default=None
+        Indices of non-spatial dimensions. Must be a contiguous sequence starting from 0.
+        Valid values: None, (0,), or (0, 1). If None, assumes all dimensions are spatial.
+
+    Returns
+    -------
+    list[torch.Tensor]
+        List of gradient tensors, one per spatial dimension. Each tensor has shape
+        reduced by 1 along the corresponding dimension (due to finite differences).
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite as ne
+    # Compute gradients of a 2D image (no batch/channel)
+    >>> img = torch.rand(64, 64)
+    >>> grads = ne.spatial_gradient(img, non_spatial_dims=None)
+    >>> len(grads)
+    2
+    >>> grads[0].shape  # gradient along dim 0
+    torch.Size([63, 64])
+    >>> grads[1].shape  # gradient along dim 1
+    torch.Size([64, 63])
+
+    # Compute gradients with batch and channel dims
+    >>> field = torch.rand(2, 3, 64, 64, 64)  # (B, C, D, H, W)
+    >>> grads = ne.spatial_gradient(field, non_spatial_dims=(0, 1))
+    >>> len(grads)
+    3
+    >>> grads[0].shape  # gradient along D
+    torch.Size([2, 3, 63, 64, 64])
+
+    References
+    ----------
+    .. [1] Balakrishnan et al., "VoxelMorph: A Learning Framework for Deformable
+           Medical Image Registration", IEEE TMI, 2019.
+    """
+    # Parse non_spatial_dims
+    num_non_spatial, num_spatial = _parse_non_spatial_dims(non_spatial_dims, input_tensor.ndim)
+
+    if num_spatial < 1:
+        raise ValueError("Need at least 1 spatial dimension to compute gradients")
+
+    return [torch.diff(input_tensor, dim=num_non_spatial + i) for i in range(num_spatial)]
 
 
 def reduce(
