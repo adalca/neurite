@@ -1196,9 +1196,8 @@ class ResampleVoxelDimensions(nn.Module):
 
         return nef.resample_voxel_dimensions(
             input_tensor=input_tensor,
-            resample_dimension=self.resample_dimension,
-            downsample_stride=self.downsample_stride,
-            upsample_scale_factor=self.upsample_scale_factor,
+            downsample_scale=self.downsample_stride,
+            upsample_scale=self.upsample_scale_factor,
             mode=self.mode,
             shape=self.shape
         )
@@ -1282,7 +1281,7 @@ class Clip(nn.Module):
         self.max = max
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
-        return ne.functional.clip(input_tensor, self.min, self.max)
+        return ne.clip(input_tensor, self.min, self.max)
 
 
 class RandomIntensityLookup(nn.Module):
