@@ -301,3 +301,28 @@ def test_spatial_gradient_magnitudes():
 
     assert torch.allclose(gradients[0], expected_dim0)
     assert torch.allclose(gradients[1], expected_dim1)
+
+
+def test_spatial_gradient_constant():
+    """Test that constant fields have zero gradient."""
+    t = torch.ones(2, 3, 32, 32)
+    loss = nef.spatial_gradient(t, penalty='l2')
+    assert loss.item() == 0.0, f"Expected 0 for constant field, got {loss.item()}"
+
+
+def test_spatial_gradient_penalties():
+    """Test L1 and L2 penalties produce different results."""
+    torch.manual_seed(42)
+    t = torch.rand(2, 3, 64, 64)
+
+    l1_loss = nef.spatial_gradient(t, penalty='l1')
+    l2_loss = nef.spatial_gradient(t, penalty='l2')
+
+    # L1 and L2 should produce different values
+    assert not torch.allclose(l1_loss, l2_loss), (
+        "L1 and L2 penalties should produce different values"
+    )
+
+    # Both should be non-negative
+    assert l1_loss >= 0, f"L1 loss should be non-negative, got {l1_loss}"
+    assert l2_loss >= 0, f"L2 loss should be non-negative, got {l2_loss}"
