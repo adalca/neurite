@@ -259,3 +259,45 @@ def test_ncc_module():
     ncc_module_no_red = ne.nn.modules.NCC(reduction=None)
     score = ncc_module_no_red(t1, t1)
     assert score.shape == (4, 3), f"Expected (4, 3), got {score.shape}"
+
+
+def test_base_spatial_gradient():
+    """Test the shape-agnostic base spatial_gradient function."""
+    # Test with no non-spatial dims (all spatial)
+    t = torch.rand(64, 64)
+    grads = ne.spatial_gradient(t, non_spatial_dims=None)
+    assert len(grads) == 2, f"Expected 2 gradients for 2D, got {len(grads)}"
+    assert grads[0].shape == (63, 64), f"Expected (63, 64), got {grads[0].shape}"
+    assert grads[1].shape == (64, 63), f"Expected (64, 63), got {grads[1].shape}"
+
+    # Test with B, C dims
+    t = torch.rand(2, 3, 32, 32, 32)
+    grads = ne.spatial_gradient(t, non_spatial_dims=(0, 1))
+    assert len(grads) == 3, f"Expected 3 gradients for 3D, got {len(grads)}"
+    assert grads[0].shape == (2, 3, 31, 32, 32), (
+        f"Expected (2, 3, 31, 32, 32), got {grads[0].shape}"
+    )
+
+
+def test_spatial_gradient_values():
+    """Test that spatial gradient computes correct finite differences."""
+    # 1D case: [0, 1, 2, 3, 4] -> diffs should be [1, 1, 1, 1]
+    t = torch.arange(5).float()
+    grads = ne.spatial_gradient(t, non_spatial_dims=None)
+    expected = torch.ones(4)
+    assert torch.allclose(grads[0], expected), (
+        f"Expected {expected.tolist()}, got {grads[0].tolist()}"
+    )
+
+
+def test_spatial_gradient_magnitudes():
+    """Test spatial gradient with known 2D grid values."""
+    x = torch.arange(100).reshape(10, 10).float()
+
+    gradients = ne.spatial_gradient(x, non_spatial_dims=None)
+
+    expected_dim0 = torch.ones(9, 10) * 10  # stepping down rows jumps by 10
+    expected_dim1 = torch.ones(10, 9)        # stepping across cols jumps by 1
+
+    assert torch.allclose(gradients[0], expected_dim0)
+    assert torch.allclose(gradients[1], expected_dim1)
