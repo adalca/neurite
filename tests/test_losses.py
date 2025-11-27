@@ -188,3 +188,29 @@ def test_base_ncc():
     t2 = torch.rand(2, 3, 64, 64)
     score = ne.ncc(t1, t2, non_spatial_dims=(0, 1))
     assert score.shape == (2, 3), f"Expected (2, 3), got {score.shape}"
+
+
+def test_ncc_identical():
+    """Test NCC returns ~1 for identical tensors."""
+    t1 = torch.rand(4, 3, 64, 64)
+
+    score = nef.ncc(t1, t1, reduction=None)
+
+    expected = torch.ones(4, 3)
+    assert torch.allclose(score, expected, atol=1e-6), (
+        f"NCC for identical tensors should be 1.0, got {score.mean().item()}"
+    )
+
+
+def test_ncc_different():
+    """Test NCC returns values in [0, 1] for different random tensors."""
+    torch.manual_seed(42)
+    t1 = torch.rand(4, 3, 64, 64)
+    t2 = torch.rand(4, 3, 64, 64)
+
+    score = nef.ncc(t1, t2, reduction=None)
+
+    # Score should be in [0, 1]
+    assert (score >= 0).all() and (score <= 1).all(), (
+        f"NCC values should be in [0, 1], got min={score.min()}, max={score.max()}"
+    )
