@@ -167,3 +167,24 @@ def test_dice_wrapper():
     assert torch.allclose(result, expected, atol=1e-6), (
         "Dice for identical inputs should be close to 1."
     )
+
+
+def test_base_ncc():
+    """Test the shape-agnostic base NCC function returns correct shapes."""
+    # Test with no non-spatial dims (all spatial) -> scalar
+    t1 = torch.rand(64, 64)
+    t2 = torch.rand(64, 64)
+    score = ne.ncc(t1, t2, non_spatial_dims=None)
+    assert score.ndim == 0, f"Expected scalar, got shape {score.shape}"
+
+    # Test with batch dim only
+    t1 = torch.rand(4, 64, 64)
+    t2 = torch.rand(4, 64, 64)
+    score = ne.ncc(t1, t2, non_spatial_dims=(0,))
+    assert score.shape == (4,), f"Expected (4,), got {score.shape}"
+
+    # Test with B, C dims
+    t1 = torch.rand(2, 3, 64, 64)
+    t2 = torch.rand(2, 3, 64, 64)
+    score = ne.ncc(t1, t2, non_spatial_dims=(0, 1))
+    assert score.shape == (2, 3), f"Expected (2, 3), got {score.shape}"
