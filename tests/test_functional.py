@@ -385,3 +385,68 @@ def test_resample_preserves_non_spatial_dims(shape, non_spatial_dims, expected_s
     tensor = torch.randn(*shape)
     result = ne.resample(tensor, scale_factor=2.0, non_spatial_dims=non_spatial_dims)
     assert result.shape == torch.Size(expected_shape)
+
+
+def test_filter_dim_removes_nan_slices():
+    """Test that slices containing NaN are removed."""
+    tensor = torch.tensor([
+        [1.0, 2.0],
+        [float('nan'), 3.0],
+        [4.0, 5.0],
+    ])
+    result = ne.filter_dim(tensor, dim=0)
+    assert result.shape == (2, 2)
+    assert not torch.isnan(result).any()
+
+
+def test_filter_dim_removes_inf_slices():
+    """Test that slices containing Inf are removed."""
+    tensor = torch.tensor([
+        [1.0, 2.0],
+        [float('inf'), 3.0],
+        [4.0, float('-inf')],
+        [6.0, 7.0],
+    ])
+    result = ne.filter_dim(tensor, dim=0)
+    assert result.shape == (2, 2)
+    assert not torch.isinf(result).any()
+
+
+def test_filter_dim_removes_all_zero_slices():
+    """Test that slices that are entirely zero are removed."""
+    tensor = torch.tensor([
+        [1.0, 2.0],
+        [0.0, 0.0],
+        [3.0, 4.0],
+    ])
+    result = ne.filter_dim(tensor, dim=0)
+    assert result.shape == (2, 2)
+    # Verify no all-zero rows remain
+    assert not (result == 0).all(dim=1).any()
+
+
+def test_filter_dim_preserves_valid_slices():
+    """Test that valid slices are preserved with correct values."""
+    tensor = torch.tensor([
+        [1.0, 2.0],
+        [float('nan'), 3.0],
+        [4.0, 5.0],
+    ])
+    result = ne.filter_dim(tensor, dim=0)
+    expected = torch.tensor([[1.0, 2.0], [4.0, 5.0]])
+    assert torch.allclose(result, expected)
+
+
+@pytest.mark.parametrize("dim", [0, 1])
+def test_filter_dim_works_on_different_dims(dim):
+    """Test that filtering works correctly along different dimensions."""
+    # Create tensor with NaN in specific positions
+    tensor = torch.ones(3, 4)
+    if dim == 0:
+        tensor[1, :] = float('nan')  # NaN in row 1
+        result = ne.filter_dim(tensor, dim=0)
+        assert result.shape == (2, 4)
+    else:
+        tensor[:, 2] = float('nan')  # NaN in column 2
+        result = ne.filter_dim(tensor, dim=1)
+        assert result.shape == (3, 3)
