@@ -175,14 +175,16 @@ def test_sample_image_from_labels_deterministic():
 def test_volshape_to_ndgrid_sizes():
     size = (19, 32)
     the_grid = ne.volshape_to_ndgrid(size=size, stack=True)
-    assert tuple(the_grid.shape) == (19, 32, 2)
+    # With channels-first convention: (ndim, *spatial)
+    assert tuple(the_grid.shape) == (2, 19, 32)
 
 
 def test_functional_volshape_to_ndgrid_sizes():
     B, C = 2, 3
     size = (B, C, 43, 9, 10)
     the_grid = nef.volshape_to_ndgrid(size=size, stack=True)
-    assert tuple(the_grid.shape) == (B, C, 43, 9, 10, 3) 
+    # nef wrapper handles B, C dims internally, still returns (ndim, *spatial)
+    assert tuple(the_grid.shape) == (3, 43, 9, 10) 
 
 
 def test_gaussian_kernel_sums_to_one():
