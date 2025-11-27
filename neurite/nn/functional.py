@@ -1241,3 +1241,46 @@ def smooth_gaussian(
         non_spatial_dims=(0, 1),
         device=device,
     )
+
+
+def upsample_noise(
+    shape: Sequence[int],
+    scale: Union[float, int],
+    device: Union[torch.device, None] = None
+) -> torch.Tensor:
+    """
+    Generate smooth noise by upsampling from a coarse grid in (B, C, *spatial) format.
+
+    Parameters
+    ----------
+    shape : Sequence[int]
+        Target shape in (B, C, *spatial) format. Must have at least 3 dimensions.
+    scale : float or int
+        Downsampling factor. Larger values produce smoother noise.
+    device : torch.device or None, default=None
+        Device for tensor allocation.
+
+    Returns
+    -------
+    torch.Tensor
+        Upsampled noise with shape (B, C, *spatial).
+
+    Examples
+    --------
+    >>> import neurite.nn.functional as nef
+    >>> # Generate 2d noise field
+    >>> noise_2d = nef.upsample_noise(shape=(1, 1, 64, 64), scale=8.0)
+    >>> noise_2d.shape
+    torch.Size([1, 1, 64, 64])
+
+    >>> # Generate 3d noise field with multiple channels
+    >>> noise_3d = nef.upsample_noise(shape=(2, 3, 32, 32, 32), scale=4.0)
+    >>> noise_3d.shape
+    torch.Size([2, 3, 32, 32, 32])
+    """
+    return ne.upsample_noise(
+        shape=shape,
+        scale=scale,
+        non_spatial_dims=(0, 1),
+        device=device,
+    )
