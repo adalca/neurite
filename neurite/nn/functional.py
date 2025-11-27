@@ -1284,3 +1284,58 @@ def upsample_noise(
         non_spatial_dims=(0, 1),
         device=device,
     )
+
+
+def fractal_noise(
+    shape: Sequence[int],
+    scales: Union[float, int, Sequence[Union[float, int]], None] = None,
+    magnitude: float = 1.0,
+    weights: Union[Sequence[float], None] = None,
+    device: Union[torch.device, None] = None,
+    method: Literal['blur', 'upsample'] = 'blur'
+) -> torch.Tensor:
+    """
+    Generate fractal noise in (B, C, *spatial) format.
+
+    Parameters
+    ----------
+    shape : Sequence[int]
+        Target shape in (B, C, *spatial) format. Must have at least 3 dimensions.
+    scales : float, int, Sequence[float or int], or None, default=None
+        Smoothing scale(s) for each octave. If None, defaults to powers of 2.
+    magnitude : float, default=1.0
+        Standard deviation of the final normalized noise.
+    weights : Sequence[float] or None, default=None
+        Weight for each scale. If None, uses linearly increasing weights.
+    device : torch.device or None, default=None
+        Device for tensor allocation.
+    method : {'blur', 'upsample'}, default='blur'
+        Noise generation method.
+
+    Returns
+    -------
+    torch.Tensor
+        Fractal noise with shape (B, C, *spatial).
+
+    Examples
+    --------
+    >>> import neurite.nn.functional as nef
+    >>> # Generate 2d fractal noise with default scales
+    >>> noise_2d = nef.fractal_noise(shape=(1, 1, 64, 64))
+    >>> noise_2d.shape
+    torch.Size([1, 1, 64, 64])
+
+    >>> # Generate 3d fractal noise with custom scales
+    >>> noise_3d = nef.fractal_noise(shape=(1, 1, 32, 32, 32), scales=[2.0, 4.0, 8.0])
+    >>> noise_3d.shape
+    torch.Size([1, 1, 32, 32, 32])
+    """
+    return ne.fractal_noise(
+        shape=shape,
+        scales=scales,
+        magnitude=magnitude,
+        weights=weights,
+        non_spatial_dims=(0, 1),
+        device=device,
+        method=method,
+    )
