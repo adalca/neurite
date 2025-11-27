@@ -326,3 +326,18 @@ def test_spatial_gradient_penalties():
     # Both should be non-negative
     assert l1_loss >= 0, f"L1 loss should be non-negative, got {l1_loss}"
     assert l2_loss >= 0, f"L2 loss should be non-negative, got {l2_loss}"
+
+
+def test_spatial_gradient_module():
+    """Test SpatialGradient module wrapper."""
+    t = torch.rand(2, 3, 64, 64)
+
+    # Test with default settings
+    grad_module = ne.nn.modules.SpatialGradient(penalty='l2')
+    loss = grad_module(t)
+    assert loss.ndim == 0, f"Expected scalar, got shape {loss.shape}"
+
+    # Test with L1 penalty
+    grad_module_l1 = ne.nn.modules.SpatialGradient(penalty='l1')
+    loss_l1 = grad_module_l1(t)
+    assert loss_l1.ndim == 0, f"Expected scalar, got shape {loss_l1.shape}"
