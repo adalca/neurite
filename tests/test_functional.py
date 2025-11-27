@@ -317,3 +317,38 @@ def test_fractal_noise_normalization(magnitude):
     noise = ne.fractal_noise(shape=(128, 128), scales=[2.0, 4.0], magnitude=magnitude)
     assert abs(noise.mean().item()) < 1e-6
     assert abs(noise.std().item() - magnitude) < 1e-6
+
+
+@pytest.mark.parametrize("reduction", ['mean', 'sum', 'amax', 'amin', 'std', 'var'])
+def test_reduce_matches_torch(reduction):
+    """Test that reduce() produces identical results to direct torch calls."""
+    torch.manual_seed(42)
+    tensor = torch.randn(4, 8, 16)
+
+    result = ne.reduce(tensor, reduction=reduction)
+    expected = getattr(torch, reduction)(tensor)
+
+    assert torch.allclose(result, expected)
+
+
+@pytest.mark.parametrize("dim,keepdims,expected_shape", [
+    (None, False, ()),
+    (None, True, (1, 1, 1)),
+    (0, False, (8, 16)),
+    (0, True, (1, 8, 16)),
+    (1, False, (4, 16)),
+    ((0, 2), False, (8,)),
+    ((0, 2), True, (1, 8, 1)),
+])
+def test_reduce_output_shape(dim, keepdims, expected_shape):
+    """Test that reduce() produces correct output shapes."""
+    tensor = torch.randn(4, 8, 16)
+    result = ne.reduce(tensor, reduction='mean', dim=dim, keepdims=keepdims)
+    assert result.shape == torch.Size(expected_shape)
+
+
+def test_reduce_none_returns_unchanged():
+    """Test that reduction=None returns the tensor unchanged."""
+    tensor = torch.randn(4, 8, 16)
+    result = ne.reduce(tensor, reduction=None)
+    assert result is tensor
