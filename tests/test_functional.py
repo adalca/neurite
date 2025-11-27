@@ -352,3 +352,36 @@ def test_reduce_none_returns_unchanged():
     tensor = torch.randn(4, 8, 16)
     result = ne.reduce(tensor, reduction=None)
     assert result is tensor
+
+
+@pytest.mark.parametrize("scale_factor,expected_spatial", [
+    (2.0, (128, 128)),
+    (0.5, (32, 32)),
+    (1.0, (64, 64)),
+])
+def test_resample_scale_factor(scale_factor, expected_spatial):
+    """Test that scale_factor correctly scales spatial dimensions."""
+    tensor = torch.randn(64, 64)
+    result = ne.resample(tensor, scale_factor=scale_factor)
+    assert result.shape == torch.Size(expected_spatial)
+
+
+@pytest.mark.parametrize("target_size", [(32, 32), (128, 128), (50, 100)])
+def test_resample_target_size(target_size):
+    """Test that size parameter produces exact target shape."""
+    tensor = torch.randn(64, 64)
+    result = ne.resample(tensor, size=target_size)
+    assert result.shape == torch.Size(target_size)
+
+
+@pytest.mark.parametrize("shape,non_spatial_dims,expected_shape", [
+    ((64, 64), None, (128, 128)),
+    ((3, 64, 64), (0,), (3, 128, 128)),
+    ((2, 3, 64, 64), (0, 1), (2, 3, 128, 128)),
+    ((32, 32, 32), None, (64, 64, 64)),
+])
+def test_resample_preserves_non_spatial_dims(shape, non_spatial_dims, expected_shape):
+    """Test that non-spatial dimensions are preserved during resampling."""
+    tensor = torch.randn(*shape)
+    result = ne.resample(tensor, scale_factor=2.0, non_spatial_dims=non_spatial_dims)
+    assert result.shape == torch.Size(expected_shape)
