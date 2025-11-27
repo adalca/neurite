@@ -214,3 +214,15 @@ def test_ncc_different():
     assert (score >= 0).all() and (score <= 1).all(), (
         f"NCC values should be in [0, 1], got min={score.min()}, max={score.max()}"
     )
+
+
+@pytest.mark.parametrize("alpha", [0.5, 2.0, 10.0, -1.0])
+def test_ncc_scale_invariance(alpha):
+    """Test that NCC is scale-invariant: ncc(x, alpha*x) = 1 for any alpha != 0."""
+    torch.manual_seed(42)
+    t1 = torch.rand(2, 1, 64, 64)
+    t2 = alpha * t1
+    score = nef.ncc(t1, t2, reduction=None)
+    assert torch.allclose(score, torch.ones_like(score), atol=1e-5), (
+        f"NCC(x, {alpha}*x) should be 1, got {score.mean().item():.6f}"
+    )
