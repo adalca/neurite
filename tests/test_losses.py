@@ -226,3 +226,36 @@ def test_ncc_scale_invariance(alpha):
     assert torch.allclose(score, torch.ones_like(score), atol=1e-5), (
         f"NCC(x, {alpha}*x) should be 1, got {score.mean().item():.6f}"
     )
+
+
+def test_ncc_window_size():
+    """Test NCC with different window sizes."""
+    t1 = torch.rand(2, 1, 64, 64)
+    t2 = torch.rand(2, 1, 64, 64)
+
+    # Should work with different window sizes
+    for win in [3, 5, 9, 11]:
+        score = nef.ncc(t1, t2, window_size=win)
+        assert score.shape == (1, 1), f"Expected (1, 1), got {score.shape} for window_size={win}"
+
+    # Should work with per-dimension window sizes
+    score = nef.ncc(t1, t2, window_size=[5, 9])
+    assert score.shape == (1, 1), f"Expected (1, 1), got {score.shape} for per-dim window"
+
+
+def test_ncc_module():
+    """Test NCC module wrapper."""
+    t1 = torch.rand(4, 3, 64, 64)
+
+    # Test with reduction
+    ncc_module = ne.nn.modules.NCC(reduction='mean')
+    score = ncc_module(t1, t1)
+    assert score.shape == (1, 1), f"Expected (1, 1), got {score.shape}"
+    assert torch.allclose(score, torch.ones(1, 1), atol=1e-6), (
+        "NCC module for identical tensors should be 1.0"
+    )
+
+    # Test without reduction
+    ncc_module_no_red = ne.nn.modules.NCC(reduction=None)
+    score = ncc_module_no_red(t1, t1)
+    assert score.shape == (4, 3), f"Expected (4, 3), got {score.shape}"
