@@ -43,14 +43,14 @@ def test_base_gaussian_kernel_different_ndims():
 @pytest.mark.parametrize(
     'grid_shape, expected_out_shape',
     (
-        ((32,), (32, 1)),
-        ((32, 32), (32, 32, 2)),
-        ((32, 32, 32), (32, 32, 32, 3)),
+        ((32,), (1, 32)),          # (ndim, *spatial)
+        ((32, 32), (2, 32, 32)),
+        ((32, 32, 32), (3, 32, 32, 32)),
     )
 )
 def test_grid_shape(grid_shape, expected_out_shape):
 
-    # Must return stack!
+    # Must return stack with shape (ndim, *spatial)
     coord_grid = ne.volshape_to_ndgrid(grid_shape, stack=True)
     assert coord_grid.shape == expected_out_shape
 
@@ -62,8 +62,10 @@ def test_grid_normalized(grid_shape: tuple):
     """
     Test that when normalize=True and indexing='ij', every corner of the
     generated coordinate grid has values exactly -1 or 1.
-    """
 
+    With (ndim, *spatial) format, indexing coord_grid[:, *corner] gives the
+    coordinate vector at that spatial location.
+    """
     coord_grid = ne.volshape_to_ndgrid(
         grid_shape, normalize=True, indexing='ij', stack=True
     )
@@ -75,8 +77,10 @@ def test_grid_normalized(grid_shape: tuple):
         for corner in corners
     )
 
+    # With (ndim, *spatial) format, use (slice(None),) + corner to index
+    # This selects all ndim values at the given spatial corner
     corner_vals = torch.stack([
-        coord_grid[corner] for corner in corners
+        coord_grid[(slice(None),) + corner] for corner in corners
     ], dim=0)
 
     expected_corner_values = torch.tensor(expected_corner_values)
