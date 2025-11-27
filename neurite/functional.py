@@ -507,8 +507,8 @@ def volshape_to_ndgrid(
         Otherwise, the grid coords span from 0 to `size[i] - 1` for each dimension.
         Default is False
     stack : bool, optional
-        If True, stack the grid tensors along the last dimension to return a single tensor of
-        shape `(*size, len(size))`. If False, return a tuple of tensors, each of shape
+        If True, stack the grid tensors along the first dimension to return a single tensor of
+        shape `(len(size), *size)`. If False, return a tuple of tensors, each of shape
         `(*size)`. Default is False.
 
     Returns
@@ -516,7 +516,7 @@ def volshape_to_ndgrid(
     torch.Tensor
         The meshgrid of spatial coordinates
         if stack=False, a tuple of len(size) tensors of shape `*size`
-        if stack=True, a tensor of shape `*size, len(size)`
+        if stack=True, a tensor of shape `(len(size), *size)` i.e. `(ndim, *spatial)`
 
     Examples
     --------
@@ -532,10 +532,10 @@ def volshape_to_ndgrid(
     tensor([[-1., -1.],
             [ 0.,  0.],
             [ 1.,  1.]])
-    >>> # Stacked grid
+    >>> # Stacked grid (channels-first: ndim, *spatial)
     >>> the_grid = volshape_to_ndgrid(size=(19, 32), stack=True)
     >>> print(the_grid.shape)
-    torch.Size([19, 32, 2])
+    torch.Size([2, 19, 32])
     """
     normalized_dtype = dtype if isinstance(dtype, torch.dtype) else getattr(torch, dtype)
 
@@ -548,7 +548,7 @@ def volshape_to_ndgrid(
     grid = torch.meshgrid(*axes, indexing=indexing)
 
     if stack:
-        grid = torch.stack(grid, dim=-1).contiguous()
+        grid = torch.stack(grid, dim=0).contiguous()
 
     return grid
 
