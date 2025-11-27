@@ -29,6 +29,7 @@ __all__ = [
     "pad_batch_channel",
     "unpad_batch_channel",
     "smooth_gaussian",
+    "upsample_noise",
 ]
 
 
