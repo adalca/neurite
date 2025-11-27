@@ -265,3 +265,55 @@ def test_smooth_gaussian_smoothness_increases_with_sigma(sigma_small, sigma_larg
     grad_large = gradient_magnitude(noise_large)
 
     assert grad_large < grad_small
+
+
+@pytest.mark.parametrize("shape,non_spatial_dims", [
+    ((64, 64), None),
+    ((3, 64, 64), (0,)),
+    ((2, 3, 32, 32, 32), (0, 1)),
+])
+def test_upsample_noise_shape_preservation(shape, non_spatial_dims):
+    """Test that output shape matches requested shape."""
+    torch.manual_seed(42)
+    noise = ne.upsample_noise(shape=shape, scale=4.0, non_spatial_dims=non_spatial_dims)
+    assert noise.shape == shape
+
+
+@pytest.mark.parametrize("scale_small,scale_large", [(2.0, 16.0), (4.0, 32.0)])
+def test_upsample_noise_smoothness_increases_with_scale(scale_small, scale_large):
+    """Test that larger scale produces smoother noise (lower gradient magnitude)."""
+    torch.manual_seed(42)
+
+    noise_small = ne.upsample_noise(shape=(64, 64), scale=scale_small)
+    noise_large = ne.upsample_noise(shape=(64, 64), scale=scale_large)
+
+    def gradient_magnitude(x):
+        dx = torch.diff(x, dim=0)
+        dy = torch.diff(x, dim=1)
+        return (dx ** 2).mean() + (dy ** 2).mean()
+
+    grad_small = gradient_magnitude(noise_small)
+    grad_large = gradient_magnitude(noise_large)
+
+    assert grad_large < grad_small
+
+
+@pytest.mark.parametrize("shape,non_spatial_dims", [
+    ((64, 64), None),
+    ((3, 64, 64), (0,)),
+    ((2, 3, 32, 32, 32), (0, 1)),
+])
+def test_fractal_noise_shape_preservation(shape, non_spatial_dims):
+    """Test that output shape matches requested shape."""
+    torch.manual_seed(42)
+    noise = ne.fractal_noise(shape=shape, scales=[2.0, 4.0], non_spatial_dims=non_spatial_dims)
+    assert noise.shape == shape
+
+
+@pytest.mark.parametrize("magnitude", [1.0, 2.5, 0.1])
+def test_fractal_noise_normalization(magnitude):
+    """Test that output has zero mean and std equal to magnitude."""
+    torch.manual_seed(42)
+    noise = ne.fractal_noise(shape=(128, 128), scales=[2.0, 4.0], magnitude=magnitude)
+    assert abs(noise.mean().item()) < 1e-6
+    assert abs(noise.std().item() - magnitude) < 1e-6
