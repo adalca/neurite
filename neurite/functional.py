@@ -28,6 +28,7 @@ __all__ = [
     "clip",
     "pad_batch_channel",
     "unpad_batch_channel",
+    "smooth_gaussian",
 ]
 
 
@@ -1278,3 +1279,86 @@ def unpad_batch_channel(tensor: torch.Tensor, dims_added: int) -> torch.Tensor:
         tensor = tensor.squeeze(0)
 
     return tensor
+
+
+def smooth_gaussian(
+    shape: Sequence[int],
+    sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
+    magnitude: float = 1.0,
+    non_spatial_dims: Union[Sequence[int], None] = None,
+    device: Union[torch.device, None] = None,
+) -> torch.Tensor:
+    """
+    Generate smooth Gaussian noise.
+
+    Creates noise with a smooth spatial structure by generating white noise and applying
+    Gaussian smoothing. The result is normalized to have zero mean and specified standard
+    deviation (magnitude).
+
+    Parameters
+    ----------
+    shape : Sequence[int]
+        Desired shape of output tensor. Interpretation depends on non_spatial_dims:
+        - non_spatial_dims=None: (*spatial,) pure spatial tensor
+        - non_spatial_dims=(0,): (C, *spatial) with channel dimension
+        - non_spatial_dims=(0, 1): (B, C, *spatial) with batch and channel
+    sigma : float, int, or Sequence[float or int], default=1
+        Standard deviation of the Gaussian kernel for smoothing. If float/int, same sigma
+        is used for all spatial dimensions. If Sequence, different sigmas per dimension.
+    magnitude : float, default=1.0
+        Standard deviation of the output noise after normalization.
+    non_spatial_dims : Sequence of int or None, default=None
+        Indices of non-spatial dimensions:
+        - None: tensor is pure spatial (*spatial,)
+        - (0,): first dim is non-spatial (C, *spatial)
+        - (0, 1): first two dims are non-spatial (B, C, *spatial)
+    device : torch.device or None, default=None
+        Device for tensor allocation. If None, defaults to CPU.
+
+    Returns
+    -------
+    torch.Tensor
+        Smooth Gaussian noise with the specified shape, zero mean, and standard deviation
+        equal to magnitude.
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite as ne
+    >>> # Generate 2D noise field (pure spatial)
+    >>> noise_2d = ne.smooth_gaussian(shape=(64, 64), sigma=2.0)
+    >>> noise_2d.shape
+    torch.Size([64, 64])
+
+    >>> # Generate 3D noise with batch and channel dimensions
+    >>> noise_3d = ne.smooth_gaussian(
+    ...     shape=(2, 3, 32, 32, 32),
+    ...     sigma=3.0,
+    ...     magnitude=2.0,
+    ...     non_spatial_dims=(0, 1)
+    ... )
+    >>> noise_3d.shape
+    torch.Size([2, 3, 32, 32, 32])
+
+    >>> # Per-dimension sigma values
+    >>> noise = ne.smooth_gaussian(shape=(64, 64), sigma=[1.0, 2.0])
+    """
+    num_non_spatial, _ = _parse_non_spatial_dims(
+        non_spatial_dims=non_spatial_dims,
+        tensor_ndim=len(shape)
+    )
+
+    non_spatial_shape = shape[:num_non_spatial]
+    spatial_shape = shape[num_non_spatial:]
+
+    shape = (*non_spatial_shape, *spatial_shape)
+
+    noise = torch.normal(0, 1, size=shape, device=device)
+    noise, dims_added = pad_batch_channel(noise, non_spatial_dims)
+    noise = ne.nn.functional.gaussian_smoothing(noise, sigma=sigma, truncate=3)
+
+    # Normalize to zero mean and specified magnitude
+    noise -= noise.mean()
+    noise *= magnitude / noise.std()
+
+    return unpad_batch_channel(noise, dims_added)
