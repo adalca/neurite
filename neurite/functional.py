@@ -26,8 +26,8 @@ __all__ = [
     "gaussian_kernel",
     "crop",
     "clip",
-    "pad_batch_channel",
-    "unpad_batch_channel",
+    "pad_for_vectorization",
+    "unpad_from_vectorization",
     "smooth_gaussian",
     "upsample_noise",
     "fractal_noise",
@@ -268,9 +268,8 @@ def ncc(
             f"Only 1D, 2D, 3D spatial dimensions supported. Got {num_spatial}D"
         )
 
-    tensor1, dims_added = pad_batch_channel(tensor1, non_spatial_dims)
-    tensor2, _ = pad_batch_channel(tensor2, non_spatial_dims)
-    num_channels = tensor1.shape[1]
+    tensor1, orig_shape = pad_for_vectorization(tensor1, non_spatial_dims)
+    tensor2, _ = pad_for_vectorization(tensor2, non_spatial_dims)
 
     # Parse window size
     if isinstance(window_size, int):
@@ -282,8 +281,8 @@ def ncc(
                 f"window_size length {len(win)} doesn't match spatial dims {num_spatial}"
             )
 
-    # Create sum filter for grouped convolution: (num_channels, 1, *win)
-    sum_filt = torch.ones(num_channels, 1, *win, device=tensor1.device, dtype=tensor1.dtype)
+    # Create sum filter: (1, 1, *win) - single channel since we use vectorization
+    sum_filt = torch.ones(1, 1, *win, device=tensor1.device, dtype=tensor1.dtype)
 
     # Convolution parameters for "same" output size
     padding = [w // 2 for w in win]
@@ -299,12 +298,12 @@ def ncc(
     J2 = Ji * Ji
     IJ = Ii * Ji
 
-    # Local sums using grouped convolution (each channel independent)
-    I_sum = conv_fn(Ii, sum_filt, stride=stride, padding=padding, groups=num_channels)
-    J_sum = conv_fn(Ji, sum_filt, stride=stride, padding=padding, groups=num_channels)
-    I2_sum = conv_fn(I2, sum_filt, stride=stride, padding=padding, groups=num_channels)
-    J2_sum = conv_fn(J2, sum_filt, stride=stride, padding=padding, groups=num_channels)
-    IJ_sum = conv_fn(IJ, sum_filt, stride=stride, padding=padding, groups=num_channels)
+    # Local sums using convolution (each batch element independent)
+    I_sum = conv_fn(Ii, sum_filt, stride=stride, padding=padding)
+    J_sum = conv_fn(Ji, sum_filt, stride=stride, padding=padding)
+    I2_sum = conv_fn(I2, sum_filt, stride=stride, padding=padding)
+    J2_sum = conv_fn(J2, sum_filt, stride=stride, padding=padding)
+    IJ_sum = conv_fn(IJ, sum_filt, stride=stride, padding=padding)
 
     # Window size for normalization
     win_size = torch.tensor(win, device=tensor1.device, dtype=tensor1.dtype).prod()
@@ -328,7 +327,7 @@ def ncc(
     ncc_score = cc.mean(dim=spatial_dims)
 
     # Remove added dimensions to restore original non-spatial structure
-    ncc_score = unpad_batch_channel(ncc_score, dims_added)
+    ncc_score = unpad_from_vectorization(ncc_score, orig_shape)
 
     return ncc_score
 
@@ -925,8 +924,9 @@ def _parse_non_spatial_dims(
 
     Parameters
     ----------
-    non_spatial_dims : Tuple[int, ...] or None
-        Indices of non-spatial dimensions. Must be None, (0,), or (0, 1).
+    non_spatial_dims : Sequence[int] or None
+        Indices of non-spatial dimensions (dimensions to vectorize over). Can be any sequence of
+        dimension indices. If None, assumes all dimensions are spatial.
     tensor_ndim : int
         Total number of dimensions in the tensor.
 
@@ -940,16 +940,37 @@ def _parse_non_spatial_dims(
     Raises
     ------
     ValueError
-        If non_spatial_dims is not valid.
-    """
-    valid_values = {None: 0, (0,): 1, (0, 1): 2}
+        If non_spatial_dims contains invalid indices or exceeds tensor dimensions.
 
-    if non_spatial_dims not in valid_values:
+    Examples
+    --------
+    >>> _parse_non_spatial_dims(None, 3)
+    (0, 3)
+    >>> _parse_non_spatial_dims((0,), 4)
+    (1, 3)
+    >>> _parse_non_spatial_dims((0, 1, 2), 5)
+    (3, 2)
+    """
+    if non_spatial_dims is None:
+        return 0, tensor_ndim
+
+    non_spatial_dims = tuple(non_spatial_dims)
+    num_non_spatial = len(non_spatial_dims)
+
+    if num_non_spatial > tensor_ndim:
         raise ValueError(
-            f"non_spatial_dims must be None, (0,), or (0, 1), got {non_spatial_dims}"
+            f"non_spatial_dims has {num_non_spatial} elements but tensor only has "
+            f"{tensor_ndim} dimensions"
         )
 
-    num_non_spatial = valid_values[non_spatial_dims]
+    # Validate all indices are valid
+    for dim in non_spatial_dims:
+        if dim < 0 or dim >= tensor_ndim:
+            raise ValueError(
+                f"non_spatial_dims contains invalid index {dim} for tensor with "
+                f"{tensor_ndim} dimensions"
+            )
+
     num_spatial = tensor_ndim - num_non_spatial
 
     return num_non_spatial, num_spatial
@@ -1254,31 +1275,155 @@ def clip(
     return torch.clamp(input_tensor, min=min, max=max)
 
 
-def pad_batch_channel(
+def pad_for_vectorization(
     tensor: torch.Tensor,
     non_spatial_dims: Union[Sequence[int], None]
-) -> Tuple[torch.Tensor, int]:
+) -> Tuple[torch.Tensor, Tuple[int, ...]]:
     """
-    Add leading dims to reach (B, C, *spatial) format
+    Flatten non-spatial dims into batch and add singleton channel for PyTorch ops.
+
+    Prepares a tensor for PyTorch operations that require (B, C, *spatial) format. All non-spatial
+    dimensions are flattened into the batch dimension, ensuring each element is vectorized.
+    A singleton channel dimension is added.
+
+    Parameters
+    ----------
+    tensor : torch.Tensor
+        Input tensor with shape (*non_spatial, *spatial).
+    non_spatial_dims : Sequence[int] or None
+        Indices of dims to vectorize over. These dimensions will be gathered into the batch dim.
+        If None, tensor is treated as pure spatial and singleton batch and channel dims are added.
+
+    Returns
+    -------
+    padded : torch.Tensor
+        Tensor with shape (batch_flat, 1, *spatial) where batch_flat is the product of all
+        non-spatial dimension sizes.
+    original_non_spatial_shape : tuple[int, ...]
+        Original shape of non-spatial dimensions, needed for unpad_from_vectorization. Empty tuple
+        if non_spatial_dims was None.
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite as ne
+    # Pure spatial tensor
+    >>> t = torch.randn(64, 64, 64)
+    >>> padded, shape = ne.pad_for_vectorization(t, non_spatial_dims=None)
+    >>> padded.shape
+    torch.Size([1, 1, 64, 64, 64])
+    >>> shape
+    ()
+
+    # Single vectorization dimension
+    >>> t = torch.randn(10, 64, 64)
+    >>> padded, shape = ne.pad_for_vectorization(t, non_spatial_dims=(0,))
+    >>> padded.shape
+    torch.Size([10, 1, 64, 64])
+    >>> shape
+    (10,)
+
+    # Multiple vectorization dimensions
+    >>> t = torch.randn(2, 3, 64, 64)
+    >>> padded, shape = ne.pad_for_vectorization(t, non_spatial_dims=(0, 1))
+    >>> padded.shape
+    torch.Size([6, 1, 64, 64])
+    >>> shape
+    (2, 3)
+
+    # Arbitrary number of vectorization dimensions
+    >>> t = torch.randn(2, 3, 4, 5, 32, 32)
+    >>> padded, shape = ne.pad_for_vectorization(t, non_spatial_dims=(0, 1, 2, 3))
+    >>> padded.shape
+    torch.Size([120, 1, 32, 32])
+    >>> shape
+    (2, 3, 4, 5)
+
+    See Also
+    --------
+    unpad_from_vectorization : Reverse operation to restore original shape.
     """
     if non_spatial_dims is None:
         num_non_spatial = 0
+        original_non_spatial_shape = ()
     else:
         num_non_spatial = len(non_spatial_dims)
+        original_non_spatial_shape = tuple(tensor.shape[:num_non_spatial])
 
-    dims_added = 2 - num_non_spatial
+    spatial_shape = tensor.shape[num_non_spatial:]
 
-    for _ in range(dims_added):
-        tensor = tensor.unsqueeze(0)
-    return tensor, dims_added
+    # Compute flattened batch size
+    if num_non_spatial == 0:
+        batch_size = 1
+    else:
+        batch_size = 1
+        for dim_size in original_non_spatial_shape:
+            batch_size *= dim_size
+
+    # Reshape to (batch_flat, *spatial), then add channel dim
+    tensor = tensor.reshape(batch_size, *spatial_shape)
+    tensor = tensor.unsqueeze(1)  # (batch_flat, 1, *spatial)
+
+    return tensor, original_non_spatial_shape
 
 
-def unpad_batch_channel(tensor: torch.Tensor, dims_added: int) -> torch.Tensor:
+def unpad_from_vectorization(
+    tensor: torch.Tensor,
+    original_non_spatial_shape: Tuple[int, ...]
+) -> torch.Tensor:
     """
-    Remove leading dims added by pad_to_batch_channel.
+    Restore original non-spatial shape after vectorized PyTorch operation.
+
+    Reverses pad_for_vectorization by removing the singleton channel dimension
+    and unflattening the batch dimension back to the original non-spatial shape.
+
+    Parameters
+    ----------
+    tensor : torch.Tensor
+        Tensor with shape (batch_flat, 1, *spatial) from a PyTorch operation.
+    original_non_spatial_shape : tuple[int, ...]
+        Original non-spatial shape from pad_for_vectorization. Empty tuple means input was
+        pure spatial.
+
+    Returns
+    -------
+    torch.Tensor
+        Tensor with shape (*original_non_spatial_shape, *spatial).
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite as ne
+    # Round-trip for pure spatial
+    >>> t = torch.randn(64, 64, 64)
+    >>> padded, shape = ne.pad_for_vectorization(t, non_spatial_dims=None)
+    >>> restored = ne.unpad_from_vectorization(padded, shape)
+    >>> restored.shape
+    torch.Size([64, 64, 64])
+
+    # Round-trip with vectorization dims (spatial may change from operation)
+    >>> t = torch.randn(2, 3, 64, 64)
+    >>> padded, shape = ne.pad_for_vectorization(t, non_spatial_dims=(0, 1))
+    >>> # Simulate operation that changes spatial dims
+    >>> result = padded[..., ::2, ::2]  # (6, 1, 32, 32)
+    >>> restored = ne.unpad_from_vectorization(result, shape)
+    >>> restored.shape
+    torch.Size([2, 3, 32, 32])
+
+    See Also
+    --------
+    pad_for_vectorization : Prepare tensor for vectorized operations.
     """
-    for _ in range(dims_added):
+    # Remove channel dimension: (batch_flat, 1, *spatial) -> (batch_flat, *spatial)
+    tensor = tensor.squeeze(1)
+
+    if len(original_non_spatial_shape) == 0:
+        # Was pure spatial, squeeze the batch dim too
         tensor = tensor.squeeze(0)
+    else:
+        # Unflatten batch back to original non-spatial dims
+        new_spatial_shape = tensor.shape[1:]
+        tensor = tensor.reshape(*original_non_spatial_shape, *new_spatial_shape)
 
     return tensor
 
@@ -1356,14 +1501,14 @@ def smooth_gaussian(
     shape = (*non_spatial_shape, *spatial_shape)
 
     noise = torch.normal(0, 1, size=shape, device=device)
-    noise, dims_added = pad_batch_channel(noise, non_spatial_dims)
+    noise, orig_shape = pad_for_vectorization(noise, non_spatial_dims)
     noise = ne.nn.functional.gaussian_smoothing(noise, sigma=sigma, truncate=3)
 
     # Normalize to zero mean and specified magnitude
     noise -= noise.mean()
     noise *= magnitude / noise.std()
 
-    return unpad_batch_channel(noise, dims_added)
+    return unpad_from_vectorization(noise, orig_shape)
 
 
 def upsample_noise(
@@ -1429,13 +1574,13 @@ def upsample_noise(
     coarse_shape = (*non_spatial_shape, *coarse_spatial)
     noise = torch.randn(coarse_shape, device=device)
 
-    noise, dims_added = pad_batch_channel(noise, non_spatial_dims)
+    noise, orig_shape = pad_for_vectorization(noise, non_spatial_dims)
 
     # Interpolate to target spatial shape
     mode = ne.utils.infer_linear_interpolation_mode(num_spatial=num_spatial)
     noise = F.interpolate(noise, size=spatial_shape, mode=mode, align_corners=False)
 
-    return unpad_batch_channel(noise, dims_added)
+    return unpad_from_vectorization(noise, orig_shape)
 
 
 def fractal_noise(
