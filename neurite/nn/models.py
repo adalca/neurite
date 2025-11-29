@@ -62,8 +62,8 @@ class BasicUNet(nn.Module):
         order: str = 'ca',
         final_activation: Union[str, nn.Module, None] = None,
         skip_connections: bool = True,
+        downsample_first: bool = False,
     ):
-
         """
         Initialize `BasicUNet`
 
@@ -84,7 +84,7 @@ class BasicUNet(nn.Module):
         padding_mode : {'zeros', 'replicate', 'reflect'}, default='zeros'
             Padding mode for convolutional layers.
         upsample_mode : {'linear', 'transposed', 'nearest'}, default='linear'
-            Upsampling mode for decoder path.
+            Upsampling mode for upsampling path.
         normalizations : Sequence[Union[Callable, str]], Callable, str, or None, default=None
             Normalization layers to use in each block. Can be a string or a sequence
             of strings specifying normalizations for each layer, or `None` for no normalization.
@@ -98,6 +98,10 @@ class BasicUNet(nn.Module):
         skip_connections : bool, default=True
             Enable skip connections to concatenate features from downsampling path with upsampling
             path at matching resolutions.
+        downsample_first : bool, default=False
+            If True, downsample the input before any convolutions and upsample after the
+            upsampling path (but before the output layer). This avoids convolutions at the full
+            input resolution, reducing memory and compute for high-resolution inputs.
 
         Examples
         --------
@@ -125,6 +129,7 @@ class BasicUNet(nn.Module):
 
         # Make `skip_connections` an attribute as we will need it later in forward pass
         self.skip_connections = skip_connections
+        self.downsample_first = downsample_first
 
         # Asymmetric: [[downsampling_features], [upsampling_features]]
         if isinstance(nb_features[0], Sequence) and isinstance(nb_features[1], Sequence):
@@ -220,6 +225,33 @@ class BasicUNet(nn.Module):
             padding_mode=padding_mode,
         )
 
+        # Optional initial downsample and final upsample for skipping full-resolution convolutions
+        if downsample_first:
+            self.initial_downsample = ne.nn.modules.Pool(ndim=ndim, pool_mode='max', kernel_size=2)
+
+            # Use same upsample mode as upsampling path
+            if upsample_mode == 'transposed':
+                self.final_upsample = ne.nn.modules.TransposedConv(
+                    ndim=ndim,
+                    in_channels=upsampling_features[-1],
+                    out_channels=upsampling_features[-1],
+                    kernel_size=2,
+                    stride=2,
+                    padding=0
+                )
+            else:
+                if upsample_mode == 'linear':
+                    interp_mode = ne.utils.infer_linear_interpolation_mode(ndim)
+                else:
+                    interp_mode = upsample_mode
+
+                align = None if interp_mode == 'nearest' else True
+                self.final_upsample = nn.Upsample(
+                    scale_factor=2,
+                    mode=interp_mode,
+                    align_corners=align
+                )
+
     def forward(self, feature_tensor: torch.Tensor):
         """
         Forward pass through the `BasicUNet` model.
@@ -234,6 +266,10 @@ class BasicUNet(nn.Module):
         torch.Tensor
             Result of forward pass of the model.
         """
+
+        # Optional initial downsample to avoid full-resolution convolutions
+        if self.downsample_first:
+            feature_tensor = self.initial_downsample(feature_tensor)
 
         # Downsampling path
         skip_connections = []
@@ -255,6 +291,10 @@ class BasicUNet(nn.Module):
                 feature_tensor = upsampling_conv_block(feature_tensor, skip)
             else:
                 feature_tensor = upsampling_conv_block(feature_tensor)
+
+        # Optional final upsample to restore original resolution
+        if self.downsample_first:
+            feature_tensor = self.final_upsample(feature_tensor)
 
         # Output layer
         feature_tensor = self.out_layer(feature_tensor)
