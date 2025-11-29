@@ -400,3 +400,34 @@ def test_basicunet_downsample_first_layers_exist():
     assert hasattr(model_with, 'final_upsample')
     assert not hasattr(model_without, 'initial_downsample')
     assert not hasattr(model_without, 'final_upsample')
+
+
+@pytest.mark.parametrize("upsample_mode", ["linear", "nearest", "transposed"])
+def test_basicunet_downsample_first_upsample_modes(upsample_mode):
+    """
+    Test that downsample_first uses the correct upsample type based on upsample_mode.
+
+    When upsample_mode='transposed', final_upsample should be a TransposedConv.
+    Otherwise, it should be nn.Upsample.
+    """
+    torch.manual_seed(42)
+    x = torch.randn(2, 1, 64, 64)
+
+    model = ne.nn.models.BasicUNet(
+        ndim=2,
+        in_channels=1,
+        out_channels=1,
+        nb_features=[16, 32, 64],
+        downsample_first=True,
+        upsample_mode=upsample_mode
+    )
+    model.eval()
+
+    # Verify correct layer type
+    if upsample_mode == 'transposed':
+        assert isinstance(model.final_upsample, ne.nn.modules.TransposedConv)
+    else:
+        assert isinstance(model.final_upsample, torch.nn.Upsample)
+
+    y = model(x)
+    assert y.shape == x.shape
