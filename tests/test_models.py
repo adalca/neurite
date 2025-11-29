@@ -350,3 +350,26 @@ def test_basicunet_downsample_first_shape_preservation(ndim):
     y = model(x)
 
     assert y.shape == x.shape
+
+
+@pytest.mark.parametrize("skip_connections", [True, False])
+def test_basicunet_downsample_first_with_skip_connections(skip_connections):
+    """
+    Test that downsample_first works with both skip_connections=True and False.
+    """
+    torch.manual_seed(42)
+    x = torch.randn(2, 1, 64, 64)
+
+    model = ne.nn.models.BasicUNet(
+        ndim=2,
+        in_channels=1,
+        out_channels=1,
+        nb_features=[16, 32, 64],
+        downsample_first=True,
+        skip_connections=skip_connections
+    )
+    model.eval()
+
+    y = model(x)
+
+    assert y.shape == x.shape
