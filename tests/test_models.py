@@ -373,3 +373,30 @@ def test_basicunet_downsample_first_with_skip_connections(skip_connections):
     y = model(x)
 
     assert y.shape == x.shape
+
+
+def test_basicunet_downsample_first_layers_exist():
+    """
+    Test that initial_downsample and final_upsample layers are created
+    when downsample_first=True, and absent when False.
+    """
+    model_with = ne.nn.models.BasicUNet(
+        ndim=2,
+        in_channels=1,
+        out_channels=1,
+        nb_features=[16, 32],
+        downsample_first=True
+    )
+
+    model_without = ne.nn.models.BasicUNet(
+        ndim=2,
+        in_channels=1,
+        out_channels=1,
+        nb_features=[16, 32],
+        downsample_first=False
+    )
+
+    assert hasattr(model_with, 'initial_downsample')
+    assert hasattr(model_with, 'final_upsample')
+    assert not hasattr(model_without, 'initial_downsample')
+    assert not hasattr(model_without, 'final_upsample')
