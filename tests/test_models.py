@@ -327,3 +327,26 @@ def test_basicunet_symmetric_normalization():
 
     assert x.grad is not None
     assert x.grad.shape == x.shape
+
+
+@pytest.mark.parametrize("ndim", [1, 2, 3])
+def test_basicunet_downsample_first_shape_preservation(ndim):
+    """
+    Test that downsample_first=True preserves input/output shape across dimensions.
+    """
+    torch.manual_seed(42)
+    spatial = [64] * ndim
+    x = torch.randn(2, 1, *spatial)
+
+    model = ne.nn.models.BasicUNet(
+        ndim=ndim,
+        in_channels=1,
+        out_channels=1,
+        nb_features=[16, 32, 64],
+        downsample_first=True
+    )
+    model.eval()
+
+    y = model(x)
+
+    assert y.shape == x.shape
