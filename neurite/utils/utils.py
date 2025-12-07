@@ -24,7 +24,7 @@ the License.
 """
 
 # Standard library imports
-from typing import Union, List, Literal, Type, Optional, Collection, Sequence
+from typing import Union, Literal, Type, Optional, Collection, Sequence, Type
 import inspect
 
 # Third party imports
@@ -141,13 +141,13 @@ def infer_linear_interpolation_mode(
 
 def downsampling_conv_blocks(
     ndim: int,
-    nb_features: List[int],
+    nb_features: Sequence[int],
     kernel_size: int = 3,
     stride: int = 1,
     padding: int = 1,
     padding_mode: Literal['zeros', 'replicate', 'reflect'] = 'zeros',
-    normalizations: Union[str, nn.Module, None] = None,
-    activations: Union[str, nn.Module, None] = "relu",
+    normalizations: Union[str, nn.Module, None, Sequence[Union[str, nn.Module, None]]] = None,
+    activations: Union[str, nn.Module, Sequence[Union[str, nn.Module, None]]] = "relu",
     pool_mode: str = "max",
     pool_kernel_size: int = 2,
     order: str = 'nca',
@@ -242,7 +242,7 @@ def downsampling_conv_blocks(
 
 def upsampling_conv_blocks(
     ndim: int,
-    nb_features: List[int],
+    nb_features: Sequence[int],
     kernel_size: int = 3,
     stride: int = 1,
     padding: int = 1,
@@ -251,11 +251,11 @@ def upsampling_conv_blocks(
     upsample_kernel_size: int = 4,
     upsample_stride: int = 2,
     upsample_padding: int = 1,
-    normalizations: List[Union[str, nn.Module, None]] = None,
-    activations: List[Union[str, nn.Module, None]] = None,
+    normalizations: Union[str, nn.Module, None, Sequence[Union[str, nn.Module, None]]] = None,
+    activations: Union[str, nn.Module, Sequence[Union[str, nn.Module, None]]] = "relu",
     order: str = 'nca',
     accepts_skip: bool = True,
-    skip_channels: Union[List[int], None] = None,
+    skip_channels: Union[Sequence[int], None] = None,
 ) -> nn.ModuleList:
     """
     Create an `nn.ModuleList` of upsampling conv blocks based the number of features per layer/
