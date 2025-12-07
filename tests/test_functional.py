@@ -234,29 +234,29 @@ def test_gaussian_kernel_center_is_maximum():
     ((3, 64, 64), (0,)),
     ((2, 3, 32, 32, 32), (0, 1)),
 ])
-def test_smooth_gaussian_shape_preservation(shape, non_spatial_dims):
+def test_random_smoothed_noise_shape_preservation(shape, non_spatial_dims):
     """Test that output shape matches requested shape."""
     torch.manual_seed(42)
-    noise = ne.smooth_gaussian(shape=shape, sigma=2.0, non_spatial_dims=non_spatial_dims)
+    noise = ne.random_smoothed_noise(shape=shape, sigma=2.0, non_spatial_dims=non_spatial_dims)
     assert noise.shape == shape
 
 
 @pytest.mark.parametrize("magnitude", [1.0, 2.5, 0.1])
-def test_smooth_gaussian_normalization(magnitude):
+def test_random_smoothed_noise_normalization(magnitude):
     """Test that output has zero mean and std equal to magnitude."""
     torch.manual_seed(42)
-    noise = ne.smooth_gaussian(shape=(128, 128), sigma=3.0, magnitude=magnitude)
+    noise = ne.random_smoothed_noise(shape=(128, 128), sigma=3.0, magnitude=magnitude)
     assert abs(noise.mean().item()) < 1e-6
     assert abs(noise.std().item() - magnitude) < 1e-6
 
 
 @pytest.mark.parametrize("sigma_small,sigma_large", [(1.0, 5.0), (0.5, 3.0)])
-def test_smooth_gaussian_smoothness_increases_with_sigma(sigma_small, sigma_large):
+def test_random_smoothed_noise_smoothness_increases_with_sigma(sigma_small, sigma_large):
     """Test that larger sigma produces smoother noise (lower gradient magnitude)."""
     torch.manual_seed(42)
 
-    noise_small = ne.smooth_gaussian(shape=(64, 64), sigma=sigma_small)
-    noise_large = ne.smooth_gaussian(shape=(64, 64), sigma=sigma_large)
+    noise_small = ne.random_smoothed_noise(shape=(64, 64), sigma=sigma_small)
+    noise_large = ne.random_smoothed_noise(shape=(64, 64), sigma=sigma_large)
 
     def gradient_magnitude(x):
         dx = torch.diff(x, dim=0)

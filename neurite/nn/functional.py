@@ -1182,7 +1182,7 @@ def clip(
     return ne.clip(input_tensor, min=min, max=max)
 
 
-def smooth_gaussian(
+def random_smoothed_noise(
     shape: Sequence[int],
     sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
     magnitude: float = 1.0,
@@ -1214,16 +1214,16 @@ def smooth_gaussian(
     --------
     >>> import neurite.nn.functional as nef
     >>> # Generate 2d noise field
-    >>> noise_2d = nef.smooth_gaussian(shape=(1, 1, 64, 64), sigma=2.0)
+    >>> noise_2d = nef.random_smoothed_noise(shape=(1, 1, 64, 64), sigma=2.0)
     >>> noise_2d.shape
     torch.Size([1, 1, 64, 64])
 
     >>> # Generate 3d noise field with multiple channels
-    >>> noise_3d = nef.smooth_gaussian(shape=(2, 3, 32, 32, 32), sigma=3.0, magnitude=2.0)
+    >>> noise_3d = nef.random_smoothed_noise(shape=(2, 3, 32, 32, 32), sigma=3.0, magnitude=2.0)
     >>> noise_3d.shape
     torch.Size([2, 3, 32, 32, 32])
     """
-    return ne.smooth_gaussian(
+    return ne.random_smoothed_noise(
         shape=shape,
         sigma=sigma,
         magnitude=magnitude,

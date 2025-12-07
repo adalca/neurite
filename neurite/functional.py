@@ -28,7 +28,7 @@ __all__ = [
     "clip",
     "batch_nonspatial",
     "unbatch_nonspatial",
-    "smooth_gaussian",
+    "random_smoothed_noise",
     "upsample_noise",
     "fractal_noise",
 ]
@@ -1429,7 +1429,7 @@ def unbatch_nonspatial(
     return tensor
 
 
-def smooth_gaussian(
+def random_smoothed_noise(
     shape: Sequence[int],
     sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
     magnitude: float = 1.0,
@@ -1474,12 +1474,12 @@ def smooth_gaussian(
     >>> import torch
     >>> import neurite as ne
     >>> # Generate 2D noise field (pure spatial)
-    >>> noise_2d = ne.smooth_gaussian(shape=(64, 64), sigma=2.0)
+    >>> noise_2d = ne.random_smoothed_noise(shape=(64, 64), sigma=2.0)
     >>> noise_2d.shape
     torch.Size([64, 64])
 
     >>> # Generate 3D noise with batch and channel dimensions
-    >>> noise_3d = ne.smooth_gaussian(
+    >>> noise_3d = ne.random_smoothed_noise(
     ...     shape=(2, 3, 32, 32, 32),
     ...     sigma=3.0,
     ...     magnitude=2.0,
@@ -1489,7 +1489,7 @@ def smooth_gaussian(
     torch.Size([2, 3, 32, 32, 32])
 
     >>> # Per-dimension sigma values
-    >>> noise = ne.smooth_gaussian(shape=(64, 64), sigma=[1.0, 2.0])
+    >>> noise = ne.random_smoothed_noise(shape=(64, 64), sigma=[1.0, 2.0])
     """
     num_non_spatial, _ = _parse_non_spatial_dims(
         non_spatial_dims=non_spatial_dims,
@@ -1683,7 +1683,7 @@ def fractal_noise(
     noise = None
     for scale, weight in zip(scales, weights):
         if method == 'blur':
-            sample = smooth_gaussian(
+            sample = random_smoothed_noise(
                 shape=shape,
                 sigma=scale,
                 magnitude=1.0,
