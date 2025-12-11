@@ -6,7 +6,7 @@ components of the neurite for streamlined object construction.
 
 # Standard library imports
 from __future__ import annotations
-from typing import Union, Callable, Literal, Sequence
+from typing import cast, Union, Callable, Literal, Sequence, Tuple, List
 
 # Third party imports
 import torch

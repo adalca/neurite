@@ -10,8 +10,7 @@ Notes
 """
 
 # Standard library imports
-from collections.abc import Sequence
-from typing import Union, Tuple, Literal
+from typing import Union, Tuple, Literal, Sequence
 
 # Third party imports
 import torch
