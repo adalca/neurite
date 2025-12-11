@@ -10,6 +10,7 @@ import torch.nn.functional as F
 
 # Custom imports
 import neurite as ne
+import neurite.nn.functional as nef
 
 __all__ = [
     "mse",
@@ -559,7 +560,7 @@ def subsample(
     non_spatial_dims: Union[Tuple[int, ...], None] = None
 ) -> torch.Tensor:
     """
-    Deprecated: This function has been removed in favor of the `ne.functional.resample()` API.
+    Deprecated: This function has been removed in favor of the `ne.resample()` API.
 
     The `resample()` function provides a more comprehensive and flexible resampling interface
     with support for multiple interpolation modes, and antialiasing
@@ -1503,7 +1504,7 @@ def random_smoothed_noise(
 
     noise = torch.normal(0, 1, size=shape, device=device)
     noise, orig_shape = batch_nonspatial(noise, non_spatial_dims)
-    noise = ne.nn.functional.gaussian_smoothing(noise, sigma=sigma, truncate=3)
+    noise = nef.gaussian_smoothing(noise, sigma=sigma, truncate=3)
 
     # Normalize to zero mean and specified magnitude
     noise -= noise.mean()

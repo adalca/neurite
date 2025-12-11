@@ -1057,7 +1057,7 @@ class MSE(nn.Module):
         torch.Tensor
             The mean squared error between `input_tensor` and `target_tensor`.
         """
-        return ne.nn.functional.mse(tensor1=input_tensor, tensor2=target_tensor)
+        return nef.mse(tensor1=input_tensor, tensor2=target_tensor)
 
 
 class NCC(nn.Module):
@@ -1517,7 +1517,7 @@ class SampleImageFromLabels(nn.Module):
             A tensor of sampled image intensities with the same shape as `label_tensor`.
         """
 
-        return ne.functional.sample_image_from_labels(
+        return ne.sample_image_from_labels(
             label_tensor,
             mean_range=self.mean_range,
             noise_std=self.noise_std
