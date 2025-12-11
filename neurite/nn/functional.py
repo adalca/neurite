@@ -997,7 +997,7 @@ def resize(
                 reset_type = image.dtype
             image = image.type(torch.float32)
 
-        linear = 'trilinear' if image.ndim - 1 == 3 else 'bilinear'
+        linear = ne.utils.infer_linear_interpolation_mode(image.ndim - 1)
         mode = 'nearest' if nearest else linear
 
         if nearest:

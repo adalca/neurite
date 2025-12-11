@@ -877,7 +877,9 @@ class Resize(nn.Module):
         scale_factor : float, Tuple[float, float], or None, default=None
             Scaling factor for resizing. If None, uses `size`.
         mode : {'linear', 'nearest', 'bicubic', 'area', 'nearest-exact'}, default='linear'
-            Interpolation mode for upsampling.
+            Interpolation mode for upsampling. When 'linear' is specified, the mode is
+            automatically converted to 'linear', 'bilinear', or 'trilinear' based on the
+            input tensor's spatial dimensionality.
         align_corners : bool or None, default=None
             Alignment for "linear", "bilinear", or "trilinear" modes.
         recompute_scale_factor : bool or None, default=None
@@ -940,11 +942,17 @@ class Resize(nn.Module):
         torch.Tensor
             The resized tensor.
         """
+        # Infer interpolation mode for linear interpolation
+        mode = self.mode
+        if mode == 'linear':
+            spatial_ndim = input_tensor.ndim - 2
+            mode = ne.utils.infer_linear_interpolation_mode(spatial_ndim)
+
         resized_tensor = F.interpolate(
             input=input_tensor,
             size=self.size,
             scale_factor=self.scale_factor,
-            mode=self.mode,
+            mode=mode,
             align_corners=self.align_corners,
             recompute_scale_factor=self.recompute_scale_factor,
             antialias=self.antialias,
