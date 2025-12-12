@@ -122,12 +122,9 @@ class BasicUNet(nn.Module):
 
         super().__init__()
 
-        # Storing some attributes that might be useful later on
         self.ndim = ndim
         self.in_channels = in_channels
         self.out_channels = out_channels
-
-        # Make `skip_connections` an attribute as we will need it later in forward pass
         self.skip_connections = skip_connections
         self.downsample_first = downsample_first
 
@@ -140,45 +137,37 @@ class BasicUNet(nn.Module):
                     f"(downsampling and upsampling), got {len(nb_features)}"
                 )
 
-            downsampling_features = list(nb_features[0])
-            upsampling_features = list(nb_features[1])
+            downsampling_features = tuple(nb_features[0])
+            upsampling_features = tuple(nb_features[1])
 
         else:
             # Symmetric: [features] used for both downsampling and upsampling
-            downsampling_features = list(nb_features)
-            upsampling_features = list(reversed(nb_features))
+            downsampling_features = tuple(nb_features)
+            upsampling_features = tuple(reversed(nb_features))
 
         for idx, ele in enumerate(downsampling_features):
             assert isinstance(ele, int), (
                 f'All elements in downsampling_features must be int. Got {ele} for idx {idx}'
             )
 
-        # Store feature specifications as immutable attributes
+        # Store feature specs as immutables
         self.downsampling_features = tuple(downsampling_features)
         self.upsampling_features = tuple(upsampling_features)
 
-        # Normalization layers
         if not isinstance(normalizations, list):
-            self.normalizations = [normalizations] * len(downsampling_features)
-        else:
-            self.normalizations = normalizations
+            normalizations = [normalizations] * len(self.downsampling_features)
 
-        # Activation layers
         if not isinstance(activations, list):
-            self.activations = [activations] * len(downsampling_features)
-        else:
-            self.activations = activations
+            activations = [activations] * len(self.downsampling_features)
 
-        # Original sequence for downsampling conv blocks
-        self.nb_features = [in_channels, *downsampling_features]
-
-        # Inverted sequence for upsampling conv blocks
-        self.reversed_features = upsampling_features
+        self.normalizations = normalizations
+        self.activations = activations
+        self.nb_features_fwd: list = [in_channels, *self.downsampling_features]
 
         # Downsampling convolutional blocks
         self.downsampling_conv_blocks = ne.utils.downsampling_conv_blocks(
             ndim=ndim,
-            nb_features=self.nb_features,
+            nb_features=self.nb_features_fwd,
             normalizations=self.normalizations,
             activations=self.activations,
             order=order,
@@ -186,11 +175,12 @@ class BasicUNet(nn.Module):
             padding_mode=padding_mode,
         )
 
+        assert isinstance(downsampling_features, Sequence)
         # Convolutional block between downsampling and upsampling arms (lowest resolution)
         self.lowest_resolution_conv_block = ne.nn.modules.ConvBlock(
             ndim=ndim,
-            in_channels=downsampling_features[-1],
-            out_channels=upsampling_features[0],
+            in_channels=self.downsampling_features[-1],
+            out_channels=self.upsampling_features[0],
             order=order,
             padding_mode=padding_mode,
         )
@@ -201,7 +191,7 @@ class BasicUNet(nn.Module):
         # Upsampling convolutional blocks
         self.upsampling_conv_blocks = ne.utils.upsampling_conv_blocks(
             ndim=ndim,
-            nb_features=self.reversed_features,
+            nb_features=self.upsampling_features,
             normalizations=self.normalizations,
             activations=self.activations,
             order=order,
@@ -217,7 +207,7 @@ class BasicUNet(nn.Module):
         # Final convolutional block
         self.out_layer = ne.nn.modules.ConvBlock(
             ndim=ndim,
-            in_channels=upsampling_features[-1],
+            in_channels=self.upsampling_features[-1],
             out_channels=out_channels,
             kernel_size=1,
             padding=0,
@@ -233,8 +223,8 @@ class BasicUNet(nn.Module):
             if upsample_mode == 'transposed':
                 self.final_upsample = ne.nn.modules.TransposedConv(
                     ndim=ndim,
-                    in_channels=upsampling_features[-1],
-                    out_channels=upsampling_features[-1],
+                    in_channels=self.upsampling_features[-1],
+                    out_channels=self.upsampling_features[-1],
                     kernel_size=2,
                     stride=2,
                     padding=0
@@ -333,7 +323,7 @@ class BasicAutoencoder(nn.Module):
 
     def __init__(
         self,
-        ndim: int,
+        ndim: Literal[1, 2, 3],
         in_channels: int,
         latent_features: int,
         out_channels: int,
