@@ -152,7 +152,7 @@ def downsampling_conv_blocks(
     pool_kernel_size: int = 2,
     order: str = 'nca',
     return_skip: bool = False,
-) -> nn.ModuleList:
+) -> tuple[nn.ModuleList, list[int]]:
     """
     Create an `nn.ModuleList` of downsampling conv blocks based the number of features per layer.
 
@@ -160,51 +160,65 @@ def downsampling_conv_blocks(
     ----------
     ndim : int
         Dimensionality of the convolution (1 for Conv1d, 2 for Conv2d, 3 for Conv3d).
-    nb_features : List[int]
-        Number of features at each level of the downsampling convs.
-    kernel_size : int, optional
-        Size of the convolving kernel at each level. Default is 3.
-    stride : int, optional
-        Stride of the convolution. Default is 1.
-    padding : int, optional
-        Padding added to all sides of the input. Default is 1.
-    normalizations : list, str, nn.Module, or None, optional
+    nb_features : Sequence[int]
+        Number of features at each level of the downsampling convs. Use `0` to indicate a
+        pass-through level (pool only, no convolution). When `0` is used, the actual output
+        channels equal the input channels (channels are preserved).
+    kernel_size : int, default=3
+        Size of the convolving kernel at each level.
+    stride : int, default=1
+        Stride of the convolution.
+    padding : int, default=1
+        Padding added to all sides of the input.
+    normalizations : list, str, nn.Module, or None, default=None
         Normalization layers for each downsampling conv block.
-    activations : list, str, nn.Module, or None, optional
+    activations : list, str, nn.Module, or None, default='relu'
         Activation function for each downsampling conv block.
-    pool_mode : str, optional
-        Pooling mode ('max' or 'avg'). Default is 'max'.
-    pool_kernel_size : int, optional
-        Kernel size for pooling. Default is 2.
-    order : str, optional
-        The order of operations in each downsampling conv block. Default is 'nca' (normalization ->
+    pool_mode : str, default='max'
+        Pooling mode ('max' or 'avg').
+    pool_kernel_size : int, default=2
+        Kernel size for pooling.
+    order : str, default='nca'
+        The order of operations in each downsampling conv block (normalization ->
         convolution -> activation). Each character in the string can be specified an arbitrary
         number of times in any order. Each character in the string represents one of the following:
         - `'c'`: Convolution
         - `'n'`: Normalization
         - `'a'`: Activation
-    return_skip : bool
+    return_skip : bool, default=False
         If True, return skip connection features from each block's forward pass for use in
-        UNet-style architectures. Default is False.
+        UNet-style architectures.
 
     Returns
     -------
-    nn.ModuleList
-        A list of downsampling convolutional blocks.
+    tuple[nn.ModuleList, list[int]]
+        A tuple of (blocks, actual_channels) where:
+        - blocks: ModuleList of downsampling blocks (DownsampleConvBlock or DownsamplePassthrough)
+        - actual_channels: List of actual output channel counts for each block, accounting for
+          pass-through levels where channels are preserved
 
     Examples
     --------
-    >>> downsampling_conv_blocks = downsampling_conv_blocks(
+    >>> # Standard usage
+    >>> blocks, actual_ch = downsampling_conv_blocks(
     ...     ndim=2,
     ...     nb_features=[3, 16, 32],
     ...     kernel_size=3,
     ...     normalizations=["batch", "instance", "batch"],
     ...     activations="relu"
     ... )
-    >>> print(downsampling_conv_blocks)
-    ModuleList(...)
-    """
+    >>> actual_ch
+    [16, 32]
 
+    >>> # With pass-through (0) at first level
+    >>> blocks, actual_ch = downsampling_conv_blocks(
+    ...     ndim=2,
+    ...     nb_features=[3, 0, 32],  # Skip conv at first level
+    ...     return_skip=True
+    ... )
+    >>> actual_ch
+    [3, 32]  # First level preserves input channels (3)
+    """
     # Normalization layers
     if not isinstance(normalizations, list):
         normalizations = [normalizations] * len(nb_features)
@@ -213,16 +227,22 @@ def downsampling_conv_blocks(
     if not isinstance(activations, list):
         activations = [activations] * len(nb_features)
 
-    # Init container for downsampling convs
-    downsampling_conv_blocks = nn.Sequential()
+    # Init container for downsampling convs and track actual channels
+    blocks = nn.ModuleList()
+
+    # Important for pass through connections
+    actual_channels = [nb_features[0]]  # Start with input channels
 
     # Make downsampling conv block and append to list of them
     for i in range(len(nb_features) - 1):
+        in_ch = actual_channels[-1]  # Use actual channels from previous block
+        out_ch = nb_features[i + 1]
+        passthrough = (out_ch == 0)
 
-        downsampling_conv_block = ne.nn.modules.DownsampleConvBlock(
+        block = ne.nn.modules.DownsampleConvBlock(
             ndim=ndim,
-            in_channels=nb_features[i],
-            out_channels=nb_features[i + 1],
+            in_channels=in_ch,
+            out_channels=out_ch,
             kernel_size=kernel_size,
             stride=stride,
             padding=padding,
@@ -233,11 +253,15 @@ def downsampling_conv_blocks(
             pool_kernel_size=pool_kernel_size,
             order=order,
             return_skip=return_skip,
+            passthrough=passthrough,
         )
+        blocks.append(block)
 
-        downsampling_conv_blocks.append(downsampling_conv_block)
+        # Track actual output channels (passthrough preserves input channels)
+        actual_channels.append(in_ch if passthrough else out_ch)
 
-    return downsampling_conv_blocks
+    # Return blocks and actual output channels (excluding input channels)
+    return blocks, actual_channels[1:]
 
 
 def upsampling_conv_blocks(
@@ -251,12 +275,14 @@ def upsampling_conv_blocks(
     upsample_kernel_size: int = 4,
     upsample_stride: int = 2,
     upsample_padding: int = 1,
+    scale_factor: int = 2,
     normalizations: Union[str, nn.Module, None, Sequence[Union[str, nn.Module, None]]] = None,
     activations: Union[str, nn.Module, Sequence[Union[str, nn.Module, None]]] = "relu",
     order: str = 'nca',
     accepts_skip: bool = True,
     skip_channels: Union[Sequence[int], None] = None,
-) -> nn.ModuleList:
+    in_channels: int | None = None,
+) -> tuple[nn.ModuleList, list[int]]:
     """
     Create an `nn.ModuleList` of upsampling conv blocks based the number of features per layer/
     level.
@@ -265,46 +291,57 @@ def upsampling_conv_blocks(
     ----------
     ndim : int
         Dimensionality of the convolution (1 for Conv1d, 2 for Conv2d, 3 for Conv3d).
-    nb_features : List[int]
-        Number of features at each upsampling conv block.
-    kernel_size : int, optional
-        Size of the convolving kernel at each level. Default is 3.
-    stride : int, optional
-        Stride of the convolution at each level. Default is 1.
-    padding : int, optional
-        Padding added to all sides of the input at each level. Default is 1.
-    upsample_kernel_size : int, optional
-        Kernel size for the transposed convolution at each level. Default is 4.
-    upsample_stride : int, optional
-        Stride for the transposed convolution at each upsampling conv block. Default is 2.
-    upsample_padding : int, optional
-        Padding for the transposed convolution at each level. Default is 1.
-    normalizations : list, str, nn.Module, or None, optional
+    nb_features : Sequence[int]
+        Number of features at each upsampling conv block. Use `0` to indicate a pass-through
+        level (upsample + skip concat only, no convolution). When `0` is used, the actual
+        output channels equal the upsampled channels plus skip channels (if accepts_skip=True).
+    kernel_size : int, default=3
+        Size of the convolving kernel at each level.
+    stride : int, default=1
+        Stride of the convolution at each level.
+    padding : int, default=1
+        Padding added to all sides of the input at each level.
+    upsample_kernel_size : int, default=4
+        Kernel size for the transposed convolution at each level.
+    upsample_stride : int, default=2
+        Stride for the transposed convolution at each upsampling conv block.
+    upsample_padding : int, default=1
+        Padding for the transposed convolution at each level.
+    scale_factor : int, default=2
+        Scale factor for interpolation upsampling (used when upsample_mode is not 'transposed').
+    normalizations : list, str, nn.Module, or None, default=None
         Normalization layers for each upsampling conv block at each level. If a list, must have the
         same length as nb_features.
-    activations : list, str, nn.Module, or None, optional
+    activations : list, str, nn.Module, or None, default='relu'
         Activation functions for each upsampling conv block at each level. If a list, must have the
         same length as nb_features.
-    order : str, optional
-        The order of operations in the block. Default is 'nca' (normalization -> convolution ->
+    order : str, default='nca'
+        The order of operations in the block (normalization -> convolution ->
         activation). Each character in the string can be specified an arbitrary number of times
         in any order. Each character in the string represents one of the following:
         - `'c'`: Convolution
         - `'n'`: Normalization
         - `'a'`: Activation
-    accepts_skip : bool
+    accepts_skip : bool, default=True
         If True, the blocks are configured to accept skip connections (UNet-style). This allows
-        the blocks to concatenate skip features with the main input. Default is True.
-    skip_channels : List[int] or None, optional
+        the blocks to concatenate skip features with the main input.
+    skip_channels : Sequence[int] or None, default=None
         List of channel counts for skip connections, one per upsampling block. If provided and
         accepts_skip=True, enables asymmetric downsampling/upsampling architectures. If None and
         accepts_skip=True, assumes symmetric architecture (skip channels equal upsampled
-        channels). Default is None.
+        channels).
+    in_channels : int or None, default=None
+        Actual input channels to the first upsampling block (from bottleneck). If None, uses
+        nb_features[0]. This is needed when nb_features[0] is 0 (pass-through) but the actual
+        input comes from a bottleneck layer with non-zero channels.
 
     Returns
     -------
-    nn.ModuleList
-        A list of upsampling convolutional blocks.
+    tuple[nn.ModuleList, list[int]]
+        A tuple of (blocks, actual_channels) where:
+        - blocks: ModuleList of upsampling blocks (UpsampleConvBlock or UpsamplePassthrough)
+        - actual_channels: List of actual output channel counts for each block, accounting for
+          pass-through levels where output = upsampled + skip channels
 
     Notes
     -----
@@ -313,17 +350,27 @@ def upsampling_conv_blocks(
 
     Examples
     --------
-    >>> upsampling_conv_blocks = upsampling_conv_blocks(
+    >>> # Standard usage
+    >>> blocks, actual_ch = upsampling_conv_blocks(
     ...     ndim=2,
     ...     nb_features=[32, 16, 4],
     ...     upsample_kernel_size=4,
     ...     normalizations=["batch", "instance", "batch"],
     ...     activations="relu"
     ... )
-    >>> print(upsampling_conv_blocks)
-    ModuleList(...)
-    """
+    >>> actual_ch
+    [16, 4, 4]
 
+    >>> # With pass-through (0) at last level
+    >>> blocks, actual_ch = upsampling_conv_blocks(
+    ...     ndim=2,
+    ...     nb_features=[32, 16, 0],  # Pass-through at last level
+    ...     skip_channels=[16, 8, 4],
+    ...     accepts_skip=True
+    ... )
+    >>> actual_ch
+    [16, 0 + skip, ...]  # Last level: upsampled + skip channels
+    """
     # Normalization layers
     if not isinstance(normalizations, list):
         normalizations = [normalizations] * len(nb_features)
@@ -332,26 +379,35 @@ def upsampling_conv_blocks(
     if not isinstance(activations, list):
         activations = [activations] * len(nb_features)
 
-    # Init upsampling conv blocks container
-    upsampling_conv_blocks = nn.Sequential()
+    # Init upsampling conv blocks container and track actual channels
+    blocks = nn.ModuleList()
+    # Use in_channels if provided, otherwise use nb_features[0]
+    # This handles the case where nb_features[0] is 0 (pass-through) but actual input
+    # comes from a bottleneck with non-zero channels
+    initial_channels = in_channels if in_channels is not None else nb_features[0]
+    actual_channels = [initial_channels]
 
     # make the number of features for the upsampling conv blocks
-    nb_features = [*nb_features, nb_features[-1]]
+    nb_features_extended = [*nb_features, nb_features[-1]]
 
     # Validate skip_channels length if provided
-    if skip_channels is not None and len(skip_channels) != len(nb_features) - 1:
-        raise ValueError(
-            f"skip_channels must have length {len(nb_features) - 1} "
-            f"(one per upsampling block), got {len(skip_channels)}"
-        )
+    num_blocks = len(nb_features_extended) - 1
+    assert skip_channels is None or len(skip_channels) == num_blocks, (
+        f"skip_channels must have length {num_blocks} "
+        f"(one per upsampling block), got {len(skip_channels)}"
+    )
 
     # Make upsampling conv block and append to list of them
-    for i in range(len(nb_features) - 1):
+    for i in range(num_blocks):
+        in_ch = actual_channels[-1]  # Use actual channels from previous block
+        out_ch = nb_features_extended[i + 1]
+        skip_ch = skip_channels[i] if skip_channels is not None else None
+        passthrough = (out_ch == 0)
 
-        upsampling_conv_block = ne.nn.modules.UpsampleConvBlock(
+        block = ne.nn.modules.UpsampleConvBlock(
             ndim=ndim,
-            in_channels=nb_features[i],
-            out_channels=nb_features[i + 1],
+            in_channels=in_ch,
+            out_channels=out_ch,
             kernel_size=kernel_size,
             stride=stride,
             padding=padding,
@@ -360,16 +416,26 @@ def upsampling_conv_blocks(
             upsample_kernel_size=upsample_kernel_size,
             upsample_stride=upsample_stride,
             upsample_padding=upsample_padding,
-            normalization=normalizations[-i],
-            activation=activations[-i],
+            scale_factor=scale_factor,
+            normalization=normalizations[-i - 1],
+            activation=activations[-i - 1],
             order=order,
             accepts_skip=accepts_skip,
-            skip_channels=skip_channels[i] if skip_channels is not None else None,
+            skip_channels=skip_ch,
+            passthrough=passthrough,
         )
+        blocks.append(block)
 
-        upsampling_conv_blocks.append(upsampling_conv_block)
+        if not passthrough:
+            actual_out = out_ch
+        elif accepts_skip:
+            actual_out = in_ch + (skip_ch or in_ch)
+        else:
+            actual_out = in_ch
+        actual_channels.append(actual_out)
 
-    return upsampling_conv_blocks
+    # Return blocks and actual output channels (excluding input channels)
+    return blocks, actual_channels[1:]
 
 
 # Map normalization types to PyTorch classes

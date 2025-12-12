@@ -30,11 +30,17 @@ class BasicUNet(nn.Module):
         Upsampling convolutional blocks.
     out_layer : nn.Module
         Final output layer.
+    down_actual_channels : list[int]
+        Actual output channel counts for each downsampling block (accounts for pass-through levels).
 
     Notes
     -----
     `BasicUNet` is derived from the architecture of the UNet described in
     [Olaf Ronneberger](https://arxiv.org/pdf/1505.04597)
+
+    Use `0` in `nb_features` to indicate pass-through levels that skip convolutions:
+    - Downsampling `0`: Pool only, no convolution. Channels preserved from input.
+    - Upsampling `0`: Upsample + concat skip only, no conv. Output = upsampled + skip channels.
 
     Examples
     --------
@@ -47,6 +53,12 @@ class BasicUNet(nn.Module):
     >>> output = model(input_tensor)
     >>> output.shape
     torch.Size([1, 1, 128, 128])
+
+    >>> # Skip full-resolution convolutions using 0
+    >>> model = BasicUNet(
+    ...     ndim=2, in_channels=1, out_channels=1,
+    ...     nb_features=[0, 32, 64],  # Pass-through at full resolution
+    ... )
     """
 
     def __init__(
@@ -62,7 +74,6 @@ class BasicUNet(nn.Module):
         order: str = 'ca',
         final_activation: Union[str, nn.Module, None] = None,
         skip_connections: bool = True,
-        downsample_first: bool = False,
     ):
         """
         Initialize `BasicUNet`
@@ -81,6 +92,9 @@ class BasicUNet(nn.Module):
               upsampling uses [64, 32, 16])
             - Sequence of sequences: [[downsampling_features], [upsampling_features]] for complete
               asymmetry
+            Use `0` to indicate pass-through levels (no convolution):
+            - Downsampling: [0, 32, 64] skips conv at first level (pool only, channels preserved)
+            - Upsampling: [64, 32, 0] skips conv at last level (upsample + skip concat only)
         padding_mode : {'zeros', 'replicate', 'reflect'}, default='zeros'
             Padding mode for convolutional layers.
         upsample_mode : {'linear', 'transposed', 'nearest'}, default='linear'
@@ -98,10 +112,6 @@ class BasicUNet(nn.Module):
         skip_connections : bool, default=True
             Enable skip connections to concatenate features from downsampling path with upsampling
             path at matching resolutions.
-        downsample_first : bool, default=False
-            If True, downsample the input before any convolutions and upsample after the
-            upsampling path (but before the output layer). This avoids convolutions at the full
-            input resolution, reducing memory and compute for high-resolution inputs.
 
         Examples
         --------
@@ -114,19 +124,22 @@ class BasicUNet(nn.Module):
         >>> # Asymmetric UNet with different downsampling/upsampling features
         >>> model = BasicUNet(
         ...     ndim=2, in_channels=1, out_channels=1,
-        ...     nb_features=[[16, 32, 64], [128, 64, 32]],  # Lowest resolution: 64 → 128
+        ...     nb_features=[[16, 32, 64], [128, 64, 32]],  # Lowest resolution: 64 -> 128
         ...     skip_connections=True,  # Fully supports asymmetric architectures!
         ...     activations=nn.ReLU
         ... )
+        >>> # Skip full-resolution convolutions
+        >>> model = BasicUNet(
+        ...     ndim=2, in_channels=1, out_channels=1,
+        ...     nb_features=[0, 32, 64],  # First level: pool only, no conv
+        ... )
         """
-
         super().__init__()
 
         self.ndim = ndim
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.skip_connections = skip_connections
-        self.downsample_first = downsample_first
 
         # Asymmetric: [[downsampling_features], [upsampling_features]]
         if isinstance(nb_features[0], Sequence) and isinstance(nb_features[1], Sequence):
@@ -150,6 +163,11 @@ class BasicUNet(nn.Module):
                 f'All elements in downsampling_features must be int. Got {ele} for idx {idx}'
             )
 
+        # Check at least one non-zero feature in downsampling
+        assert any(f != 0 for f in downsampling_features), (
+            "nb_features must have at least one non-zero value in downsampling features"
+        )
+
         # Store feature specs as immutables
         self.downsampling_features = tuple(downsampling_features)
         self.upsampling_features = tuple(upsampling_features)
@@ -164,8 +182,8 @@ class BasicUNet(nn.Module):
         self.activations = activations
         self.nb_features_fwd: list = [in_channels, *self.downsampling_features]
 
-        # Downsampling convolutional blocks
-        self.downsampling_conv_blocks = ne.utils.downsampling_conv_blocks(
+        # Downsampling conv blocks
+        self.downsampling_conv_blocks, down_actual_channels = ne.utils.downsampling_conv_blocks(
             ndim=ndim,
             nb_features=self.nb_features_fwd,
             normalizations=self.normalizations,
@@ -175,21 +193,28 @@ class BasicUNet(nn.Module):
             padding_mode=padding_mode,
         )
 
-        assert isinstance(downsampling_features, Sequence)
+        # Store actual downsampling channels for reference
+        self.down_actual_channels = down_actual_channels
+
         # Convolutional block between downsampling and upsampling arms (lowest resolution)
+        down_output_channels = down_actual_channels[-1]
+
+        # Determine first upsampling feature (0 is falsy)
+        bottleneck_out_channels = self.upsampling_features[0] or down_output_channels
+
         self.lowest_resolution_conv_block = ne.nn.modules.ConvBlock(
             ndim=ndim,
-            in_channels=self.downsampling_features[-1],
-            out_channels=self.upsampling_features[0],
+            in_channels=down_output_channels,
+            out_channels=bottleneck_out_channels,
             order=order,
             padding_mode=padding_mode,
         )
 
-        # Compute skip connection channel counts (downsampling features in reverse order)
-        skip_channels_list = list(reversed(downsampling_features)) if skip_connections else None
+        # Compute skip connection channel counts from actual downsampling outputs (reversed)
+        skip_channels_list = list(reversed(down_actual_channels)) if skip_connections else None
 
-        # Upsampling convolutional blocks
-        self.upsampling_conv_blocks = ne.utils.upsampling_conv_blocks(
+        # Upsampling convolutional blocks (returns blocks and actual channel counts)
+        self.upsampling_conv_blocks, up_actual_channels = ne.utils.upsampling_conv_blocks(
             ndim=ndim,
             nb_features=self.upsampling_features,
             normalizations=self.normalizations,
@@ -201,46 +226,28 @@ class BasicUNet(nn.Module):
             accepts_skip=skip_connections,
             skip_channels=skip_channels_list,
             padding_mode=padding_mode,
-            upsample_mode=upsample_mode
+            upsample_mode=upsample_mode,
+            in_channels=bottleneck_out_channels,
         )
 
-        # Final convolutional block
+        # Store actual upsampling channels for reference
+        self.up_actual_channels = up_actual_channels
+
+        # Final convolutional block - use actual upsampling output channels
+        if up_actual_channels:
+            up_output_channels = up_actual_channels[-1]
+        else:
+            up_output_channels = bottleneck_out_channels
+
         self.out_layer = ne.nn.modules.ConvBlock(
             ndim=ndim,
-            in_channels=self.upsampling_features[-1],
+            in_channels=up_output_channels,
             out_channels=out_channels,
             kernel_size=1,
             padding=0,
             activation=final_activation,
             padding_mode=padding_mode,
         )
-
-        # Optional initial downsample and final upsample for skipping full-resolution convolutions
-        if downsample_first:
-            self.initial_downsample = ne.nn.modules.Pool(ndim=ndim, pool_mode='max', kernel_size=2)
-
-            # Use same upsample mode as upsampling path
-            if upsample_mode == 'transposed':
-                self.final_upsample = ne.nn.modules.TransposedConv(
-                    ndim=ndim,
-                    in_channels=self.upsampling_features[-1],
-                    out_channels=self.upsampling_features[-1],
-                    kernel_size=2,
-                    stride=2,
-                    padding=0
-                )
-            else:
-                if upsample_mode == 'linear':
-                    interp_mode = ne.utils.infer_linear_interpolation_mode(ndim)
-                else:
-                    interp_mode = upsample_mode
-
-                align = None if interp_mode == 'nearest' else True
-                self.final_upsample = nn.Upsample(
-                    scale_factor=2,
-                    mode=interp_mode,
-                    align_corners=align
-                )
 
     def forward(self, feature_tensor: torch.Tensor):
         """
@@ -256,11 +263,6 @@ class BasicUNet(nn.Module):
         torch.Tensor
             Result of forward pass of the model.
         """
-
-        # Optional initial downsample to avoid full-resolution convolutions
-        if self.downsample_first:
-            feature_tensor = self.initial_downsample(feature_tensor)
-
         # Downsampling path
         skip_connections = []
 
@@ -281,10 +283,6 @@ class BasicUNet(nn.Module):
                 feature_tensor = upsampling_conv_block(feature_tensor, skip)
             else:
                 feature_tensor = upsampling_conv_block(feature_tensor)
-
-        # Optional final upsample to restore original resolution
-        if self.downsample_first:
-            feature_tensor = self.final_upsample(feature_tensor)
 
         # Output layer
         feature_tensor = self.out_layer(feature_tensor)
@@ -374,7 +372,7 @@ class BasicAutoencoder(nn.Module):
         if not isinstance(activations, list):
             self.activations = [activations] * len(nb_features)
 
-        # Encoder network
+        # Downsampling network
         self.downsampling_conv_blocks = ne.utils.downsampling_conv_blocks(
             ndim=ndim,
             nb_features=[in_channels, *nb_features],
@@ -399,7 +397,7 @@ class BasicAutoencoder(nn.Module):
         # Add latent layer to downsampling_conv_blocks so users can easily predict the latent space.
         self.downsampling_conv_blocks.append(latent_layer)
 
-        # Decoder network
+        # Upsampling network
         self.upsampling_conv_blocks = ne.utils.upsampling_conv_blocks(
             ndim=ndim,
             nb_features=[latent_features, *reversed(nb_features[1:])],

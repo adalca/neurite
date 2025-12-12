@@ -264,7 +264,7 @@ def test_upsampling_normalization_order():
 
     This tests the fix for Bug #2: Previously, normalizations[-i] when i=0
     would access normalizations[0] instead of normalizations[-1], breaking
-    the expected encoder-decoder symmetry.
+    the expected downsampling-upsampling symmetry.
     """
     from neurite.utils.utils import upsampling_conv_blocks
 
@@ -272,8 +272,8 @@ def test_upsampling_normalization_order():
     nb_features = [64, 32, 16]
     normalizations = ['batch', 'instance', None]
 
-    # Create upsampling blocks
-    blocks = upsampling_conv_blocks(
+    # Create upsampling blocks (now returns tuple of blocks and actual channels)
+    blocks, actual_channels = upsampling_conv_blocks(
         ndim=ndim,
         nb_features=nb_features,
         normalizations=normalizations,
@@ -330,9 +330,11 @@ def test_basicunet_symmetric_normalization():
 
 
 @pytest.mark.parametrize("ndim", [1, 2, 3])
-def test_basicunet_downsample_first_shape_preservation(ndim):
+def test_basicunet_zero_first_level_shape_preservation(ndim):
     """
-    Test that downsample_first=True preserves input/output shape across dimensions.
+    Test that using 0 as first feature (pass-through) preserves input/output shape.
+
+    This replaces the old downsample_first=True behavior with [0, ...] in nb_features.
     """
     torch.manual_seed(42)
     spatial = [64] * ndim
@@ -342,8 +344,7 @@ def test_basicunet_downsample_first_shape_preservation(ndim):
         ndim=ndim,
         in_channels=1,
         out_channels=1,
-        nb_features=[16, 32, 64],
-        downsample_first=True
+        nb_features=[0, 16, 32, 64],  # Pass-through at full resolution
     )
     model.eval()
 
@@ -353,9 +354,9 @@ def test_basicunet_downsample_first_shape_preservation(ndim):
 
 
 @pytest.mark.parametrize("skip_connections", [True, False])
-def test_basicunet_downsample_first_with_skip_connections(skip_connections):
+def test_basicunet_zero_with_skip_connections(skip_connections):
     """
-    Test that downsample_first works with both skip_connections=True and False.
+    Test that pass-through levels work with both skip_connections=True and False.
     """
     torch.manual_seed(42)
     x = torch.randn(2, 1, 64, 64)
@@ -364,8 +365,7 @@ def test_basicunet_downsample_first_with_skip_connections(skip_connections):
         ndim=2,
         in_channels=1,
         out_channels=1,
-        nb_features=[16, 32, 64],
-        downsample_first=True,
+        nb_features=[0, 16, 32, 64],  # Pass-through at full resolution
         skip_connections=skip_connections
     )
     model.eval()
@@ -375,40 +375,29 @@ def test_basicunet_downsample_first_with_skip_connections(skip_connections):
     assert y.shape == x.shape
 
 
-def test_basicunet_downsample_first_layers_exist():
+def test_basicunet_down_actual_channels_with_zero():
     """
-    Test that initial_downsample and final_upsample layers are created
-    when downsample_first=True, and absent when False.
+    Test that down_actual_channels correctly tracks channel counts when using 0.
+
+    When 0 is used, channels are preserved from the previous level.
     """
-    model_with = ne.nn.models.BasicUNet(
+    model = ne.nn.models.BasicUNet(
         ndim=2,
         in_channels=1,
         out_channels=1,
-        nb_features=[16, 32],
-        downsample_first=True
+        nb_features=[0, 16, 32],  # First level: pass-through, channels stay 1
+        skip_connections=True
     )
 
-    model_without = ne.nn.models.BasicUNet(
-        ndim=2,
-        in_channels=1,
-        out_channels=1,
-        nb_features=[16, 32],
-        downsample_first=False
-    )
-
-    assert hasattr(model_with, 'initial_downsample')
-    assert hasattr(model_with, 'final_upsample')
-    assert not hasattr(model_without, 'initial_downsample')
-    assert not hasattr(model_without, 'final_upsample')
+    # First skip should have 1 channel (pass-through preserves input)
+    # Second skip should have 16 channels
+    # Third skip should have 32 channels
+    assert model.down_actual_channels == [1, 16, 32]
 
 
-@pytest.mark.parametrize("upsample_mode", ["linear", "nearest", "transposed"])
-def test_basicunet_downsample_first_upsample_modes(upsample_mode):
+def test_basicunet_multiple_zeros():
     """
-    Test that downsample_first uses the correct upsample type based on upsample_mode.
-
-    When upsample_mode='transposed', final_upsample should be a TransposedConv.
-    Otherwise, it should be nn.Upsample.
+    Test that multiple consecutive zeros (pass-throughs) work correctly.
     """
     torch.manual_seed(42)
     x = torch.randn(2, 1, 64, 64)
@@ -417,17 +406,216 @@ def test_basicunet_downsample_first_upsample_modes(upsample_mode):
         ndim=2,
         in_channels=1,
         out_channels=1,
-        nb_features=[16, 32, 64],
-        downsample_first=True,
-        upsample_mode=upsample_mode
+        nb_features=[0, 0, 16],  # Two pass-through levels, then conv
+        skip_connections=True
     )
     model.eval()
 
-    # Verify correct layer type
-    if upsample_mode == 'transposed':
-        assert isinstance(model.final_upsample, ne.nn.modules.TransposedConv)
-    else:
-        assert isinstance(model.final_upsample, torch.nn.Upsample)
+    y = model(x)
+    assert y.shape == x.shape
+
+    # Both pass-through levels should preserve input channels (1)
+    assert model.down_actual_channels == [1, 1, 16]
+
+
+def test_basicunet_asymmetric_zeros():
+    """
+    Test asymmetric UNet where downsampling has pass-through but upsampling doesn't.
+    """
+    torch.manual_seed(42)
+    x = torch.randn(2, 1, 64, 64)
+
+    model = ne.nn.models.BasicUNet(
+        ndim=2,
+        in_channels=1,
+        out_channels=1,
+        nb_features=[[0, 32, 64], [64, 32, 16]],  # Downsampling skips full-res, upsampling doesn't
+        skip_connections=True
+    )
+    model.eval()
 
     y = model(x)
     assert y.shape == x.shape
+
+    # Downsampling: pass-through (1ch) -> 32ch -> 64ch
+    assert model.down_actual_channels == [1, 32, 64]
+
+
+def test_basicunet_all_zeros_raises():
+    """
+    Test that all-zeros nb_features raises AssertionError.
+    """
+    with pytest.raises(AssertionError, match="at least one non-zero"):
+        ne.nn.models.BasicUNet(
+            ndim=2,
+            in_channels=1,
+            out_channels=1,
+            nb_features=[0, 0, 0]
+        )
+
+
+@pytest.mark.parametrize("ndim", [1, 2, 3])
+def test_basicunet_passthrough_block_types(ndim):
+    """
+    Test that pass-through levels use DownsampleConvBlock with passthrough=True.
+    """
+    model = ne.nn.models.BasicUNet(
+        ndim=ndim,
+        in_channels=1,
+        out_channels=1,
+        nb_features=[0, 16, 32],  # First level is pass-through
+        skip_connections=True
+    )
+
+    # All blocks are DownsampleConvBlock, but first has passthrough=True
+    assert isinstance(model.downsampling_conv_blocks[0], ne.nn.modules.DownsampleConvBlock)
+    assert model.downsampling_conv_blocks[0].passthrough is True
+    assert model.downsampling_conv_blocks[0].conv_block is None
+
+    # Second and third blocks have passthrough=False
+    assert isinstance(model.downsampling_conv_blocks[1], ne.nn.modules.DownsampleConvBlock)
+    assert model.downsampling_conv_blocks[1].passthrough is False
+    assert model.downsampling_conv_blocks[1].conv_block is not None
+
+    assert isinstance(model.downsampling_conv_blocks[2], ne.nn.modules.DownsampleConvBlock)
+    assert model.downsampling_conv_blocks[2].passthrough is False
+
+
+@pytest.mark.parametrize("ndim", [1, 2, 3])
+def test_basicunet_leading_zero_four_levels(ndim):
+    """
+    Test nb_features=[0, 16, 16, 16] - pass-through at first level only.
+    """
+    torch.manual_seed(42)
+    spatial = [64] * ndim
+    x = torch.randn(2, 1, *spatial)
+
+    model = ne.nn.models.BasicUNet(
+        ndim=ndim,
+        in_channels=1,
+        out_channels=1,
+        nb_features=[0, 16, 16, 16],
+        skip_connections=True
+    )
+    model.eval()
+
+    y = model(x)
+    assert y.shape == x.shape
+
+    # First level pass-through preserves input channels (1)
+    assert model.down_actual_channels == [1, 16, 16, 16]
+    assert model.downsampling_conv_blocks[0].passthrough is True
+    assert model.downsampling_conv_blocks[1].passthrough is False
+
+
+@pytest.mark.parametrize("ndim", [1, 2, 3])
+def test_basicunet_alternating_zeros_start_nonzero(ndim):
+    """
+    Test nb_features=[16, 0, 16, 0] - alternating with conv first.
+
+    Downsampling sees: [16, 0, 16, 0] - passthrough at indices 1 and 3
+    Upsampling sees (reversed): [0, 16, 0, 16]
+    nb_features_extended = [0, 16, 0, 16, 16]
+    Block passthrough is based on out_ch = nb_features_extended[i+1]:
+      Block 0: out_ch = 16 -> conv
+      Block 1: out_ch = 0 -> passthrough
+      Block 2: out_ch = 16 -> conv
+      Block 3: out_ch = 16 -> conv
+    """
+    torch.manual_seed(42)
+    spatial = [64] * ndim
+    x = torch.randn(2, 1, *spatial)
+
+    model = ne.nn.models.BasicUNet(
+        ndim=ndim,
+        in_channels=1,
+        out_channels=1,
+        nb_features=[16, 0, 16, 0],
+        skip_connections=True
+    )
+    model.eval()
+
+    y = model(x)
+    assert y.shape == x.shape
+
+    # Downsampling channels: 1->16, 16->16 (pass-through), 16->16, 16->16 (pass-through)
+    assert model.down_actual_channels == [16, 16, 16, 16]
+    assert model.downsampling_conv_blocks[0].passthrough is False
+    assert model.downsampling_conv_blocks[1].passthrough is True
+    assert model.downsampling_conv_blocks[2].passthrough is False
+    assert model.downsampling_conv_blocks[3].passthrough is True
+
+    # Upsampling: passthrough at index 1 (where out_ch = 0)
+    assert model.upsampling_conv_blocks[0].passthrough is False
+    assert model.upsampling_conv_blocks[1].passthrough is True
+    assert model.upsampling_conv_blocks[2].passthrough is False
+    assert model.upsampling_conv_blocks[3].passthrough is False
+
+
+@pytest.mark.parametrize("ndim", [1, 2, 3])
+def test_basicunet_alternating_zeros_start_zero(ndim):
+    """
+    Test nb_features=[0, 16, 0, 16] - alternating with pass-through first.
+    """
+    torch.manual_seed(42)
+    spatial = [64] * ndim
+    x = torch.randn(2, 1, *spatial)
+
+    model = ne.nn.models.BasicUNet(
+        ndim=ndim,
+        in_channels=1,
+        out_channels=1,
+        nb_features=[0, 16, 0, 16],
+        skip_connections=True
+    )
+    model.eval()
+
+    y = model(x)
+    assert y.shape == x.shape
+
+    # Channels: 1->1 (pass-through), 1->16, 16->16 (pass-through), 16->16
+    assert model.down_actual_channels == [1, 16, 16, 16]
+    assert model.downsampling_conv_blocks[0].passthrough is True
+    assert model.downsampling_conv_blocks[1].passthrough is False
+    assert model.downsampling_conv_blocks[2].passthrough is True
+    assert model.downsampling_conv_blocks[3].passthrough is False
+
+
+@pytest.mark.parametrize("ndim", [1, 2, 3])
+def test_basicunet_asymmetric_downsampling_upsampling_zeros(ndim):
+    """
+    Test nb_features=[[0, 16, 32], [32, 0, 16]] - downsampling pass-through at first,
+    upsampling pass-through at first block (0 is at index 1 in upsampling features).
+
+    Upsampling nb_features = [32, 0, 16]
+    nb_features_extended = [32, 0, 16, 16]
+    Block 0: out_ch = 0 -> passthrough
+    Block 1: out_ch = 16 -> conv
+    Block 2: out_ch = 16 -> conv
+    """
+    torch.manual_seed(42)
+    spatial = [64] * ndim
+    x = torch.randn(2, 1, *spatial)
+
+    model = ne.nn.models.BasicUNet(
+        ndim=ndim,
+        in_channels=1,
+        out_channels=1,
+        nb_features=[[0, 16, 32], [32, 0, 16]],
+        skip_connections=True
+    )
+    model.eval()
+
+    y = model(x)
+    assert y.shape == x.shape
+
+    # Downsampling: 1->1 (pass-through), 1->16, 16->32
+    assert model.down_actual_channels == [1, 16, 32]
+    assert model.downsampling_conv_blocks[0].passthrough is True
+    assert model.downsampling_conv_blocks[1].passthrough is False
+    assert model.downsampling_conv_blocks[2].passthrough is False
+
+    # Upsampling features [32, 0, 16]: 0 at index 1 means block 0 is passthrough
+    assert model.upsampling_conv_blocks[0].passthrough is True
+    assert model.upsampling_conv_blocks[1].passthrough is False
+    assert model.upsampling_conv_blocks[2].passthrough is False

@@ -563,12 +563,19 @@ class DownsampleConvBlock(nn.Module):
     """
     Apply `ConvBlock` followed by `Pool` to extract features and reduce spatial shape.
 
+    When `passthrough=True`, skips the convolution and only pools. This is useful for
+    UNet architectures where you want to skip convolutions at certain levels (e.g., to
+    avoid expensive full-resolution convolutions).
+
     Attributes
     ----------
-    conv_block : ConvBlock
+    conv_block : ConvBlock or None
         The convolutional block applying a series of convolutions, normalization, and activation.
+        None when passthrough=True.
     pool : Pool
         The pooling layer to downsample the feature maps.
+    passthrough : bool
+        If True, skip convolution and only pool.
     """
 
     def __init__(
@@ -584,8 +591,9 @@ class DownsampleConvBlock(nn.Module):
         activation: Union[str, nn.Module, None] = "relu",
         pool_mode: str = "max",
         pool_kernel_size: int = 2,
-        order='nca',
+        order: str = 'nca',
         return_skip: bool = False,
+        passthrough: bool = False,
     ):
         """
         Initialize `DownsampleConvBlock`.
@@ -595,9 +603,9 @@ class DownsampleConvBlock(nn.Module):
         ndim : int
             Dimensionality of the convolution (1 for Conv1d, 2 for Conv2d, 3 for Conv3d).
         in_channels : int
-            Number of input channels.
+            Number of input channels. Ignored when passthrough=True.
         out_channels : int
-            Number of output channels.
+            Number of output channels. Ignored when passthrough=True.
         kernel_size : int, default=3
             Size of the convolving kernel.
         stride : int, default=1
@@ -624,22 +632,29 @@ class DownsampleConvBlock(nn.Module):
         return_skip : bool, default=False
             If True, return skip connection features from the forward pass for use in UNet-style
             architectures.
+        passthrough : bool, default=False
+            If True, skip convolution and only pool. Output channels equal input channels.
+            When True, in_channels and out_channels are ignored.
         """
         super().__init__()
         self.return_skip = return_skip
+        self.passthrough = passthrough
 
-        self.conv_block = ConvBlock(
-            ndim=ndim,
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=padding,
-            normalization=normalization,
-            activation=activation,
-            order=order,
-            padding_mode=padding_mode,
-        )
+        if not passthrough:
+            self.conv_block = ConvBlock(
+                ndim=ndim,
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=padding,
+                normalization=normalization,
+                activation=activation,
+                order=order,
+                padding_mode=padding_mode,
+            )
+        else:
+            self.conv_block = None
 
         self.pool = Pool(ndim=ndim, pool_mode=pool_mode, kernel_size=pool_kernel_size)
 
@@ -654,10 +669,15 @@ class DownsampleConvBlock(nn.Module):
 
         Returns
         -------
-        torch.Tensor
-            Downsampled tensor after applying convolution and pooling.
+        torch.Tensor or Tuple[torch.Tensor, torch.Tensor]
+            Downsampled tensor after applying convolution (if not passthrough) and pooling.
+            If return_skip=True, returns (pooled, skip) where skip is pre-pool features.
         """
-        conv_result = self.conv_block(input_tensor)
+        if self.passthrough:
+            conv_result = input_tensor
+        else:
+            conv_result = self.conv_block(input_tensor)
+
         pooled_result = self.pool(conv_result)
 
         if self.return_skip:
@@ -667,17 +687,25 @@ class DownsampleConvBlock(nn.Module):
 
 class UpsampleConvBlock(nn.Module):
     """
-    Apply `ConvBlock` followed by an upsampling operation to extract features and increase spatial
-    shape.
+    Apply upsampling followed by `ConvBlock` to increase spatial shape and extract features.
+
+    When `passthrough=True`, skips the convolution and only upsamples (+ concatenates skip
+    if accepts_skip=True). This is useful for UNet architectures where you want to skip
+    convolutions at certain levels.
 
     Attributes
     ----------
-    upsample : TransposedConv
+    upsample : TransposedConv or nn.Upsample
         Module to be used for upsampling. One of:
          - `neurite.modules.TransposedConv`: nD transposed convolution.
-         - `torch.nn.Upsample`: Interpolation upsampler form PyTorch.
-    conv_block : ConvBlock
+         - `torch.nn.Upsample`: Interpolation upsampler from PyTorch.
+    conv_block : ConvBlock or None
         The convolutional block applying a series of convolutions, normalizations, and activations.
+        None when passthrough=True.
+    passthrough : bool
+        If True, skip convolution after upsampling.
+    accepts_skip : bool
+        If True, concatenate skip connection in forward pass.
     """
 
     def __init__(
@@ -699,6 +727,7 @@ class UpsampleConvBlock(nn.Module):
         order: str = 'nca',
         accepts_skip: bool = True,
         skip_channels: Union[int, None] = None,
+        passthrough: bool = False,
     ):
         """
         Initialize `UpsampleConvBlock`.
@@ -710,7 +739,7 @@ class UpsampleConvBlock(nn.Module):
         in_channels : int
             Number of input channels.
         out_channels : int
-            Number of output channels.
+            Number of output channels. Ignored when passthrough=True.
         kernel_size : int, default=3
             Size of the convolving kernel.
         stride : int, default=1
@@ -747,9 +776,14 @@ class UpsampleConvBlock(nn.Module):
             Number of channels in the skip connection. If provided and accepts_skip=True,
             the actual concatenated input will be in_channels + skip_channels. If None and
             accepts_skip=True, defaults to in_channels (symmetric assumption).
+        passthrough : bool, default=False
+            If True, skip convolution and only upsample (+ concat skip if accepts_skip=True).
+            Output channels = in_channels + skip_channels (if accepts_skip) or in_channels.
+            When True, out_channels is ignored.
         """
-
         super().__init__()
+        self.passthrough = passthrough
+        self.accepts_skip = accepts_skip
 
         if upsample_mode == 'transposed':
             self.upsample = TransposedConv(
@@ -771,26 +805,31 @@ class UpsampleConvBlock(nn.Module):
                 align_corners=align
             )
 
-        if accepts_skip:
-            if skip_channels is not None:
-                in_channels += skip_channels
-            else:
-                # Backward compatibility when assumimg symmetric architecture
-                in_channels += in_channels
+        if not passthrough:
+            # Compute input channels to conv (after skip concatenation)
+            conv_in_channels = in_channels
+            if accepts_skip:
+                if skip_channels is not None:
+                    conv_in_channels += skip_channels
+                else:
+                    # Backward compatibility when assuming symmetric architecture
+                    conv_in_channels += in_channels
 
-        # Build convolutional block
-        self.conv_block = ConvBlock(
-            ndim=ndim,
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=padding,
-            normalization=normalization,
-            activation=activation,
-            order=order,
-            padding_mode=padding_mode,
-        )
+            # Build convolutional block
+            self.conv_block = ConvBlock(
+                ndim=ndim,
+                in_channels=conv_in_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=padding,
+                normalization=normalization,
+                activation=activation,
+                order=order,
+                padding_mode=padding_mode,
+            )
+        else:
+            self.conv_block = None
 
     def forward(
         self,
@@ -810,14 +849,19 @@ class UpsampleConvBlock(nn.Module):
         Returns
         -------
         torch.Tensor
-            Upsampled tensor after applying upsampling operation and conv blocks.
+            Upsampled tensor after applying upsampling operation and conv blocks (if not
+            passthrough). If passthrough=True, returns upsampled + skip concatenated (if
+            accepts_skip=True).
         """
         features = self.upsample(input_tensor)
 
-        if isinstance(skip, torch.Tensor):
+        if self.accepts_skip and isinstance(skip, torch.Tensor):
             features = torch.cat([features, skip], dim=1)
 
-        return self.conv_block(features)
+        if self.passthrough:
+            return features
+        else:
+            return self.conv_block(features)
 
 
 class RescaleValues(nn.Module):
