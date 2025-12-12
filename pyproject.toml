@@ -47,3 +47,6 @@ keywords = [
 [project.urls]
 GitHub = "https://github.com/adalca/neurite"
 PyPi = "https://pypi.org/project/neurite/0.2/"
+
+[tool.pyright]
+reportRedeclaration = false
