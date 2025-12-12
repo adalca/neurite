@@ -141,27 +141,21 @@ class BasicUNet(nn.Module):
         self.out_channels = out_channels
         self.skip_connections = skip_connections
 
-        # Asymmetric: [[downsampling_features], [upsampling_features]]
+        # Asymmetric: [[down], [up]]
         if isinstance(nb_features[0], Sequence) and isinstance(nb_features[1], Sequence):
-
-            if len(nb_features) != 2:
-                raise ValueError(
-                    f"Asymmetric nb_features must have exactly 2 lists "
-                    f"(downsampling and upsampling), got {len(nb_features)}"
-                )
-
+            assert len(nb_features) == 2, (
+                f"Asymmetric nb_features requires 2 sequences, got {len(nb_features)}"
+            )
             downsampling_features = tuple(nb_features[0])
             upsampling_features = tuple(nb_features[1])
-
         else:
-            # Symmetric: [features] used for both downsampling and upsampling
+            # Symmetric: reversed for upsampling
             downsampling_features = tuple(nb_features)
             upsampling_features = tuple(reversed(nb_features))
 
-        for idx, ele in enumerate(downsampling_features):
-            assert isinstance(ele, int), (
-                f'All elements in downsampling_features must be int. Got {ele} for idx {idx}'
-            )
+        assert all(isinstance(f, int) for f in downsampling_features), (
+            "All elements in nb_features must be integers"
+        )
 
         # Check at least one non-zero feature in downsampling
         assert any(f != 0 for f in downsampling_features), (
@@ -263,30 +257,28 @@ class BasicUNet(nn.Module):
         torch.Tensor
             Result of forward pass of the model.
         """
-        # Downsampling path
         skip_connections = []
 
-        for downsampling_conv_block in self.downsampling_conv_blocks:
-            if self.skip_connections:
-                feature_tensor, skip = downsampling_conv_block(feature_tensor)
-                skip_connections.append(skip)  # Save for skip connection
-            else:
-                feature_tensor = downsampling_conv_block(feature_tensor)
+        # Downsampling path
+        if self.skip_connections:
+            for block in self.downsampling_conv_blocks:
+                feature_tensor, skip = block(feature_tensor)
+                skip_connections.append(skip)
+        else:
+            for block in self.downsampling_conv_blocks:
+                feature_tensor = block(feature_tensor)
 
-        # Convolutional block between downsampling and upsampling arms (lowest resolution)
         feature_tensor = self.lowest_resolution_conv_block(feature_tensor)
 
         # Upsampling path
-        for i, upsampling_conv_block in enumerate(self.upsampling_conv_blocks):
-            if self.skip_connections:
-                skip = skip_connections[-(i + 1)]
-                feature_tensor = upsampling_conv_block(feature_tensor, skip)
-            else:
-                feature_tensor = upsampling_conv_block(feature_tensor)
+        if self.skip_connections:
+            for block, skip in zip(self.upsampling_conv_blocks, reversed(skip_connections)):
+                feature_tensor = block(feature_tensor, skip)
+        else:
+            for block in self.upsampling_conv_blocks:
+                feature_tensor = block(feature_tensor)
 
-        # Output layer
-        feature_tensor = self.out_layer(feature_tensor)
-        return feature_tensor
+        return self.out_layer(feature_tensor)
 
 
 class BasicAutoencoder(nn.Module):
