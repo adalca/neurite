@@ -277,10 +277,9 @@ def ncc(
         win = [window_size] * num_spatial
     else:
         win = list(window_size)
-        if len(win) != num_spatial:
-            raise ValueError(
-                f"window_size length {len(win)} doesn't match spatial dims {num_spatial}"
-            )
+        assert len(win) == num_spatial, (
+            f'window_size length {len(win)} does not match spatial dims {num_spatial}'
+        )
 
     # Create sum filter: (1, 1, *win) - single channel since we use vectorization
     sum_filt = torch.ones(1, 1, *win, device=tensor1.device, dtype=tensor1.dtype)
@@ -386,9 +385,7 @@ def spatial_gradient(
     """
     # Parse non_spatial_dims
     num_non_spatial, num_spatial = _parse_non_spatial_dims(non_spatial_dims, input_tensor.ndim)
-
-    if num_spatial < 1:
-        raise ValueError("Need at least 1 spatial dimension to compute gradients")
+    assert num_spatial >= 1, f"Need at least 1 spatial dim to compute gradients, got {num_spatial}"
 
     return [torch.diff(input_tensor, dim=num_non_spatial + i) for i in range(num_spatial)]
 
