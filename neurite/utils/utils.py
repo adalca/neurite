@@ -24,7 +24,7 @@ the License.
 """
 
 # Standard library imports
-from typing import Union, Literal, Type, Optional, Collection, Sequence, Type
+from typing import Union, Literal, Type, Optional, Collection, Sequence, Type, Tuple, List
 import inspect
 
 # Third party imports
@@ -41,7 +41,8 @@ __all__ = [
     "infer_linear_interpolation_mode",
     "downsampling_conv_blocks",
     "upsampling_conv_blocks",
-    "build_normalization"
+    "build_normalization",
+    "early_stopping",
 ]
 
 
