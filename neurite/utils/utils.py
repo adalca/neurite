@@ -153,7 +153,7 @@ def downsampling_conv_blocks(
     pool_kernel_size: int = 2,
     order: str = 'nca',
     return_skip: bool = False,
-) -> tuple[nn.ModuleList, list[int]]:
+) -> Tuple[nn.ModuleList, List[int]]:
     """
     Create an `nn.ModuleList` of downsampling conv blocks based the number of features per layer.
 
@@ -282,8 +282,8 @@ def upsampling_conv_blocks(
     order: str = 'nca',
     accepts_skip: bool = True,
     skip_channels: Union[Sequence[int], None] = None,
-    in_channels: int | None = None,
-) -> tuple[nn.ModuleList, list[int]]:
+    in_channels: Optional[int] = None,
+) -> Tuple[nn.ModuleList, List[int]]:
     """
     Create an `nn.ModuleList` of upsampling conv blocks based the number of features per layer/
     level.

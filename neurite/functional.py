@@ -2,7 +2,7 @@
 Single tensor operations (no B, C dimension assumption)
 """
 # Standard library imports
-from typing import Union, Sequence, Tuple, Literal, Optional
+from typing import Union, Sequence, Tuple, Literal, Optional, List
 
 # Third party imports
 import torch
@@ -335,7 +335,7 @@ def ncc(
 def spatial_gradient(
     input_tensor: torch.Tensor,
     non_spatial_dims: Union[Tuple[int, ...], None] = None,
-) -> list[torch.Tensor]:
+) -> List[torch.Tensor]:
     """
     Compute spatial gradients using finite differences along each spatial dimension.
 
