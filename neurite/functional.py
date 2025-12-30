@@ -173,8 +173,8 @@ def dice(
     # Intersection: product across segs, sum over spatial
     intersection = stacked.prod(dim=0).sum(dim=-1)
 
-    # Union: sum across segs and spatial
-    union = stacked.sum(dim=(0, -1))
+    # Union: sum of squared values across segs and spatial
+    union = (stacked ** 2).sum(dim=(0, -1))
 
     # Dice for N tensors: N * intersection / union
     dice_score = (nsegs * intersection + smooth_numerator) / (union + smooth_denominator)
