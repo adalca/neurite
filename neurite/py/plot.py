@@ -36,7 +36,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable  # plotting
 def slices(
     slices_in: Union[np.ndarray, torch.Tensor, Sequence[Union[np.ndarray, torch.Tensor]]],
     titles: Union[str, List[str], None] = None,
-    cmaps=Sequence[Union[str, Colormap]],
+    cmaps: Sequence[Union[str, Colormap]] = None,
     norms=None,
     do_colorbars: bool = False,
     grid: bool = False,          # option to plot the images in a grid or a single row
