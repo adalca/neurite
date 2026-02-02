@@ -83,8 +83,14 @@ def gaussian_smoothing(
     ndim = input_tensor.dim() - 2
     nchannels = input_tensor.shape[1]
 
-    # Create Gaussian kernel with automatic sizing
-    kernel = ne.gaussian_kernel(sigma=sigma, truncate=truncate, ndim=ndim)
+    # Create Gaussian kernel with automatic sizing (on same device/dtype as input)
+    kernel = ne.gaussian_kernel(
+        sigma=sigma,
+        truncate=truncate,
+        ndim=ndim,
+        device=input_tensor.device,
+        dtype=input_tensor.dtype,
+    )
 
     # Add channel dimensions for depthwise convolution: (nchannels, 1, *spatial)
     kernel = kernel.unsqueeze(0).unsqueeze(0)
