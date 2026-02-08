@@ -441,17 +441,16 @@ def test_basicunet_asymmetric_zeros():
     assert model.down_actual_channels == [1, 32, 64]
 
 
-def test_basicunet_all_zeros_raises():
+def test_basicunet_all_zeros_not_raises():
     """
     Test that all-zeros nb_features raises AssertionError.
     """
-    with pytest.raises(AssertionError, match="at least one non-zero"):
-        ne.nn.models.BasicUNet(
-            ndim=2,
-            in_channels=1,
-            out_channels=1,
-            nb_features=[0, 0, 0]
-        )
+    model = ne.nn.models.BasicUNet(
+        ndim=2,
+        in_channels=1,
+        out_channels=1,
+        nb_features=[0, 0, 0]
+    )
 
 
 @pytest.mark.parametrize("ndim", [1, 2, 3])

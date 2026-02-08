@@ -157,11 +157,6 @@ class BasicUNet(nn.Module):
             "All elements in nb_features must be integers"
         )
 
-        # Check at least one non-zero feature in downsampling
-        assert any(f != 0 for f in downsampling_features), (
-            "nb_features must have at least one non-zero value in downsampling features"
-        )
-
         # Store feature specs as immutables
         self.downsampling_features = tuple(downsampling_features)
         self.upsampling_features = tuple(upsampling_features)
