@@ -32,6 +32,7 @@ __all__ = [
     "random_smoothed_noise",
     "upsample_noise",
     "fractal_noise",
+    "parse_non_spatial_dims",
 ]
 
 
@@ -162,7 +163,7 @@ def dice(
             )
 
     # Parse and validate non_spatial_dims (handles None by setting num_non_spatial=0)
-    num_non_spatial, num_spatial = _parse_non_spatial_dims(non_spatial_dims, segs[0].ndim)
+    num_non_spatial, num_spatial = parse_non_spatial_dims(non_spatial_dims, segs[0].ndim)
 
     # Flatten spatial dimensions (when num_non_spatial=0, this flattens all dims)
     segs_flat = [seg.flatten(num_non_spatial) for seg in segs]
@@ -262,7 +263,7 @@ def ncc(
         )
 
     # Parse non_spatial_dims
-    num_non_spatial, num_spatial = _parse_non_spatial_dims(non_spatial_dims, tensor1.ndim)
+    num_non_spatial, num_spatial = parse_non_spatial_dims(non_spatial_dims, tensor1.ndim)
 
     if num_spatial not in [1, 2, 3]:
         raise ValueError(
@@ -384,7 +385,7 @@ def spatial_gradient(
            Medical Image Registration", IEEE TMI, 2019.
     """
     # Parse non_spatial_dims
-    num_non_spatial, num_spatial = _parse_non_spatial_dims(non_spatial_dims, input_tensor.ndim)
+    num_non_spatial, num_spatial = parse_non_spatial_dims(non_spatial_dims, input_tensor.ndim)
     assert num_spatial >= 1, f"Need at least 1 spatial dim to compute gradients, got {num_spatial}"
 
     return [torch.diff(input_tensor, dim=num_non_spatial + i) for i in range(num_spatial)]
@@ -805,7 +806,7 @@ def resample(
     if size is None and scale_factor is None:
         raise ValueError("Either size or scale_factor must be specified")
 
-    num_non_spatial, _ = _parse_non_spatial_dims(non_spatial_dims, input_tensor.ndim)
+    num_non_spatial, _ = parse_non_spatial_dims(non_spatial_dims, input_tensor.ndim)
     dims_to_add = 2 - num_non_spatial
 
     # Add batch and/or channel dimensions if needed
@@ -913,7 +914,7 @@ def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> tor
     return filtered_tensor
 
 
-def _parse_non_spatial_dims(
+def parse_non_spatial_dims(
     non_spatial_dims: Union[Sequence[int], None],
     tensor_ndim: int
 ) -> Tuple[int, int]:
@@ -942,11 +943,11 @@ def _parse_non_spatial_dims(
 
     Examples
     --------
-    >>> _parse_non_spatial_dims(None, 3)
+    >>> parse_non_spatial_dims(None, 3)
     (0, 3)
-    >>> _parse_non_spatial_dims((0,), 4)
+    >>> parse_non_spatial_dims((0,), 4)
     (1, 3)
-    >>> _parse_non_spatial_dims((0, 1, 2), 5)
+    >>> parse_non_spatial_dims((0, 1, 2), 5)
     (3, 2)
     """
     if non_spatial_dims is None:
@@ -1166,7 +1167,7 @@ def crop(
         raise ValueError("size and scale_factor are mutually exclusive")
 
     # Handle non-spatial dimensions
-    num_non_spatial, num_spatial = _parse_non_spatial_dims(non_spatial_dims, input_tensor.dim())
+    num_non_spatial, num_spatial = parse_non_spatial_dims(non_spatial_dims, input_tensor.dim())
     spatial_dims = list(range(num_non_spatial, input_tensor.dim()))
 
     if size is not None:
@@ -1489,7 +1490,7 @@ def random_smoothed_noise(
     >>> # Per-dimension sigma values
     >>> noise = ne.random_smoothed_noise(shape=(64, 64), sigma=[1.0, 2.0])
     """
-    num_non_spatial, _ = _parse_non_spatial_dims(
+    num_non_spatial, _ = parse_non_spatial_dims(
         non_spatial_dims=non_spatial_dims,
         tensor_ndim=len(shape)
     )
@@ -1560,7 +1561,7 @@ def upsample_noise(
     >>> noise.shape
     torch.Size([2, 3, 64, 64])
     """
-    num_non_spatial, num_spatial = _parse_non_spatial_dims(
+    num_non_spatial, num_spatial = parse_non_spatial_dims(
         non_spatial_dims=non_spatial_dims,
         tensor_ndim=len(shape)
     )
@@ -1652,7 +1653,7 @@ def fractal_noise(
     """
     import numpy as np
 
-    num_non_spatial, _ = _parse_non_spatial_dims(
+    num_non_spatial, _ = parse_non_spatial_dims(
         non_spatial_dims=non_spatial_dims,
         tensor_ndim=len(shape)
     )
