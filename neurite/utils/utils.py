@@ -42,7 +42,6 @@ __all__ = [
     "downsampling_conv_blocks",
     "upsampling_conv_blocks",
     "build_normalization",
-    "early_stopping",
 ]
 
 
@@ -586,46 +585,3 @@ def build_normalization(
         normalization = nn.GroupNorm(num_groups, num_features, eps=eps, affine=affine, **kwargs)
 
     return normalization
-
-
-def early_stopping(
-    loss_history: Sequence[float],
-    patience: int = 100,
-    threshold: float = 0.0,
-    warm_start_steps: int = 0
-) -> bool:
-    """
-    Check if training should stop based on loss history.
-
-    Parameters
-    ----------
-    loss_history : Sequence[float]
-        History of loss values (lower is better).
-    patience : int
-        Number of steps without improvement before stopping.
-    threshold : float
-        Minimum decrease to count as improvement.
-    warm_start_steps : int
-        Number of initial steps to skip.
-
-    Returns
-    -------
-    bool
-        True if training should stop.
-
-    Examples
-    --------
-    >>> history = [1.0, 0.9, 0.8, 0.8, 0.8, 0.8, 0.8]
-    >>> early_stopping(history, patience=3)
-    True
-    >>> early_stopping(history, patience=10)
-    False
-    """
-    relevant = loss_history[warm_start_steps:]
-    if len(relevant) <= patience:
-        return False
-
-    best_before = min(relevant[:-patience])
-    best_recent = min(relevant[-patience:])
-
-    return best_recent >= best_before - threshold
