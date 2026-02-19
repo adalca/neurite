@@ -30,6 +30,7 @@ def gaussian_smoothing(
     input_tensor: torch.Tensor,
     sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
     truncate: Union[int, float, Sequence[Union[int, float]]] = 3,
+    normalize: Union[Literal["sum"], None] = "sum",
 ) -> torch.Tensor:
     """
     Apply Gaussian smoothing to the {1D, 2D, 3D} input tensor.
@@ -49,6 +50,8 @@ def gaussian_smoothing(
         Number of standard deviations at which to truncate the kernel. If scalar, same
         truncate value is used for all dimensions. If Sequence, different truncate values
         can be specified per dimension (must match sigma length).
+    normalize : {'sum'} or None, default='sum'
+        How to normalize the Gaussian kernel. See `neurite.gaussian_kernel` for details.
 
     Returns
     -------
@@ -88,6 +91,7 @@ def gaussian_smoothing(
         sigma=sigma,
         truncate=truncate,
         ndim=ndim,
+        normalize=normalize,
         device=input_tensor.device,
         dtype=input_tensor.dtype,
     )
