@@ -979,6 +979,7 @@ def gaussian_kernel(
     sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
     truncate: Union[int, float, Sequence[Union[int, float]]] = 3,
     ndim: Optional[int] = None,
+    normalize: Union[Literal["sum"], None] = "sum",
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = torch.float32,
 ) -> torch.Tensor:
@@ -1006,6 +1007,10 @@ def gaussian_kernel(
     ndim : int, optional
         Number of spatial dimensions (1, 2, or 3). Only required when sigma is scalar.
         If sigma is a sequence, ndim is inferred from its length. Default is None.
+    normalize : {'sum'} or None, default='sum'
+        How to normalize the kernel:
+        - 'sum': divide by the discrete sum of kernel values so the kernel sums to 1.
+        - None: no normalization. Returns raw exp(-0.5 * (x/sigma)^2) values.
     device : torch.device, optional
         Device on which to create the kernel tensor. Default is None.
     dtype : torch.dtype, optional
@@ -1020,7 +1025,7 @@ def gaussian_kernel(
     Examples
     --------
     >>> import torch
-    # Make a 3D kernel with automatic sizing
+    # Make a 3D kernel with automatic sizing (normalized by sum, default)
     >>> gaussian_kernel_ = gaussian_kernel(sigma=1.0, ndim=3)
     >>> gaussian_kernel_.shape
     torch.Size([7, 7, 7])
@@ -1036,11 +1041,9 @@ def gaussian_kernel(
     >>> gaussian_kernel_.shape
     torch.Size([17])
 
-    # Per-dimension truncate values
-    >>> gaussian_kernel_ = gaussian_kernel(sigma=(1.0, 2.0, 3.0), truncate=(3, 4, 5))
-    # Kernel sizes: [7, 17, 31]
-    >>> gaussian_kernel_.shape
-    torch.Size([7, 17, 31])
+    # Unnormalized kernel
+    >>> gaussian_kernel_ = gaussian_kernel(sigma=1.0, ndim=2, normalize=None)
+    >>> gaussian_kernel_.sum()  # Will NOT be 1.0
 
     Notes
     -----
@@ -1097,7 +1100,10 @@ def gaussian_kernel(
 
     # Calculate the Gaussian function: exp(-0.5 * sum((x / sigma)^2))
     kernel = torch.exp(-0.5 * (grid ** 2 / sigma_tensor**2).sum(dim=-1))
-    kernel /= kernel.sum()
+
+    assert normalize in {"sum", None}, f"normalize must be 'sum' or None, got '{normalize}'"
+    if normalize == "sum":
+        kernel /= kernel.sum()
 
     return kernel
 
