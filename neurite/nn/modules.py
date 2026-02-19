@@ -1292,6 +1292,7 @@ class GaussianBlur(nn.Module):
         self,
         sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
         truncate: Union[int, float, Sequence[Union[int, float]]] = 3,
+        normalize: Union[Literal["sum"], None] = "sum",
     ):
         """
         Initialize `GaussianBlur`.
@@ -1305,6 +1306,8 @@ class GaussianBlur(nn.Module):
             Number of standard deviations at which to truncate the kernel. If scalar, same
             truncate value is used for all dimensions. If Sequence, different truncate values
             can be specified per dimension (must match sigma length).
+        normalize : {'sum'} or None, default='sum'
+            How to normalize the Gaussian kernel. See `neurite.gaussian_kernel` for details.
 
         Notes
         -----
@@ -1316,6 +1319,7 @@ class GaussianBlur(nn.Module):
         super().__init__()
         self.sigma = sigma
         self.truncate = truncate
+        self.normalize = normalize
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
@@ -1335,7 +1339,8 @@ class GaussianBlur(nn.Module):
         return nef.gaussian_smoothing(
             input_tensor=input_tensor,
             sigma=self.sigma,
-            truncate=self.truncate
+            truncate=self.truncate,
+            normalize=self.normalize,
         )
 
 
