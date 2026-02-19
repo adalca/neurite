@@ -229,6 +229,27 @@ def test_gaussian_kernel_center_is_maximum():
     assert kernel_2d[center_2d] == kernel_2d.max()
 
 
+def test_gaussian_kernel_normalize_none():
+    """Test that normalize=None returns unnormalized kernel (does not sum to 1)."""
+    kernel = ne.gaussian_kernel(sigma=1.0, ndim=2, normalize=None)
+
+    # Center value should be exp(0) = 1.0 (unnormalized Gaussian peak)
+    center = kernel.shape[0] // 2
+
+    assert torch.allclose(kernel[center, center], torch.tensor(1.0), atol=1e-6)
+
+    # Sum should NOT be 1.0 (it will be > 1 for any kernel larger than 1x1)
+    assert kernel.sum() > 1.0
+
+
+def test_gaussian_kernel_normalize_sum_is_default():
+    """Test that normalize='sum' produces identical output to the default."""
+    kernel_default = ne.gaussian_kernel(sigma=2.0, ndim=3)
+    kernel_sum = ne.gaussian_kernel(sigma=2.0, ndim=3, normalize="sum")
+
+    assert torch.allclose(kernel_default, kernel_sum)
+
+
 @pytest.mark.parametrize("shape,non_spatial_dims", [
     ((64, 64), None),
     ((3, 64, 64), (0,)),
