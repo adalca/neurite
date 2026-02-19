@@ -1439,6 +1439,7 @@ def random_smoothed_noise(
     sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
     magnitude: float = 1.0,
     non_spatial_dims: Union[Sequence[int], None] = None,
+    normalize: Union[Literal["sum"], None] = "sum",
     device: Union[torch.device, None] = None,
 ) -> torch.Tensor:
     """
@@ -1465,6 +1466,8 @@ def random_smoothed_noise(
         - None: tensor is pure spatial (*spatial,)
         - (0,): first dim is non-spatial (C, *spatial)
         - (0, 1): first two dims are non-spatial (B, C, *spatial)
+    normalize : {'sum'} or None, default='sum'
+        How to normalize the Gaussian kernel. See `neurite.gaussian_kernel` for details.
     device : torch.device or None, default=None
         Device for tensor allocation. If None, defaults to CPU.
 
@@ -1508,7 +1511,7 @@ def random_smoothed_noise(
 
     noise = torch.normal(0, 1, size=shape, device=device)
     noise, orig_shape = batch_nonspatial(noise, non_spatial_dims)
-    noise = nef.gaussian_smoothing(noise, sigma=sigma, truncate=3)
+    noise = nef.gaussian_smoothing(noise, sigma=sigma, truncate=3, normalize=normalize)
 
     # Normalize to zero mean and specified magnitude
     noise -= noise.mean()
@@ -1595,6 +1598,7 @@ def fractal_noise(
     magnitude: float = 1.0,
     weights: Union[Sequence[float], None] = None,
     non_spatial_dims: Union[Sequence[int], None] = None,
+    normalize: Union[Literal["sum"], None] = "sum",
     device: Union[torch.device, None] = None,
     method: Literal['blur', 'upsample'] = 'blur'
 ) -> torch.Tensor:
@@ -1628,6 +1632,9 @@ def fractal_noise(
         - None: tensor is pure spatial (*spatial,)
         - (0,): first dim is non-spatial (C, *spatial)
         - (0, 1): first two dims are non-spatial (B, C, *spatial)
+    normalize : {'sum'} or None, default='sum'
+        How to normalize the Gaussian kernel. See `neurite.gaussian_kernel` for details.
+        Only used when method='blur'.
     device : torch.device or None, default=None
         Device for tensor allocation.
     method : {'blur', 'upsample'}, default='blur'
@@ -1693,7 +1700,8 @@ def fractal_noise(
                 sigma=scale,
                 magnitude=1.0,
                 non_spatial_dims=non_spatial_dims,
-                device=device
+                normalize=normalize,
+                device=device,
             )
         else:  # method == 'upsample'
             sample = upsample_noise(
