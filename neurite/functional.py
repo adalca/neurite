@@ -979,7 +979,7 @@ def gaussian_kernel(
     sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
     truncate: Union[int, float, Sequence[Union[int, float]]] = 3,
     ndim: Optional[int] = None,
-    normalize: Union[Literal["sum"], None] = "sum",
+    normalize: Union[Literal["sum", "gaussian"], None] = "sum",
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = torch.float32,
 ) -> torch.Tensor:
@@ -1007,9 +1007,11 @@ def gaussian_kernel(
     ndim : int, optional
         Number of spatial dimensions (1, 2, or 3). Only required when sigma is scalar.
         If sigma is a sequence, ndim is inferred from its length. Default is None.
-    normalize : {'sum'} or None, default='sum'
+    normalize : {'sum', 'gaussian'} or None, default='sum'
         How to normalize the kernel:
         - 'sum': divide by the discrete sum of kernel values so the kernel sums to 1.
+        - 'gaussian': divide by the analytical Gaussian normalization constant
+          (2*pi)^(ndim/2) * prod(sigmas). The center value equals the true PDF peak.
         - None: no normalization. Returns raw exp(-0.5 * (x/sigma)^2) values.
     device : torch.device, optional
         Device on which to create the kernel tensor. Default is None.
@@ -1101,10 +1103,15 @@ def gaussian_kernel(
     # Calculate the Gaussian function: exp(-0.5 * sum((x / sigma)^2))
     kernel = torch.exp(-0.5 * (grid ** 2 / sigma_tensor**2).sum(dim=-1))
 
-    assert normalize in {"sum", None}, f"normalize must be 'sum' or None, got '{normalize}'"
+    assert normalize in {"sum", "gaussian", None}, (
+        f"normalize must be 'sum', 'gaussian', or None, got '{normalize}'"
+    )
+
     if normalize == "sum":
         kernel /= kernel.sum()
-
+    elif normalize == "gaussian":
+        norm_const = (2 * torch.pi) ** (ndim / 2) * torch.prod(sigma_tensor)
+        kernel /= norm_const
     return kernel
 
 
@@ -1439,7 +1446,7 @@ def random_smoothed_noise(
     sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
     magnitude: float = 1.0,
     non_spatial_dims: Union[Sequence[int], None] = None,
-    normalize: Union[Literal["sum"], None] = "sum",
+    normalize: Union[Literal["sum", "gaussian"], None] = "sum",
     device: Union[torch.device, None] = None,
 ) -> torch.Tensor:
     """
@@ -1466,7 +1473,7 @@ def random_smoothed_noise(
         - None: tensor is pure spatial (*spatial,)
         - (0,): first dim is non-spatial (C, *spatial)
         - (0, 1): first two dims are non-spatial (B, C, *spatial)
-    normalize : {'sum'} or None, default='sum'
+    normalize : {'sum', 'gaussian'} or None, default='sum'
         How to normalize the Gaussian kernel. See `neurite.gaussian_kernel` for details.
     device : torch.device or None, default=None
         Device for tensor allocation. If None, defaults to CPU.
@@ -1598,7 +1605,7 @@ def fractal_noise(
     magnitude: float = 1.0,
     weights: Union[Sequence[float], None] = None,
     non_spatial_dims: Union[Sequence[int], None] = None,
-    normalize: Union[Literal["sum"], None] = "sum",
+    normalize: Union[Literal["sum", "gaussian"], None] = "sum",
     device: Union[torch.device, None] = None,
     method: Literal['blur', 'upsample'] = 'blur'
 ) -> torch.Tensor:
@@ -1632,7 +1639,7 @@ def fractal_noise(
         - None: tensor is pure spatial (*spatial,)
         - (0,): first dim is non-spatial (C, *spatial)
         - (0, 1): first two dims are non-spatial (B, C, *spatial)
-    normalize : {'sum'} or None, default='sum'
+    normalize : {'sum', 'gaussian'} or None, default='sum'
         How to normalize the Gaussian kernel. See `neurite.gaussian_kernel` for details.
         Only used when method='blur'.
     device : torch.device or None, default=None

@@ -30,7 +30,7 @@ def gaussian_smoothing(
     input_tensor: torch.Tensor,
     sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
     truncate: Union[int, float, Sequence[Union[int, float]]] = 3,
-    normalize: Union[Literal["sum"], None] = "sum",
+    normalize: Union[Literal["sum", "gaussian"], None] = "sum",
 ) -> torch.Tensor:
     """
     Apply Gaussian smoothing to the {1D, 2D, 3D} input tensor.
@@ -50,7 +50,7 @@ def gaussian_smoothing(
         Number of standard deviations at which to truncate the kernel. If scalar, same
         truncate value is used for all dimensions. If Sequence, different truncate values
         can be specified per dimension (must match sigma length).
-    normalize : {'sum'} or None, default='sum'
+    normalize : {'sum', 'gaussian'} or None, default='sum'
         How to normalize the Gaussian kernel. See `neurite.gaussian_kernel` for details.
 
     Returns
@@ -1195,7 +1195,7 @@ def random_smoothed_noise(
     shape: Sequence[int],
     sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
     magnitude: float = 1.0,
-    normalize: Union[Literal["sum"], None] = "sum",
+    normalize: Union[Literal["sum", "gaussian"], None] = "sum",
     device: Union[torch.device, None] = None,
 ) -> torch.Tensor:
     """
@@ -1211,7 +1211,7 @@ def random_smoothed_noise(
         is used for all spatial dimensions. If Sequence, different sigmas per dimension.
     magnitude : float, default=1.0
         Standard deviation of the noise after normalization.
-    normalize : {'sum'} or None, default='sum'
+    normalize : {'sum', 'gaussian'} or None, default='sum'
         How to normalize the Gaussian kernel. See `neurite.gaussian_kernel` for details.
     device : torch.device or None, default=None
         Device for tensor allocation. If None, defaults to CPU.
@@ -1293,7 +1293,7 @@ def fractal_noise(
     scales: Union[float, int, Sequence[Union[float, int]], None] = None,
     magnitude: float = 1.0,
     weights: Union[Sequence[float], None] = None,
-    normalize: Union[Literal["sum"], None] = "sum",
+    normalize: Union[Literal["sum", "gaussian"], None] = "sum",
     device: Union[torch.device, None] = None,
     method: Literal['blur', 'upsample'] = 'blur'
 ) -> torch.Tensor:
@@ -1310,7 +1310,7 @@ def fractal_noise(
         Standard deviation of the final normalized noise.
     weights : Sequence[float] or None, default=None
         Weight for each scale. If None, uses linearly increasing weights.
-    normalize : {'sum'} or None, default='sum'
+    normalize : {'sum', 'gaussian'} or None, default='sum'
         How to normalize the Gaussian kernel. See `neurite.gaussian_kernel` for details.
         Only used when method='blur'.
     device : torch.device or None, default=None

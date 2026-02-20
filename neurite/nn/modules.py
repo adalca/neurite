@@ -1292,7 +1292,7 @@ class GaussianBlur(nn.Module):
         self,
         sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
         truncate: Union[int, float, Sequence[Union[int, float]]] = 3,
-        normalize: Union[Literal["sum"], None] = "sum",
+        normalize: Union[Literal["sum", "gaussian"], None] = "sum",
     ):
         """
         Initialize `GaussianBlur`.
@@ -1306,7 +1306,7 @@ class GaussianBlur(nn.Module):
             Number of standard deviations at which to truncate the kernel. If scalar, same
             truncate value is used for all dimensions. If Sequence, different truncate values
             can be specified per dimension (must match sigma length).
-        normalize : {'sum'} or None, default='sum'
+        normalize : {'sum', 'gaussian'} or None, default='sum'
             How to normalize the Gaussian kernel. See `neurite.gaussian_kernel` for details.
 
         Notes

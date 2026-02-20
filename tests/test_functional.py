@@ -250,6 +250,29 @@ def test_gaussian_kernel_normalize_sum_is_default():
     assert torch.allclose(kernel_default, kernel_sum)
 
 
+@pytest.mark.parametrize("ndim", [1, 2, 3])
+def test_gaussian_kernel_normalize_gaussian_center_value(ndim: int):
+    """Test that center of gaussian-normalized kernel equals the true PDF peak."""
+    sigma = 1.5
+    kernel = ne.gaussian_kernel(sigma=sigma, ndim=ndim, normalize="gaussian")
+
+    center = tuple(s // 2 for s in kernel.shape)
+    expected_peak = 1.0 / ((2 * torch.pi) ** (ndim / 2) * sigma ** ndim)
+
+    assert torch.allclose(kernel[center], torch.tensor(expected_peak), atol=1e-6)
+
+
+def test_gaussian_kernel_normalize_gaussian_anisotropic():
+    """Test gaussian normalization with per-dimension sigmas."""
+    sigma = [0.5, 1.0, 2.0]
+    kernel = ne.gaussian_kernel(sigma=sigma, normalize="gaussian")
+
+    center = tuple(s // 2 for s in kernel.shape)
+    expected_peak = 1.0 / ((2 * torch.pi) ** 1.5 * 0.5 * 1.0 * 2.0)
+
+    assert torch.allclose(kernel[center], torch.tensor(expected_peak), atol=1e-6)
+
+
 @pytest.mark.parametrize("shape,non_spatial_dims", [
     ((64, 64), None),
     ((3, 64, 64), (0,)),
