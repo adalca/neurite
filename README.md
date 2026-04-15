@@ -1,6 +1,6 @@
 # Neurite
 
-A neural networks toolbox with a focus on medical image analysis in tensorflow/keras for now.
+A neural networks toolbox with a focus on medical image analysis in pytorch.
 
 > ⚠️ **Warning**: neurite is under active development. We are in the process of finalizing the structure for PyTorch -- interfaces may change. 
 
