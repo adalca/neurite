@@ -1,20 +1,17 @@
 """
-Neurite: A modular deep learning library for medical image processing.
-======================================================================
+Neurite: a PyTorch library for medical image processing.
+=========================================================
 
 Neurite is organized into two main parts:
 
-- **Backend-specific modules**: Each backend (e.g., PyTorch, TensorFlow) is contained in their own
-  subpackage with functionalities such as layers and models.
-- **Core Python utilities**: Common functionality implemented in pure Python and NumPy, organized under
-  the 'py' subpackage.
 
-Configuration
--------------
-The backend is determined by the environment variable `NEURITE_BACKEND`. The default backend is
-TensorFlow unless `NEURITE_BACKEND` is set to 'pytorch'.
+- **PyTorch neural network components**: `neurite/nn` contains trainable layers, losses, and
+  models.
+- **Core Python utilities**: `neurite/py` contains data handling, plotting, and other pure-Python
+  helpers.
 
-`neurite/torch` is the package of neurite that handles its PyTorch implementation.
+The package exposes the PyTorch implementation directly on import. The older TensorFlow backend
+lives on the `dev-tensorflow`.
 
 Modules
 -------
@@ -31,17 +28,12 @@ modules
     Foundational, trainable layers for constructing neural networks, including normalization
     layers and convolutional blocks.
 models
-    Prebuilt yet flexible neural network architectures designed for specific tasks, such as image
-    segmentation, registration, or classification. models leverage layers and modules from
-    other components of the neurite for streamlined object construction.
+    Prebuilt neural network architectures
 """
 
-# Note: This block is intentionally omitted from the module-level docstring to avoid showing it in documentation.
-# This module is the top-level initializer for the Neurite package. It performs the following tasks:
-# 
-#   1. Validates that the required version of pystrum is installed.
-#   2. Imports core utilities from the 'py' subpackage.
-#   3. Dynamically loads backend-specific modules based on the configured backend.
+# This module is the top-level initializer for the Neurite package.
+# It validates the required pystrum version, imports the PyTorch nn package,
+# and re-exports selected helpers from the pure-Python subpackages.
 
 
 # Define the version of neurite
