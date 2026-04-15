@@ -15,17 +15,11 @@ pip install neurite
 **For users who want to use the stable TensorFlow version**, use either `pip install neurite`, or pull/clone from the `dev-tensorflow` branch.
 
 ## Main tools
-- [layers](neurite/tf/layers.py): various network layers, sparse operations (e.g. `SpatiallySparse_Dense`), and `LocallyConnected3D` currently not included in `keras`  
-- [utils](neurite/tf/utils/utils.py): various utilities, including `interpn`: N-D gridded interpolation, and several nonlinearities  
-  - [model](neurite/tf/utils/model.py): `stack_models`: keras model stacking  
-  - [vae](neurite/tf/utils/vae.py): tools for analyzing (V)AE style models  
-  - [seg](neurite/tf/utils/seg.py): segmentation tools  
-- [models](neurite/tf/models.py): flexible models (many parameters to play with) particularly useful in medical image analysis, such as UNet/hourglass model, convolutional encoders and decoders   
-- [generators](neurite/tf/generators.py): generators for medical image volumes and various combinations of volumes, segmentation, categorical and other output  
-- [callbacks](neurite/tf/callbacks.py): a set of callbacks for `keras` training to help with understanding your fit, such as Dice measurements and volume-segmentation overlaps  
-- [dataproc](neurite/py/dataproc.py): a set of tools for processing medical imaging data for preparation for training/testing  
-- [metrics](neurite/tf/metrics.py): metrics (most of which can be used as loss functions), such as Dice or weighted categorical crossentropy  
-- [plot](neurite/py/plot.py): plotting tools, mostly for debugging models  
+- [nn.functional](neurite/nn/functional.py): tensor ops for smoothing, resampling, interpolation, masking, and spatial math.
+- [nn.modules](neurite/nn/modules.py): reusable stateful layers, losses, and preprocessing blocks.
+- [nn.models](neurite/nn/models.py): prebuilt architectures for arbitrary spatial dimensions (1d, 2d, 3d).
+- [py.plot](neurite/py/plot.py): plotting tools for tensor slices, volumes, and flow fields.
+- [utils.utils](neurite/utils/utils.py): lightweight factory and helper functions and tools.
 
 
 ## Papers:
