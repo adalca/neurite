@@ -194,7 +194,7 @@ def test_basicunet_forward_cuda():
 
 
 @pytest.mark.skipif(
-    not torch.mps.is_available(), reason="MPS device not available"
+    not torch.backends.mps.is_available(), reason="MPS device not available"
 )
 def test_basicunet_forward_mps():
     """
