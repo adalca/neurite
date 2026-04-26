@@ -394,7 +394,7 @@ def spatial_gradient(
 def reduce(
     tensor: torch.Tensor,
     reduction: str = 'mean',
-    dim: Union[int, tuple[int, ...], None] = None,
+    dim: Union[int, Tuple[int, ...], None] = None,
     keepdims: bool = False,
 ) -> torch.Tensor:
     """
