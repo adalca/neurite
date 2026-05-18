@@ -11,6 +11,22 @@ To use the Neurite library, either clone this repository and install the require
 ```
 pip install neurite
 ```
+## Pre-commit hooks
+
+This repo uses `pre-commit` to run `pycodestyle` before commits.
+
+Install once after cloning:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+You can also run the check manually:
+
+```bash
+pre-commit run pycodestyle --all-files
+```
 
 **For users who want to use the stable TensorFlow version**, use either `pip install neurite`, or pull/clone from the `dev-tensorflow` branch.
 

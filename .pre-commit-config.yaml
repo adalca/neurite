@@ -1,0 +1,13 @@
+repos:
+  - repo: local
+    hooks:
+      - id: pycodestyle
+        name: pycodestyle
+        entry: pycodestyle
+        language: python
+        types: [python]
+        additional_dependencies:
+          - pycodestyle==2.12.1
+        args:
+          - --ignore=E731,W291,W503,W504
+          - --max-line-length=100
