@@ -11,7 +11,7 @@ To use the Neurite library, either clone this repository and install the require
 ```
 pip install neurite
 ```
-## Pre-commit hooks
+### Pre-commit hooks
 
 This repo uses `pre-commit` to run `pycodestyle` before commits.
 
