@@ -103,3 +103,8 @@ CLAUDE.md
 neurite-sandbox/
 TODO/
 pyrightconfig.json
+AGENTS.md
+uv.lock
+.pi
+.codex
+.claude
