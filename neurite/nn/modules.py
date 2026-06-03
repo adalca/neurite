@@ -47,7 +47,7 @@ class Dice(nn.Module):
     # Example 1: Computing the hard dice score with binary seg maps
     >>> # Instantiate the dice score module
     >>> dice_module = ne.nn.modules.Dice()
-    >>> # Randomly sample binary tensors with 3 batches and 4 channels
+    >>> # Randomly sample binary tensors with 3 batches and 4 labels
     >>> seg1 = torch.randint(0, 2, (3, 4, 128, 128))
     >>> seg2 = torch.randint(0, 2, (3, 4, 128, 128))
     >>> # Compute the dice score and return
@@ -111,7 +111,7 @@ class Dice(nn.Module):
         Parameters
         ----------
         *segs : torch.Tensor
-            Two or more segmentation tensors of shape (B, C, *spatial_dims) with values in [0, 1].
+            Two or more segmentation tensors of shape (B, L, *spatial_dims) with values in [0, 1].
 
         Returns
         -------

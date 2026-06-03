@@ -585,12 +585,12 @@ def dice(
     keepdims: bool = True,
 ) -> torch.Tensor:
     """
-    Compute Dice score over multiple segmentation maps with shape (B, C, *spatial_dims).
+    Compute Dice score over multiple segmentation maps with shape (B, L, *spatial_dims).
 
     Parameters
     ----------
     *segs : torch.Tensor
-        Two or more segmentation tensors of shape (B, C, *spatial_dims) with values in [0, 1].
+        Two or more segmentation tensors of shape (B, L, *spatial_dims) with values in [0, 1].
     smooth_numerator : float, default=1e-12
         Smoothing constant added to the numerator.
     smooth_denominator : float, default=1e-12
@@ -608,24 +608,24 @@ def dice(
     Returns
     -------
     torch.Tensor
-        Dice score. If reduction=None, returns shape (B, C). Otherwise, reduced as specified.
+        Dice score. If reduction=None, returns shape (B, L). Otherwise, reduced as specified.
 
     Examples
     --------
-    >>> # Compute dice for 2 segmentation tensors (batch=2, classes=1, H=W=32) with no reduction
+    >>> # Compute dice for 2 segmentation tensors (batch=2, labels=1, H=W=32) with no reduction
     >>> seg1 = torch.rand((2, 1, 32, 32))
     >>> seg2 = torch.rand((2, 1, 32, 32))
     >>> score = dice(seg1, seg2, reduction=None)
     >>> print(score.shape)
     torch.Size([2, 1])
 
-    >>> # Compute the dice for three classes (batch=2, classes=3) with mean reduction
+    >>> # Compute the dice for three labels (batch=2, labels=3) with mean reduction
     >>> segs = [torch.rand((2, 3, 64, 64)) for _ in range(3)]
-    >>> per_class = dice(*segs, reduction='mean')
-    >>> print(per_class.shape)
+    >>> per_label = dice(*segs, reduction='mean')
+    >>> print(per_label.shape)
     torch.Size([1, 1])
     """
-    # Compute Dice using base implementation with (B, C) preserved
+    # Compute Dice using base implementation with (B, L) preserved
     dice_score = ne.dice(
         *segs,
         smooth_numerator=smooth_numerator,

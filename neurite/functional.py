@@ -100,7 +100,7 @@ def dice(
     Compute Dice score over multiple segmentation maps.
 
     Shape-agnostic implementation that can either compute a global Dice score
-    (when non_spatial_dims=None) or preserve batch/channel structure.
+    (when non_spatial_dims=None) or preserve batch/label structure.
 
     Parameters
     ----------
@@ -121,7 +121,7 @@ def dice(
         Dice score. Shape depends on non_spatial_dims:
         - If None: scalar
         - If (0,): shape (B,)
-        - If (0, 1): shape (B, C)
+        - If (0, 1): shape (B, L)
 
     Examples
     --------
@@ -140,7 +140,7 @@ def dice(
     >>> print(score.shape)
     torch.Size([4])
 
-    # Compute per-batch-and-channel dice
+    # Compute per-batch-and-label dice
     >>> seg1 = torch.rand(2, 3, 64, 64)
     >>> seg2 = torch.rand(2, 3, 64, 64)
     >>> score = dice(seg1, seg2, non_spatial_dims=(0, 1))
