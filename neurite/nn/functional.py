@@ -1058,38 +1058,49 @@ def bw_grid(
     vol_shape: Sequence[int],
     spacing: Union[int, Sequence[int]],
     thickness: int = 1,
-    indexing: str = 'ij'
+    indexing: Literal["ij", "xy"] = "ij",
+    device: Union[str, torch.device] = "cpu",
+    dtype: Union[str, torch.dtype] = torch.float32,
 ) -> torch.Tensor:
     """
-    Draw a black and white ND grid.
+    Draw a black and white grid with white lines on a black background.
 
     Parameters
     ----------
     vol_shape : Sequence[int]
-        Expected volume size (dimensions of the output grid).
+        Shape of the output tensor.
     spacing : int or Sequence[int]
-        Scalar or sequence the same size as vol_shape. Defines the spacing between grid lines in
-        each dimension.
+        Legacy grid spacing. Line starts repeat every `spacing + 1` pixels. If an int, the same
+        spacing is used for every dimension. If a sequence, it must have one value per dimension in
+        `vol_shape`.
     thickness : int, default=1
         Line thickness in pixels.
     indexing : {'ij', 'xy'}, default='ij'
-        Cartesian ('xy') or matrix ('ij') indexing of output.
+        Cartesian (`xy`) or matrix (`ij`) indexing mode passed to `torch.meshgrid`.
+    device : str or torch.device, default='cpu'
+        Device on which to create the grid.
+    dtype : str or torch.dtype, default=torch.float32
+        Data type of the output tensor.
 
     Returns
     -------
-    grid_vol : torch.Tensor
-        A volume with white lines (value=1) on black background (value=0).
+    torch.Tensor
+        A tensor of shape `vol_shape` with white lines (value 1) on a black background (value 0).
 
     Examples
     --------
-    >>> # Create a 2D grid with default 'ij' indexing
-    >>> grid_2d = bw_grid((100, 100), spacing=10, thickness=2)
-    >>> # Create a 3D grid with 'xy' indexing
-    >>> grid_3d = bw_grid((50, 50, 50), spacing=[10, 10, 10], thickness=1, indexing='xy')
+    >>> import neurite.nn.functional as nef
+    >>> grid = nef.bw_grid((1, 1, 5, 5), spacing=1)
+    >>> grid.shape
+    torch.Size([1, 1, 5, 5])
     """
-    raise NotImplementedError(
-        "bw_grid() has been moved to neurite_sandbox. "
-        "Please use: from neurite_sandbox.etienne_chollet.nn.functional import bw_grid"
+    return ne.bw_grid(
+        vol_shape=vol_shape,
+        spacing=spacing,
+        thickness=thickness,
+        indexing=indexing,
+        device=device,
+        dtype=dtype,
     )
 
 

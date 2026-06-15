@@ -7,6 +7,8 @@ to the original loop-based implementations.
 
 import pytest
 import torch
+from pystrum.pynd.ndutils import bw_grid as pystrum_bw_grid
+
 import neurite as ne
 import neurite.nn.functional as nef
 
@@ -184,7 +186,25 @@ def test_functional_volshape_to_ndgrid_sizes():
     size = (B, C, 43, 9, 10)
     the_grid = nef.volshape_to_ndgrid(size=size, stack=True)
     # nef wrapper handles B, C dims internally, still returns (ndim, *spatial)
-    assert tuple(the_grid.shape) == (3, 43, 9, 10) 
+    assert tuple(the_grid.shape) == (3, 43, 9, 10)
+
+
+@pytest.mark.parametrize("vol_shape,spacing,thickness", [
+    ((6, 7), 2, 1),
+    ((5, 6, 4), (1, 2, 1), 2),
+])
+def test_bw_grid_matches_pystrum(vol_shape, spacing, thickness):
+    """Test that bw_grid preserves the legacy pystrum grid convention."""
+    grid = ne.bw_grid(vol_shape=vol_shape, spacing=spacing, thickness=thickness)
+    expected = torch.as_tensor(pystrum_bw_grid(vol_shape, spacing, thickness), dtype=grid.dtype)
+
+    assert torch.equal(grid, expected)
+
+
+def test_bw_grid_rejects_spacing_length_mismatch():
+    """Test that per-dimension spacing must match the output shape length."""
+    with pytest.raises(AssertionError):
+        ne.bw_grid((5, 5), spacing=(1, 2, 3))
 
 
 def test_gaussian_kernel_sums_to_one():

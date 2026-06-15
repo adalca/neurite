@@ -19,6 +19,7 @@ __all__ = [
     "spatial_gradient",
     "reduce",
     "volshape_to_ndgrid",
+    "bw_grid",
     "apply_bernoulli_mask",
     "random_flip",
     "sample_image_from_labels",
@@ -549,6 +550,101 @@ def volshape_to_ndgrid(
         grid = torch.stack(grid, dim=0).contiguous()
 
     return grid
+
+
+def bw_grid(
+    vol_shape: Sequence[int],
+    spacing: Union[int, Sequence[int]],
+    thickness: int = 1,
+    indexing: Literal["ij", "xy"] = "ij",
+    device: Union[str, torch.device] = "cpu",
+    dtype: Union[str, torch.dtype] = torch.float32,
+) -> torch.Tensor:
+    """
+    Draw a black and white grid with white lines on a black background.
+
+    Parameters
+    ----------
+    vol_shape : Sequence[int]
+        Shape of the output tensor.
+    spacing : int or Sequence[int]
+        Legacy grid spacing. Line starts repeat every `spacing + 1` pixels. If an int, the same
+        spacing is used for every dimension. If a sequence, it must have one value per dimension in
+        `vol_shape`.
+    thickness : int, default=1
+        Line thickness in pixels.
+    indexing : {'ij', 'xy'}, default='ij'
+        Cartesian (`xy`) or matrix (`ij`) indexing mode passed to `torch.meshgrid`.
+    device : str or torch.device, default='cpu'
+        Device on which to create the grid.
+    dtype : str or torch.dtype, default=torch.float32
+        Data type of the output tensor.
+
+    Returns
+    -------
+    torch.Tensor
+        A tensor of shape `vol_shape` with white lines (value 1) on a black background (value 0).
+
+    Examples
+    --------
+    >>> import neurite as ne
+    >>> grid = ne.bw_grid((5, 5), spacing=1)
+    >>> grid
+    tensor([[1., 1., 1., 1., 1.],
+            [1., 0., 1., 0., 1.],
+            [1., 1., 1., 1., 1.],
+            [1., 0., 1., 0., 1.],
+            [1., 1., 1., 1., 1.]])
+
+    Notes
+    -----
+    This follows the original pystrum convention used by VoxelMorph: line starts repeat every
+    `spacing + 1` pixels, and the last pixel along each axis is always set to a grid line.
+    """
+    shape_values = list(vol_shape)
+    assert len(shape_values) > 0, "vol_shape must contain at least one dimension."
+    assert all(isinstance(value, int) and value > 0 for value in shape_values), (
+        f"vol_shape must contain positive integers, got {vol_shape}."
+    )
+
+    if isinstance(spacing, int):
+        spacing_values = [spacing] * len(shape_values)
+    else:
+        spacing_values = list(spacing)
+
+    assert len(spacing_values) == len(shape_values), (
+        f"spacing length ({len(spacing_values)}) must match vol_shape length ({len(shape_values)})."
+    )
+    assert all(isinstance(value, int) and value > 0 for value in spacing_values), (
+        f"spacing must contain positive integers, got {spacing}."
+    )
+    assert isinstance(thickness, int) and thickness > 0, (
+        f"thickness must be a positive integer, got {thickness}."
+    )
+    assert indexing in ("ij", "xy"), f"indexing must be 'ij' or 'xy', got {indexing}."
+
+    normalized_dtype = dtype if isinstance(dtype, torch.dtype) else getattr(torch, dtype)
+    grid_image = torch.zeros(shape_values, device=device, dtype=normalized_dtype)
+
+    for dim, size in enumerate(shape_values):
+        ranges = [
+            torch.arange(0, axis_size, device=device, dtype=torch.long)
+            for axis_size in shape_values
+        ]
+
+        for offset in range(thickness):
+            line_coords = torch.arange(
+                offset,
+                size,
+                spacing_values[dim] + 1,
+                device=device,
+                dtype=torch.long,
+            )
+            last_coord = torch.tensor([size - 1], device=device, dtype=torch.long)
+            ranges[dim] = torch.unique(torch.cat([line_coords, last_coord]))
+            grid_image[torch.meshgrid(*ranges, indexing=indexing)] = 1
+
+    return grid_image
 
 
 def subsample(
