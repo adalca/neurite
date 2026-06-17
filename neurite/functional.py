@@ -627,10 +627,9 @@ def bw_grid(
     grid_image = torch.zeros(shape_values, device=device, dtype=normalized_dtype)
 
     for dim, size in enumerate(shape_values):
-        ranges = [
-            torch.arange(0, axis_size, device=device, dtype=torch.long)
-            for axis_size in shape_values
-        ]
+        ranges = []
+        for axis_size in shape_values:
+            ranges.append(torch.arange(0, axis_size, device=device, dtype=torch.long))
 
         for offset in range(thickness):
             line_coords = torch.arange(
