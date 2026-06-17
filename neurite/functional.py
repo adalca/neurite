@@ -608,14 +608,14 @@ def bw_grid(
     )
 
     if isinstance(spacing, int):
-        spacing_values = [spacing] * len(shape_values)
+        spacing = [spacing] * len(shape_values)
     else:
-        spacing_values = list(spacing)
+        spacing = list(spacing)
 
-    if len(spacing_values) != len(shape_values):
+    if len(spacing) != len(shape_values):
         raise ValueError("spacing and vol_shape must have the same length.")
 
-    assert all(isinstance(value, int) and value > 0 for value in spacing_values), (
+    assert all(isinstance(value, int) and value > 0 for value in spacing), (
         f"spacing must contain positive integers, got {spacing}."
     )
     assert isinstance(thickness, int) and thickness > 0, (
@@ -632,13 +632,7 @@ def bw_grid(
             ranges.append(torch.arange(0, axis_size, device=device, dtype=torch.long))
 
         for offset in range(thickness):
-            line_coords = torch.arange(
-                offset,
-                size,
-                spacing_values[dim] + 1,
-                device=device,
-                dtype=torch.long,
-            )
+            line_coords = torch.arange(offset, size, spacing[dim] + 1, device=device, dtype=torch.long)
             last_coord = torch.tensor([size - 1], device=device, dtype=torch.long)
             ranges[dim] = torch.unique(torch.cat([line_coords, last_coord]))
             grid_image[torch.meshgrid(*ranges, indexing=indexing)] = 1
