@@ -612,9 +612,9 @@ def bw_grid(
     else:
         spacing_values = list(spacing)
 
-    assert len(spacing_values) == len(shape_values), (
-        f"spacing length ({len(spacing_values)}) must match vol_shape length ({len(shape_values)})."
-    )
+    if len(spacing_values) != len(shape_values):
+        raise ValueError("spacing and vol_shape must have the same length.")
+
     assert all(isinstance(value, int) and value > 0 for value in spacing_values), (
         f"spacing must contain positive integers, got {spacing}."
     )
