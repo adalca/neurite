@@ -8,6 +8,7 @@ from pathlib import Path
 
 # Third party imports
 import numpy as np
+import torch
 
 
 class DataSplit:
@@ -69,42 +70,67 @@ class DataSplit:
 
 def split_dataset(data, ratios, axis=0, randomize=True, rand_seed=None):
     """
-    split a dataset
-    used to split train in train/val, for example
+    Split a dataset into groups by relative ratios.
 
-    can input single numpy array or list
+    Parameters
+    ----------
+    data : numpy.ndarray or torch.Tensor or list or tuple
+        Dataset to split. Array and tensor inputs are split along `axis`. List and tuple inputs are
+        split along axis 0 and returned as the same container type.
+    ratios : sequence of number
+        Relative split sizes. Values are normalized by their sum before split indices are computed.
+    axis : int, default=0
+        Axis to split for NumPy arrays and torch tensors. List and tuple inputs only support axis 0.
+    randomize : bool, default=True
+        Shuffle item indices before splitting.
+    rand_seed : int, default=None
+        Seed passed to Python's `random` module when `randomize=True` and the value is truthy.
+
+    Returns
+    -------
+    list
+        Split datasets. NumPy inputs return NumPy arrays, torch inputs return tensors on the input
+        device, list inputs return lists, and tuple inputs return tuples.
     """
 
     nb_groups = len(ratios)
-    is_list = isinstance(data, (list, tuple))
+    is_sequence = isinstance(data, (list, tuple))
 
-    if is_list:
+    if is_sequence:
         nb_items = len(data)
-        assert axis == 0, \
-            'if data is a list or tuple, axis needs to be 0. got: %d' % axis
+        assert axis == 0, 'if data is a list or tuple, axis needs to be 0. got: %d' % axis
     else:
-        assert type(data) is np.ndarray, \
-            'data should be list, tuple or numpy array, got: %s' % type(data)
+        assert isinstance(data, (np.ndarray, torch.Tensor)), (
+            'data should be list, tuple, numpy array, or torch tensor, got: %s' % type(data)
+        )
         nb_items = data.shape[axis]
 
-    # get slice indices
     cratios = np.cumsum(ratios) / np.sum(ratios)
     sl_idx = [0] + [np.round(c * nb_items).astype(int) for c in cratios]
 
-    # prepare a list of all indices, and shuffle if necessary
     rng = list(range(nb_items))
     if randomize:
         if rand_seed:
             random.seed(rand_seed)
         random.shuffle(rng)
 
-    # extract data
-    if is_list:
-        split = [data[rng[sl_idx[f]:sl_idx[f + 1]]] for f in range(nb_groups)]
-    else:
-        split = [np.take(data, rng[sl_idx[f]:sl_idx[f + 1]], axis=axis) for f in range(nb_groups)]
-
+    split = []
+    for split_idx in range(nb_groups):
+        indices = rng[sl_idx[split_idx]:sl_idx[split_idx + 1]]
+        split.append(_take_items(data, indices, axis))
     return split
+
+
+def _take_items(data, indices, axis):
+    """Take split indices while preserving the input container type."""
+    if isinstance(data, torch.Tensor):
+        index_tensor = torch.as_tensor(indices, dtype=torch.long, device=data.device)
+        return torch.index_select(data, dim=axis, index=index_tensor)
+    if isinstance(data, np.ndarray):
+        return np.take(data, indices, axis=axis)
+    if isinstance(data, tuple):
+        return tuple(data[index] for index in indices)
+    return [data[index] for index in indices]
 
 
 def load_dataset(dataset):
