@@ -15,6 +15,7 @@ import numpy as np
 import scipy.ndimage.interpolation
 from tqdm import tqdm_notebook as tqdm  # for verbosity for forloops
 import matplotlib.pyplot as plt
+import torch
 
 
 # Custom imports
@@ -165,7 +166,57 @@ def vol_proc(vol_data,
              extract_nd=None,  # extracts a particular section
              force_binary=None,  # forces anything > 0 to be 1
              permute=None):
-    ''' process a volume with a series of intensity rescale, resize and crop rescale'''
+    """
+    Process a volume with intensity scaling, resizing, cropping, clipping, and extraction.
+
+    Parameters
+    ----------
+    vol_data : numpy.ndarray or torch.Tensor
+        Volume data. Tensor inputs support options with direct torch equivalents: `offset`,
+        `rescale`, `rescale_prctle`, `clip`, `extract_nd`, and `force_binary`.
+    crop : optional
+        Crop argument passed to `pystrum.pynd.ndutils.volcrop`. Tensor inputs do not support crop.
+    resize_shape : sequence of int, default=None
+        Target shape for scipy-based resizing. Tensor inputs only allow `None` or the current shape.
+    interp_order : int, default=None
+        Interpolation order passed to scipy resizing for NumPy inputs.
+    rescale : number, default=None
+        Multiplicative intensity scale.
+    rescale_prctle : number, default=None
+        Percentile used as an inverse multiplicative intensity scale.
+    resize_slices : sequence, default=None
+        Slice-resize shorthand for NumPy inputs. Tensor inputs do not support this option.
+    resize_slices_dim : int, default=None
+        Dimension inferred or used with `resize_slices`.
+    offset : number, default=None
+        Additive intensity offset.
+    clip : tuple of number, default=None
+        Inclusive `(min, max)` clipping range.
+    extract_nd : sequence of index sequences, default=None
+        Per-axis indices to extract with NumPy `ix_` semantics.
+    force_binary : bool, default=None
+        Convert positive values to 1 and non-positive values to 0.
+    permute : optional
+        Existing unused argument preserved for API compatibility.
+
+    Returns
+    -------
+    numpy.ndarray or torch.Tensor
+        Processed volume with the same backend as `vol_data`.
+    """
+    if isinstance(vol_data, torch.Tensor):
+        return _vol_proc_torch(
+            vol_data,
+            crop=crop,
+            resize_shape=resize_shape,
+            rescale=rescale,
+            rescale_prctle=rescale_prctle,
+            resize_slices=resize_slices,
+            offset=offset,
+            clip=clip,
+            extract_nd=extract_nd,
+            force_binary=force_binary,
+        )
 
     if offset is not None:
         vol_data = vol_data + offset
@@ -175,10 +226,7 @@ def vol_proc(vol_data,
         vol_data = np.multiply(vol_data, rescale)
 
     if rescale_prctle is not None:
-        # print("max:", np.max(vol_data.flat))
-        # print("test")
         rescale = np.percentile(vol_data.flat, rescale_prctle)
-        # print("rescaling by 1/%f" % (rescale))
         vol_data = np.multiply(vol_data.astype(float), 1 / rescale)
 
     if resize_slices is not None:
@@ -223,14 +271,95 @@ def vol_proc(vol_data,
     return vol_data
 
 
+def _vol_proc_torch(vol_data,
+                    crop=None,
+                    resize_shape=None,
+                    rescale=None,
+                    rescale_prctle=None,
+                    resize_slices=None,
+                    offset=None,
+                    clip=None,
+                    extract_nd=None,
+                    force_binary=None):
+    """Process tensor volumes with operations that have direct torch equivalents."""
+    assert crop is None, 'crop is not supported for torch tensor vol_data'
+    assert resize_slices is None, 'resize_slices is not supported for torch tensor vol_data'
+    if resize_shape is not None:
+        assert tuple(resize_shape) == tuple(vol_data.shape), (
+            'resize_shape is not supported for torch tensor vol_data unless it equals '
+            'vol_data.shape'
+        )
+
+    if offset is not None:
+        vol_data = vol_data + offset
+
+    if rescale is not None:
+        vol_data = vol_data * rescale
+
+    if rescale_prctle is not None:
+        quantile = torch.as_tensor(rescale_prctle / 100, device=vol_data.device)
+        rescale = torch.quantile(vol_data.flatten().to(torch.float64), quantile)
+        vol_data = vol_data.to(torch.float64) * (1 / rescale)
+
+    if clip is not None:
+        vol_data = torch.clamp(vol_data, min=clip[0], max=clip[1])
+
+    if extract_nd is not None:
+        vol_data = vol_data[_torch_ix(extract_nd, vol_data.device)]
+
+    if force_binary:
+        vol_data = (vol_data > 0).to(dtype=vol_data.dtype)
+
+    if clip is not None:
+        assert torch.max(vol_data) <= clip[1], 'clip failed'
+        assert torch.min(vol_data) >= clip[0], 'clip failed'
+    return vol_data
+
+
+def _torch_ix(indices, device):
+    """Create broadcastable tensor indices with NumPy `ix_` semantics."""
+    grids = []
+    ndim = len(indices)
+    for axis, values in enumerate(indices):
+        index = torch.as_tensor(values, dtype=torch.long, device=device)
+        shape = [1] * ndim
+        shape[axis] = -1
+        grids.append(index.reshape(shape))
+    return tuple(grids)
+
+
 def prior_to_weights(prior_filename, nargout=1, min_freq=0, force_binary=False, verbose=False):
-    ''' transform a 4D prior (3D + nb_labels) into a class weight vector '''
+    """
+    Transform a spatial class prior into class weights.
+
+    Parameters
+    ----------
+    prior_filename : str or numpy.ndarray or torch.Tensor
+        Path to an `.npz` file containing `prior`, or an in-memory prior. Tensor priors return
+        tensor weights on the same device.
+    nargout : int, default=1
+        If 1, return only weights. Any other value returns `(weights, prior)`.
+    min_freq : number, default=0
+        Minimum class frequency before weights are computed.
+    force_binary : bool, default=False
+        Merge labels 1..N into one foreground class before computing weights.
+    verbose : bool, default=False
+        Plot NumPy diagnostic histograms. Tensor priors do not support verbose plotting.
+
+    Returns
+    -------
+    numpy.ndarray or torch.Tensor or tuple
+        Class weights, or `(weights, prior)` when `nargout != 1`.
+    """
 
     # load prior
     if isinstance(prior_filename, six.string_types):
         prior = np.load(prior_filename)['prior']
     else:
         prior = prior_filename
+
+    if isinstance(prior, torch.Tensor):
+        return _prior_to_weights_torch(prior, nargout, min_freq, force_binary, verbose)
 
     # assumes prior is 4D.
     assert np.ndim(prior) == 4 or np.ndim(prior) == 3, "prior is the wrong number of dimensions"
@@ -276,6 +405,37 @@ def prior_to_weights(prior_filename, nargout=1, min_freq=0, force_binary=False, 
         return weights
     else:
         return (weights, prior)
+
+
+def _prior_to_weights_torch(prior, nargout, min_freq, force_binary, verbose):
+    """Compute class weights for tensor priors without crossing into NumPy reductions."""
+    assert not verbose, 'verbose is not supported for torch tensor priors'
+    assert prior.ndim == 4 or prior.ndim == 3, 'prior is the wrong number of dimensions'
+
+    prior_flat = prior.reshape((-1, prior.shape[-1]))
+    if force_binary:
+        nb_labels = prior_flat.shape[-1]
+        foreground = torch.sum(prior_flat[:, 1:nb_labels], dim=1, keepdim=True)
+        prior_flat = torch.cat((prior_flat[:, 0:1], foreground), dim=1)
+
+    class_count = torch.sum(prior_flat, dim=0)
+    class_prior = class_count / torch.sum(class_count)
+
+    min_freq_tensor = torch.as_tensor(min_freq, dtype=class_prior.dtype, device=class_prior.device)
+    class_prior = torch.where(class_prior < min_freq_tensor, min_freq_tensor, class_prior)
+    class_prior = class_prior / torch.sum(class_prior)
+
+    zero_mask = class_prior == 0
+    if torch.any(zero_mask):
+        print("Warning, found a label with 0 support. Setting its weight to 0!", file=sys.stderr)
+        class_prior = class_prior.clone()
+        class_prior[zero_mask] = torch.inf
+
+    weights = 1 / class_prior
+    weights = weights / torch.sum(weights)
+    if nargout == 1:
+        return weights
+    return (weights, prior)
 
 
 def filestruct_change(in_path, out_path, re_map,
