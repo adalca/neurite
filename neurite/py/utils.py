@@ -5,21 +5,56 @@ Python utilities for `neurite`.
 # Third party imports
 import numpy as np
 import matplotlib
+import torch
 
 
 def softmax(x, axis):
     """
-    softmax of a numpy array along a given dimension
+    Compute softmax along one axis.
+
+    Parameters
+    ----------
+    x : numpy.ndarray or torch.Tensor
+        Input array or tensor.
+    axis : int
+        Axis over which values are normalized.
+
+    Returns
+    -------
+    numpy.ndarray or torch.Tensor
+        Softmax values with the same backend as `x`.
     """
 
+    if isinstance(x, torch.Tensor):
+        return torch.softmax(x, dim=axis)
     return np.exp(x) / np.sum(np.exp(x), axis=axis, keepdims=True)
 
 
 def rebase_lab(labels):
     """
-    Rebase labels and return lookup table (LUT) to convert to new labels in
-    interval [0, N[ as: LUT[label_map]. Be sure to pass all possible labels.
+    Rebase integer labels to contiguous labels starting at 0.
+
+    Parameters
+    ----------
+    labels : numpy.ndarray or torch.Tensor
+        Integer label map. Tensor inputs return tensor lookup tables on the input device.
+
+    Returns
+    -------
+    tuple
+        Pair `(lab_to_ind, ind_to_lab)`. `lab_to_ind[label]` maps original labels to rebased
+        labels, and `ind_to_lab[index]` maps rebased labels back to original labels.
     """
+
+    if isinstance(labels, torch.Tensor):
+        assert not labels.is_floating_point(), 'non-integer data'
+        ind_to_lab = torch.unique(labels, sorted=True)
+        max_label = int(ind_to_lab.max().item())
+        lab_to_ind = torch.zeros(max_label + 1, dtype=torch.long, device=labels.device)
+        for index, label in enumerate(ind_to_lab):
+            lab_to_ind[label] = index
+        return lab_to_ind, ind_to_lab
+
     labels = np.unique(labels)  # Sorted.
     assert np.issubdtype(labels.dtype, np.integer), 'non-integer data'
 
@@ -63,26 +98,39 @@ def load_fs_lut(filename):
 
 def seg_to_rgb_fs_lut(seg, label_table):
     """
-    Converts a hard segmentation into an RGB color image given a
-    freesurfer-style label lookup-table dictionary.
+    Convert a hard segmentation into a FreeSurfer LUT RGB image.
 
-    Parameters:
-        seg (ndarray): Hard segmentation array.
-        label_table (dict): Label lookup.
-    Returns:
-        ndarray: RGB (3-frame) image with shape of input seg.
+    Parameters
+    ----------
+    seg : numpy.ndarray or torch.Tensor
+        Hard segmentation array. Tensor inputs must be CPU tensors that do not require gradients.
+    label_table : dict
+        Lookup table keyed by integer label. Each present label must define a `color` key with
+        three RGB values in the range 0 to 255.
+
+    Returns
+    -------
+    numpy.ndarray
+        RGB image with shape `seg.shape + (3,)` and dtype `uint8`.
     """
+    if isinstance(seg, torch.Tensor):
+        assert not seg.requires_grad, 'seg must not have requires_grad=True'
+        assert seg.device.type == 'cpu', 'seg tensor must be on CPU'
+        seg = seg.numpy()
+    else:
+        seg = np.asarray(seg)
+
     unique = np.unique(seg)
     color_seg = np.zeros((*seg.shape, 3), dtype='uint8')
     for sid in unique:
-        label = label_table.get(sid)
+        label = label_table.get(int(sid))
         if label is not None:
             color_seg[seg == sid] = label['color']
     return color_seg
 
 
 def fs_lut_to_cmap(lut):
-    """ 
+    """
     convert a freesurfer LUT to a matplotlib colormap.
 
     example
