@@ -33,6 +33,29 @@ from matplotlib.colors import Normalize
 from mpl_toolkits.axes_grid1 import make_axes_locatable  # plotting
 
 
+def _as_numpy_plot_array(array_like: Union[np.ndarray, torch.Tensor], name: str = 'array'):
+    """
+    Return NumPy-compatible plotting data without detaching or copying tensor inputs.
+
+    Parameters
+    ----------
+    array_like : numpy.ndarray or torch.Tensor
+        Plot data. Tensor inputs must be CPU tensors with `requires_grad=False`.
+    name : str, default='array'
+        Name used in assertion messages.
+
+    Returns
+    -------
+    numpy.ndarray
+        NumPy array view or conversion suitable for Matplotlib and NumPy plotting utilities.
+    """
+    if isinstance(array_like, torch.Tensor):
+        assert not array_like.requires_grad, '%s must not have requires_grad=True' % name
+        assert array_like.device.type == 'cpu', '%s tensor must be on CPU' % name
+        return array_like.numpy()
+    return np.asarray(array_like)
+
+
 def slices(
     slices_in: Union[np.ndarray, torch.Tensor, Sequence[Union[np.ndarray, torch.Tensor]]],
     titles: Union[str, List[str], None] = None,
@@ -53,8 +76,9 @@ def slices(
     Parameters
     ----------
     slices_in : array_like or list of array_like
-        A 2D image or list of 2D images to plot. Each element must be
-        either a 2D array or an RGB image (shape HxWx3).
+        A 2D image or list of 2D images to plot. Each element must be either a 2D array
+        or an RGB image (shape HxWx3). Torch tensors must be on CPU and must not have
+        `requires_grad=True`; the function does not detach tensors or copy CUDA tensors.
     titles : str or list of str, optional
         Title or list of titles for each subplot. A single string is
         applied to all plots.
@@ -105,7 +129,7 @@ def slices(
         slices_in = [slices_in]
 
     nb_plots = len(slices_in)
-    slices_in = list(map(np.squeeze, slices_in))
+    slices_in = [np.squeeze(_as_numpy_plot_array(slice_in, 'slice')) for slice_in in slices_in]
 
     for _, slice_in in enumerate(slices_in):
         if len(slice_in.shape) != 2:
@@ -213,14 +237,16 @@ def volume3D(vols, slice_nos=None, data_squeeze=True, **kwargs):
     plot slices of a 3D volume by taking a middle slice of each axis
 
     Parameters:
-        vols: a 3d volume or list of 3d volumes
-        slice_nos (optional): a list of 3 elements of the slice numbers for each axis, 
+        vols: a 3d volume or list of 3d volumes. Torch tensors must be on CPU and must not
+        have `requires_grad=True`; the function does not detach tensors or copy CUDA tensors.
+        slice_nos (optional): a list of 3 elements of the slice numbers for each axis,
             or list of lists of 3 elements. if None, the middle slices will be used.
         data_squeeze: remove singleton dimensions before plotting
     """
     if not isinstance(vols, (tuple, list)):
         vols = [vols]
     nb_vols = len(vols)
+    vols = [_as_numpy_plot_array(vol, 'vol') for vol in vols]
     vols = list(map(np.squeeze if data_squeeze else np.asarray, vols))
     assert all(v.ndim == 3 for v in vols), 'only 3d volumes allowed in volume3D'
 
@@ -285,10 +311,14 @@ def flow(slices_in,           # the 2D slices
          scale=1):            # note quiver essentially draws quiver length = 1/scale
     '''
     plot a grid of flows (2d+2 images)
+
+    Torch tensors must be on CPU and must not have `requires_grad=True`; the function does not
+    detach tensors or copy CUDA tensors.
     '''
 
     # input processing
     nb_plots = len(slices_in)
+    slices_in = [_as_numpy_plot_array(slice_in, 'flow') for slice_in in slices_in]
     for slice_in in slices_in:
         assert len(slice_in.shape) == 3, 'each slice has to be 3d: 2d+2 channels'
         assert slice_in.shape[-1] == 2, 'each slice has to be 3d: 2d+2 channels'
@@ -395,6 +425,8 @@ def flow(slices_in,           # the 2D slices
 
 
 def pca(pca, x, y, plot_block=True):
+    x = _as_numpy_plot_array(x, 'x')
+    y = _as_numpy_plot_array(y, 'y')
     x_mean = np.mean(x, 0)
     x_std = np.std(x, 0)
 
@@ -412,12 +444,12 @@ def pca(pca, x, y, plot_block=True):
     plt.subplot(2, 3, 2)
     plt.plot(np.cumsum(pca.explained_variance_ratio_))
     plt.ylim([0, 1.01])
-    plt.volshape_to_ndgrid()
+    plt.grid()
     plt.title('cumvar explained')
     plt.subplot(2, 3, 3)
     plt.plot(np.cumsum(pca.explained_variance_ratio_))
     plt.ylim([0.8, 1.01])
-    plt.volshape_to_ndgrid()
+    plt.grid()
     plt.title('cumvar explained')
 
     plt.subplot(2, 3, 4)
