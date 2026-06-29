@@ -23,6 +23,9 @@ __all__ = [
     "random_flip",
     "sample_image_from_labels",
     "resample",
+    "pad_to_multiple_of",
+    "mask_border",
+    "one_hot",
     "filter_dim",
     "gaussian_kernel",
     "crop",
@@ -728,6 +731,153 @@ def resample(
     )
     return unbatch_nonspatial(resampled, orig_shape)
 
+
+def pad_to_multiple_of(
+    input_tensor: torch.Tensor,
+    multiple: int = 32,
+    non_spatial_dims: Union[Sequence[int], None] = None,
+    value: float = 0.0,
+) -> torch.Tensor:
+    """
+    Pad spatial dimensions to multiples of a fixed value.
+
+    Parameters
+    ----------
+    input_tensor : torch.Tensor
+        Tensor to pad.
+    multiple : int, default=32
+        Positive value that each spatial output size must be divisible by.
+    non_spatial_dims : Sequence[int] or None, default=None
+        Leading dimensions that are not padded. If None, every dimension is treated as spatial.
+    value : float, default=0.0
+        Constant padding value.
+
+    Returns
+    -------
+    torch.Tensor
+        Padded tensor with the same non-spatial shape and spatial sizes divisible by `multiple`.
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite as ne
+    >>> tensor = torch.ones(3, 5)
+    >>> padded = ne.pad_to_multiple_of(tensor, multiple=4)
+    >>> padded.shape
+    torch.Size([4, 8])
+
+    >>> tensor = torch.ones(2, 3, 5, 7)
+    >>> padded = ne.pad_to_multiple_of(tensor, multiple=4, non_spatial_dims=(0, 1))
+    >>> padded.shape
+    torch.Size([2, 3, 8, 8])
+    """
+    input_tensor, orig_shape = batch_nonspatial(input_tensor, non_spatial_dims)
+    padded = nef.pad_to_multiple_of(input_tensor, multiple=multiple, value=value)
+    return unbatch_nonspatial(padded, orig_shape)
+
+
+def mask_border(
+    mask: torch.Tensor,
+    thickness: int,
+    border_mode: Literal["inner", "outer"] = "inner",
+    non_spatial_dims: Union[Sequence[int], None] = None,
+) -> torch.Tensor:
+    """
+    Compute the inner or outer border of a binary mask.
+
+    Parameters
+    ----------
+    mask : torch.Tensor
+        Binary mask tensor.
+    thickness : int
+        Border thickness in voxels.
+    border_mode : {'inner', 'outer'}, default='inner'
+        Whether to return voxels inside the mask boundary or outside the mask boundary.
+    non_spatial_dims : Sequence[int] or None, default=None
+        Leading dimensions that index independent masks. If None, every dimension is spatial.
+
+    Returns
+    -------
+    torch.Tensor
+        Border mask with the same shape and dtype as `mask`.
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite as ne
+    >>> mask = torch.zeros(5, 5, dtype=torch.bool)
+    >>> mask[1:4, 1:4] = True
+    >>> border = ne.mask_border(mask, thickness=1)
+    >>> border.shape
+    torch.Size([5, 5])
+    """
+    mask, orig_shape = batch_nonspatial(mask, non_spatial_dims)
+    border = nef.mask_border(mask, thickness=thickness, border_mode=border_mode)
+    return unbatch_nonspatial(border, orig_shape)
+
+
+def one_hot(
+    label_tensor: torch.Tensor,
+    num_classes: Union[int, None] = None,
+    class_list: Union[Sequence[int], None] = None,
+    non_spatial_dims: Union[Sequence[int], None] = None,
+    dtype: torch.dtype = torch.float32,
+) -> torch.Tensor:
+    """
+    Convert integer labels to one-hot channels.
+
+    The class axis is inserted immediately after the leading non-spatial dimensions.
+
+    Parameters
+    ----------
+    label_tensor : torch.Tensor
+        Integer label tensor with shape `(*non_spatial, *spatial)`.
+    num_classes : int or None, default=None
+        Total number of classes. If None, it is inferred from `label_tensor.max() + 1`.
+    class_list : Sequence[int] or None, default=None
+        Class ids to keep in the output. If None, all classes are returned.
+    non_spatial_dims : Sequence[int] or None, default=None
+        Leading dimensions that are not class labels or spatial dimensions.
+    dtype : torch.dtype, default=torch.float32
+        Output dtype.
+
+    Returns
+    -------
+    torch.Tensor
+        One-hot tensor with shape `(*non_spatial, C, *spatial)`.
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite as ne
+    >>> labels = torch.tensor([[0, 1], [2, 1]])
+    >>> encoded = ne.one_hot(labels, num_classes=3)
+    >>> encoded.shape
+    torch.Size([3, 2, 2])
+
+    >>> labels = torch.randint(0, 3, (2, 5, 5))
+    >>> encoded = ne.one_hot(labels, num_classes=3, non_spatial_dims=(0,))
+    >>> encoded.shape
+    torch.Size([2, 3, 5, 5])
+    """
+    num_non_spatial, _ = parse_non_spatial_dims(non_spatial_dims, label_tensor.ndim)
+    labels = label_tensor.long()
+
+    if num_classes is None:
+        num_classes = int(labels.max().item()) + 1
+
+    encoded = F.one_hot(labels, num_classes=num_classes).to(dtype=dtype)
+    encoded = encoded.movedim(-1, num_non_spatial)
+
+    if class_list is None:
+        return encoded
+
+    classes = torch.as_tensor(class_list, device=label_tensor.device, dtype=torch.long)
+    assert classes.numel() > 0, "class_list must contain at least one class id."
+    assert int(classes.max().item()) < num_classes, "class_list contains an out-of-range class id."
+    assert int(classes.min().item()) >= 0, "class_list contains a negative class id."
+
+    return encoded.index_select(num_non_spatial, classes)
 
 def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> torch.Tensor:
     """

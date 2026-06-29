@@ -453,6 +453,142 @@ def test_resample_preserves_non_spatial_dims(shape, non_spatial_dims, expected_s
     assert result.shape == torch.Size(expected_shape)
 
 
+
+def test_pad_to_multiple_of_preserves_center_values():
+    """Test that pad_to_multiple_of center-pads spatial dimensions."""
+    tensor = torch.ones(1, 1, 3, 5)
+    result = nef.pad_to_multiple_of(tensor, multiple=4)
+
+    assert result.shape == (1, 1, 4, 8)
+    assert torch.equal(result[..., 0:3, 1:6], tensor)
+    assert result.sum() == tensor.sum()
+
+
+def test_top_level_pad_to_multiple_of_preserves_non_spatial_dims():
+    """Test top-level pad_to_multiple_of with explicit non-spatial dims."""
+    tensor = torch.ones(2, 3, 5, 7)
+    result = ne.pad_to_multiple_of(tensor, multiple=4, non_spatial_dims=(0, 1))
+
+    assert result.shape == (2, 3, 8, 8)
+
+
+def test_mask_border_inner_and_outer_2d():
+    """Test inner and outer mask borders for a simple square."""
+    mask = torch.zeros(1, 1, 5, 5, dtype=torch.bool)
+    mask[..., 1:4, 1:4] = True
+
+    inner = nef.mask_border(mask, thickness=1, border_mode="inner")
+    outer = nef.mask_border(mask, thickness=1, border_mode="outer")
+
+    expected_inner = torch.zeros_like(mask)
+    expected_inner[..., 1:4, 1:4] = True
+    expected_inner[..., 2, 2] = False
+
+    expected_outer = torch.ones_like(mask)
+    expected_outer[..., 1:4, 1:4] = False
+
+    assert torch.equal(inner, expected_inner)
+    assert torch.equal(outer, expected_outer)
+
+
+def test_top_level_mask_border_handles_pure_spatial_masks():
+    """Test top-level mask_border without batch or channel dimensions."""
+    mask = torch.zeros(5, 5, dtype=torch.bool)
+    mask[1:4, 1:4] = True
+    border = ne.mask_border(mask, thickness=1)
+
+    assert border.shape == mask.shape
+    assert border.sum() == 8
+
+
+def test_sample_locations_in_mask_samples_each_label():
+    """Test that sampled locations carry the correct label ids."""
+    torch.manual_seed(0)
+    mask = torch.zeros(1, 2, 3, 3, dtype=torch.float32)
+    mask[0, 0, 0, 0] = 1
+    mask[0, 0, 0, 1] = 1
+    mask[0, 1, 2, 1] = 1
+    mask[0, 1, 2, 2] = 1
+
+    locs = nef.sample_locations_in_mask(mask, nb_samples=[1, 2], replacement=False)
+
+    assert locs.shape == (1, 3, 3)
+    assert locs.dtype == torch.long
+    assert locs[0, :, -1].tolist() == [0, 1, 1]
+    for loc in locs[0]:
+        row, col, label = loc.tolist()
+        assert mask[0, label, row, col] > 0
+
+
+def test_sample_locations_on_border_samples_border_voxels():
+    """Test that border-location sampling uses the computed border mask."""
+    torch.manual_seed(0)
+    mask = torch.zeros(1, 1, 5, 5, dtype=torch.bool)
+    mask[..., 1:4, 1:4] = True
+
+    locs = nef.sample_locations_on_border(mask, thickness=1, nb_samples=4, replacement=False)
+    border = nef.mask_border(mask, thickness=1)
+
+    assert locs.shape == (1, 4, 3)
+    for loc in locs[0]:
+        row, col, label = loc.tolist()
+        assert label == 0
+        assert border[0, 0, row, col]
+
+
+def test_locs_to_mask_preserves_trailing_empty_labels():
+    """Test locs_to_mask can preserve absent trailing label channels."""
+    locs = torch.tensor([[[0, 1, 0], [2, 2, 1]]])
+    mask = nef.locs_to_mask(locs, vol_shape=(3, 3), nb_labels=3)
+
+    assert mask.shape == (1, 3, 3, 3)
+    assert mask[0, 0, 0, 1]
+    assert mask[0, 1, 2, 2]
+    assert not mask[0, 2].any()
+
+
+def test_extract_features_at_locs_returns_channelwise_samples():
+    """Test feature extraction at integer spatial locations."""
+    features = torch.arange(1 * 2 * 3 * 4).reshape(1, 2, 3, 4)
+    locs = torch.tensor([[[0, 0], [2, 3]]])
+
+    result = nef.extract_features_at_locs(features, locs)
+    expected = torch.tensor([[[0, 11], [12, 23]]])
+
+    assert torch.equal(result, expected)
+
+
+def test_sample_features_at_mask_locs_returns_labels():
+    """Test feature sampling from mask locations with label ids."""
+    torch.manual_seed(0)
+    features = torch.arange(1 * 1 * 3 * 3).reshape(1, 1, 3, 3).float()
+    mask = torch.zeros(1, 2, 3, 3)
+    mask[0, 0, 0, 0] = 1
+    mask[0, 1, 2, 2] = 1
+
+    sampled, labels = nef.sample_features_at_mask_locs(
+        features,
+        mask,
+        nb_samples=1,
+        return_label_ids=True,
+    )
+
+    assert sampled.shape == (1, 1, 2)
+    assert labels.tolist() == [[0, 1]]
+    assert sampled[0, 0].tolist() == [0.0, 8.0]
+
+
+def test_one_hot_top_level_and_nn_class_subset():
+    """Test one_hot class selection in top-level and NN APIs."""
+    labels = torch.tensor([[[0, 1], [2, 1]]])
+    top_level = ne.one_hot(labels, num_classes=3, class_list=[1, 2], non_spatial_dims=(0,))
+    nn_level = nef.one_hot(labels.unsqueeze(1), num_classes=3, class_list=[1, 2])
+
+    assert top_level.shape == (1, 2, 2, 2)
+    assert torch.equal(top_level, nn_level)
+    assert torch.equal(top_level[0, 0], torch.tensor([[0.0, 1.0], [0.0, 1.0]]))
+    assert torch.equal(top_level[0, 1], torch.tensor([[0.0, 0.0], [1.0, 0.0]]))
+
 def test_filter_dim_removes_nan_slices():
     """Test that slices containing NaN are removed."""
     tensor = torch.tensor([

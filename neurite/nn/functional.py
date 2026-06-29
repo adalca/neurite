@@ -466,7 +466,9 @@ def resample(
     >>> print(downsampled.shape)
     torch.Size([2, 1, 32, 32])
     """
-    assert size is not None or scale_factor is not None, "Either size or scale_factor must be specified"
+    assert size is not None or scale_factor is not None, (
+        "Either size or scale_factor must be specified"
+    )
 
     spatial_ndim = input_tensor.ndim - 2
     assert spatial_ndim in {1, 2, 3}, (
@@ -487,6 +489,433 @@ def resample(
         antialias=antialias,
     )
 
+
+def pad_to_multiple_of(
+    input_tensor: torch.Tensor,
+    multiple: int = 32,
+    value: float = 0.0,
+) -> torch.Tensor:
+    """
+    Pad spatial dimensions to multiples of a fixed value.
+
+    Parameters
+    ----------
+    input_tensor : torch.Tensor
+        Tensor with shape `(B, C, *spatial)`.
+    multiple : int, default=32
+        Positive value that each spatial output size must be divisible by.
+    value : float, default=0.0
+        Constant padding value.
+
+    Returns
+    -------
+    torch.Tensor
+        Padded tensor with shape `(B, C, *padded_spatial)`.
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite.nn.functional as nef
+    >>> tensor = torch.ones(2, 3, 5, 7)
+    >>> padded = nef.pad_to_multiple_of(tensor, multiple=4)
+    >>> padded.shape
+    torch.Size([2, 3, 8, 8])
+    """
+    assert input_tensor.ndim >= 3, "input_tensor must have shape (B, C, *spatial)."
+    assert isinstance(multiple, int) and multiple > 0, "multiple must be a positive integer."
+
+    padding = []
+    for size in reversed(input_tensor.shape[2:]):
+        total_padding = (multiple - (size % multiple)) % multiple
+        padding.extend([total_padding // 2, total_padding - total_padding // 2])
+
+    return F.pad(input_tensor, padding, value=value)
+
+
+def mask_border(
+    mask: torch.Tensor,
+    thickness: int,
+    border_mode: Literal["inner", "outer"] = "inner",
+) -> torch.Tensor:
+    """
+    Compute the inner or outer border of a binary mask.
+
+    Parameters
+    ----------
+    mask : torch.Tensor
+        Binary mask with shape `(B, C, *spatial)`.
+    thickness : int
+        Border thickness in voxels.
+    border_mode : {'inner', 'outer'}, default='inner'
+        Whether to return voxels inside the mask boundary or outside the mask boundary.
+
+    Returns
+    -------
+    torch.Tensor
+        Border mask with the same shape and dtype as `mask`.
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite.nn.functional as nef
+    >>> mask = torch.zeros(1, 1, 5, 5, dtype=torch.bool)
+    >>> mask[..., 1:4, 1:4] = True
+    >>> border = nef.mask_border(mask, thickness=1)
+    >>> border.shape
+    torch.Size([1, 1, 5, 5])
+    """
+    assert mask.ndim in (3, 4, 5), "mask must have shape (B, C, *spatial) for 1d, 2d, or 3d."
+    assert mask.shape[1] >= 1, "mask must have at least one channel."
+    assert thickness >= 0, "thickness must be non-negative."
+    assert border_mode in ("inner", "outer"), "border_mode must be 'inner' or 'outer'."
+
+    num_spatial = mask.ndim - 2
+    max_pool = {1: F.max_pool1d, 2: F.max_pool2d, 3: F.max_pool3d}[num_spatial]
+    mask_float = mask.float()
+
+    if border_mode == "inner":
+        mask_to_dilate = 1 - mask_float
+        support_mask = mask_float
+    else:
+        mask_to_dilate = mask_float
+        support_mask = 1 - mask_float
+
+    dilated_mask = max_pool(
+        mask_to_dilate,
+        kernel_size=2 * thickness + 1,
+        stride=1,
+        padding=thickness,
+    )
+    border = dilated_mask * support_mask
+
+    return border.to(dtype=mask.dtype)
+
+
+def sample_locations_in_mask(
+    mask: torch.Tensor,
+    nb_samples: Union[int, Sequence[int]],
+    sample_method: Literal["uniform", "weighted"] = "uniform",
+    replacement: bool = False,
+) -> torch.Tensor:
+    """
+    Sample random spatial locations from each mask channel.
+
+    Parameters
+    ----------
+    mask : torch.Tensor
+        Mask with shape `(B, L, *spatial)`.
+    nb_samples : int or Sequence[int]
+        Number of samples per label channel. If a sequence, it must have one value per label.
+    sample_method : {'uniform', 'weighted'}, default='uniform'
+        Sampling distribution. `uniform` samples among positive voxels. `weighted` samples with
+        probability proportional to mask values.
+    replacement : bool, default=False
+        Whether to sample with replacement.
+
+    Returns
+    -------
+    torch.Tensor
+        Integer locations with shape `(B, sum(nb_samples), D + 1)`. The last coordinate stores
+        the label channel id.
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite.nn.functional as nef
+    >>> mask = torch.ones(2, 3, 4, 5)
+    >>> locs = nef.sample_locations_in_mask(mask, nb_samples=2)
+    >>> locs.shape
+    torch.Size([2, 6, 3])
+    """
+    assert mask.ndim >= 3, "mask must have shape (B, L, *spatial)."
+    assert sample_method in {"uniform", "weighted"}, "sample_method must be 'uniform' or 'weighted'"
+
+    batch_size, nb_labels = mask.shape[:2]
+    spatial_shape = tuple(mask.shape[2:])
+    flat_mask = mask.reshape(batch_size * nb_labels, -1)
+
+    if sample_method == "uniform":
+        # TODO: Benchmark against a torch.nonzero-based implementation for uniform sampling.
+        # torch.multinomial keeps the uniform and weighted paths batched and aligned, but may be
+        # less efficient than sampling directly from positive indices.
+        weights = (flat_mask > 0).float()
+    else:
+        weights = flat_mask.float()
+
+    assert torch.all(weights.sum(dim=1) > 0), "Every mask channel must contain samples."
+
+    if isinstance(nb_samples, int):
+        samples_by_label = [nb_samples] * nb_labels
+    else:
+        samples_by_label = list(nb_samples)
+        assert len(samples_by_label) == nb_labels, (
+            "nb_samples must be an int or a sequence with one value per label channel."
+        )
+
+    assert all(count >= 0 for count in samples_by_label), "nb_samples values must be non-negative."
+
+    if not replacement:
+        available = (weights > 0).sum(dim=1).reshape(batch_size, nb_labels)
+        required = torch.as_tensor(samples_by_label, device=mask.device, dtype=available.dtype)
+        assert torch.all(available >= required[None, :]), (
+            "Some mask channels contain fewer samples than requested."
+        )
+
+    locs = []
+    for label_idx, count in enumerate(samples_by_label):
+        if count == 0:
+            empty_shape = (batch_size, 0, len(spatial_shape) + 1)
+            locs.append(torch.empty(empty_shape, device=mask.device, dtype=torch.long))
+            continue
+
+        label_weights = weights[label_idx::nb_labels]
+        flat_indices = torch.multinomial(label_weights, count, replacement=replacement)
+        spatial_locs = torch.stack(torch.unravel_index(flat_indices, spatial_shape), dim=-1)
+        labels = torch.full((batch_size, count, 1), label_idx, device=mask.device, dtype=torch.long)
+        locs.append(torch.cat([spatial_locs.long(), labels], dim=-1))
+
+    return torch.cat(locs, dim=1)
+
+
+def sample_locations_on_border(
+    mask: torch.Tensor,
+    thickness: int,
+    nb_samples: Union[int, Sequence[int]],
+    border_mode: Literal["inner", "outer"] = "inner",
+    sample_method: Literal["uniform", "weighted"] = "uniform",
+    replacement: bool = False,
+) -> torch.Tensor:
+    """
+    Sample random locations from mask borders.
+
+    Parameters
+    ----------
+    mask : torch.Tensor
+        Binary mask with shape `(B, L, *spatial)`.
+    thickness : int
+        Border thickness in voxels.
+    nb_samples : int or Sequence[int]
+        Number of samples per label channel. If a sequence, it must have one value per label.
+    border_mode : {'inner', 'outer'}, default='inner'
+        Whether to sample from the inner or outer border.
+    sample_method : {'uniform', 'weighted'}, default='uniform'
+        Sampling distribution passed to `sample_locations_in_mask`.
+    replacement : bool, default=False
+        Whether to sample with replacement.
+
+    Returns
+    -------
+    torch.Tensor
+        Integer locations with shape `(B, sum(nb_samples), D + 1)`.
+    """
+    border_mask = mask_border(mask, thickness=thickness, border_mode=border_mode)
+    return sample_locations_in_mask(
+        border_mask,
+        nb_samples=nb_samples,
+        sample_method=sample_method,
+        replacement=replacement,
+    )
+
+
+def locs_to_mask(
+    locs: torch.Tensor,
+    vol_shape: Sequence[int],
+    nb_labels: Union[int, None] = None,
+    dtype: torch.dtype = torch.bool,
+) -> torch.Tensor:
+    """
+    Create a label-channel mask from sampled locations.
+
+    Parameters
+    ----------
+    locs : torch.Tensor
+        Integer locations with shape `(B, N, D + 1)` or `(B, N, D)`. When the last dimension is
+        `D + 1`, the final coordinate stores the label channel id.
+    vol_shape : Sequence[int]
+        Spatial shape of the output mask.
+    nb_labels : int or None, default=None
+        Number of label channels in the output. Use this to preserve trailing empty labels.
+        If None, the value is inferred from `locs`.
+    dtype : torch.dtype, default=torch.bool
+        Output dtype.
+
+    Returns
+    -------
+    torch.Tensor
+        Mask with shape `(B, L, *vol_shape)`.
+    """
+    vol_shape = tuple(vol_shape)
+    assert locs.ndim == 3, "locs must have shape (B, N, D + 1) or (B, N, D)."
+    assert locs.shape[-1] in {len(vol_shape), len(vol_shape) + 1}, (
+        "locs last dimension must match len(vol_shape) or len(vol_shape) + 1."
+    )
+
+    batch_size = locs.shape[0]
+    locs = locs.to(dtype=torch.long)
+
+    if locs.shape[-1] == len(vol_shape) + 1:
+        label_idx = locs[..., -1]
+        spatial_locs = locs[..., :-1]
+        inferred_labels = int(label_idx.max().item()) + 1 if label_idx.numel() > 0 else 1
+    else:
+        label_idx = torch.zeros((batch_size, locs.shape[1]), device=locs.device, dtype=torch.long)
+        spatial_locs = locs
+        inferred_labels = 1
+
+    if nb_labels is None:
+        nb_labels = inferred_labels
+
+    assert nb_labels >= inferred_labels, "nb_labels cannot be smaller than the largest label id."
+    assert nb_labels > 0, "nb_labels must be positive."
+
+    for dim_idx, dim_size in enumerate(vol_shape):
+        coords = spatial_locs[..., dim_idx]
+        assert torch.all((0 <= coords) & (coords < dim_size)), "locs contain out-of-bounds values."
+
+    mask = torch.zeros((batch_size, nb_labels, *vol_shape), device=locs.device, dtype=dtype)
+    if locs.shape[1] == 0:
+        return mask
+
+    batch_idx = torch.arange(batch_size, device=locs.device)[:, None].expand_as(label_idx)
+    split_locs = spatial_locs.unbind(-1)
+    mask[(batch_idx, label_idx, *split_locs)] = 1
+
+    return mask
+
+
+def extract_features_at_locs(
+    feature_tensor: torch.Tensor,
+    locs: torch.Tensor,
+) -> torch.Tensor:
+    """
+    Extract feature vectors at spatial locations.
+
+    Parameters
+    ----------
+    feature_tensor : torch.Tensor
+        Feature tensor with shape `(B, C, *spatial)`.
+    locs : torch.Tensor
+        Integer spatial locations with shape `(B, N, D)`.
+
+    Returns
+    -------
+    torch.Tensor
+        Feature samples with shape `(B, C, N)`.
+    """
+    assert feature_tensor.ndim >= 3, "feature_tensor must have shape (B, C, *spatial)."
+    assert locs.ndim == 3, "locs must have shape (B, N, D)."
+    assert feature_tensor.shape[0] == locs.shape[0], (
+        "feature_tensor and locs batch sizes must match."
+    )
+    assert locs.shape[-1] == feature_tensor.ndim - 2, (
+        "locs last dimension must match the number of spatial dimensions."
+    )
+
+    batch_size = feature_tensor.shape[0]
+    locs = locs.to(device=feature_tensor.device, dtype=torch.long)
+
+    for dim_idx, dim_size in enumerate(feature_tensor.shape[2:]):
+        coords = locs[..., dim_idx]
+        assert torch.all((0 <= coords) & (coords < dim_size)), "locs contain out-of-bounds values."
+
+    batch_idx = torch.arange(batch_size, device=feature_tensor.device)[:, None]
+    batch_idx = batch_idx.expand_as(locs[..., 0])
+    split_locs = locs.unbind(-1)
+    features = feature_tensor[(batch_idx, slice(None), *split_locs)]
+
+    return features.movedim(-1, 1)
+
+
+def sample_features_at_mask_locs(
+    feature_tensor: torch.Tensor,
+    mask: torch.Tensor,
+    nb_samples: Union[int, Sequence[int]],
+    sample_method: Literal["uniform", "weighted"] = "uniform",
+    replacement: bool = False,
+    return_label_ids: bool = False,
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    """
+    Sample feature vectors at random mask locations.
+
+    Parameters
+    ----------
+    feature_tensor : torch.Tensor
+        Feature tensor with shape `(B, C, *spatial)`.
+    mask : torch.Tensor
+        Mask with shape `(B, L, *spatial)`.
+    nb_samples : int or Sequence[int]
+        Number of locations to sample per label channel.
+    sample_method : {'uniform', 'weighted'}, default='uniform'
+        Sampling distribution passed to `sample_locations_in_mask`.
+    replacement : bool, default=False
+        Whether to sample with replacement.
+    return_label_ids : bool, default=False
+        If True, also return the sampled label ids.
+
+    Returns
+    -------
+    torch.Tensor or tuple of torch.Tensor
+        Sampled features with shape `(B, C, sum(nb_samples))`. If `return_label_ids=True`, also
+        returns label ids with shape `(B, sum(nb_samples))`.
+    """
+    locs = sample_locations_in_mask(
+        mask,
+        nb_samples=nb_samples,
+        sample_method=sample_method,
+        replacement=replacement,
+    )
+    features = extract_features_at_locs(feature_tensor, locs[..., :-1])
+
+    if return_label_ids:
+        return features, locs[..., -1]
+
+    return features
+
+
+def one_hot(
+    label_tensor: torch.Tensor,
+    num_classes: Union[int, None] = None,
+    class_list: Union[Sequence[int], None] = None,
+    dtype: torch.dtype = torch.float32,
+) -> torch.Tensor:
+    """
+    Convert `(B, 1, *spatial)` integer labels to one-hot channels.
+
+    Parameters
+    ----------
+    label_tensor : torch.Tensor
+        Integer label tensor with shape `(B, 1, *spatial)`.
+    num_classes : int or None, default=None
+        Total number of classes. If None, it is inferred from `label_tensor.max() + 1`.
+    class_list : Sequence[int] or None, default=None
+        Class ids to keep in the output. If None, all classes are returned.
+    dtype : torch.dtype, default=torch.float32
+        Output dtype.
+
+    Returns
+    -------
+    torch.Tensor
+        One-hot tensor with shape `(B, C, *spatial)`.
+    """
+    assert label_tensor.ndim >= 3, "label_tensor must have shape (B, 1, *spatial)."
+    assert label_tensor.shape[1] == 1, "label_tensor channel dimension must be singleton."
+
+    labels = label_tensor[:, 0, ...].long()
+    if num_classes is None:
+        num_classes = int(labels.max().item()) + 1
+
+    encoded = F.one_hot(labels, num_classes=num_classes).to(dtype=dtype)
+    encoded = encoded.movedim(-1, 1)
+
+    if class_list is None:
+        return encoded
+
+    classes = torch.as_tensor(class_list, device=label_tensor.device, dtype=torch.long)
+    assert classes.numel() > 0, "class_list must contain at least one class id."
+    assert int(classes.max().item()) < num_classes, "class_list contains an out-of-range class id."
+    assert int(classes.min().item()) >= 0, "class_list contains a negative class id."
+
+    return encoded.index_select(1, classes)
 
 def resample_voxel_dimensions(
     input_tensor: torch.Tensor,
@@ -1475,7 +1904,9 @@ def crop(
     >>> offset = torch.randint(0, 33, (2,)).tolist()
     >>> cropped = nef.crop(x, size=32, offset=offset)
     """
-    assert size is not None or scale_factor is not None, "Either size or scale_factor must be specified"
+    assert size is not None or scale_factor is not None, (
+        "Either size or scale_factor must be specified"
+    )
     assert size is None or scale_factor is None, "size and scale_factor are mutually exclusive"
 
     num_spatial = input_tensor.dim() - 2
