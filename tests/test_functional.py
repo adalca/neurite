@@ -516,3 +516,28 @@ def test_filter_dim_works_on_different_dims(dim):
         tensor[:, 2] = float('nan')  # NaN in column 2
         result = ne.filter_dim(tensor, dim=1)
         assert result.shape == (3, 3)
+
+
+def test_parse_non_spatial_dims_rejects_non_leading_dims():
+    """Non-spatial dims must be explicit leading dimensions."""
+    with pytest.raises(AssertionError, match="leading contiguous"):
+        ne.parse_non_spatial_dims((1,), tensor_ndim=4)
+
+
+def test_ncc_supports_arbitrary_leading_non_spatial_dims():
+    """Top-level NCC preserves arbitrary leading non-spatial dimensions."""
+    tensor1 = torch.rand(2, 3, 4, 5, 16, 16)
+    tensor2 = torch.rand(2, 3, 4, 5, 16, 16)
+
+    score = ne.ncc(tensor1, tensor2, non_spatial_dims=(0, 1, 2, 3))
+
+    assert score.shape == (2, 3, 4, 5)
+
+
+def test_resample_supports_arbitrary_leading_non_spatial_dims():
+    """Top-level resample preserves arbitrary leading non-spatial dimensions."""
+    tensor = torch.rand(2, 3, 4, 5, 16, 16)
+
+    result = ne.resample(tensor, scale_factor=0.5, non_spatial_dims=(0, 1, 2, 3))
+
+    assert result.shape == (2, 3, 4, 5, 8, 8)

@@ -10,7 +10,7 @@ Notes
 """
 
 # Standard library imports
-from typing import Union, Tuple, Literal, Sequence
+from typing import Optional, Union, Tuple, Literal, Sequence
 
 # Third party imports
 import torch
@@ -18,13 +18,148 @@ import numpy as np
 import torch.nn.functional as F
 
 # Custom imports
-import neurite as ne
+from neurite.utils.utils import bernoulli, infer_linear_interpolation_mode
 
 
 def identity(input_argument):
     "Returns the `input_argument`."
     return input_argument
 
+
+def _gaussian_kernel(
+    sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
+    truncate: Union[int, float, Sequence[Union[int, float]]] = 3,
+    ndim: Optional[int] = None,
+    normalize: Union[Literal["sum", "gaussian"], None] = "sum",
+    device: Optional[torch.device] = None,
+    dtype: Optional[torch.dtype] = torch.float32,
+) -> torch.Tensor:
+    """
+    Create a {1D, 2D, 3D} Gaussian kernel with automatic kernel sizing.
+
+    Kernel size is automatically determined as 2 * int(truncate * sigma + 0.5) + 1 for each
+    dimension. This ensures the kernel captures the appropriate number of standard deviations
+    (default: 3 sigma, which captures ~99.7% of the Gaussian distribution).
+
+    Shape-agnostic implementation that returns a kernel with only spatial dimensions,
+    no batch or channel dimensions. Dimensionality is inferred from the length of `sigma`
+    if it is a sequence, or from the `ndim` parameter if `sigma` is scalar.
+
+    Parameters
+    ----------
+    sigma : float, int, or Sequence[float or int], optional
+        Standard deviation of the Gaussian kernel. If float/int, same sigma is used for all
+        dimensions. If Sequence, different sigmas can be specified per dimension and length
+        determines dimensionality (1D, 2D, or 3D). Default is 1.
+    truncate : int, float, or Sequence[int or float], optional
+        Number of standard deviations at which to truncate the kernel. If scalar, same
+        truncate value is used for all dimensions. If Sequence, different truncate values
+        can be specified per dimension (must match sigma length). Default is 3.
+    ndim : int, optional
+        Number of spatial dimensions (1, 2, or 3). Only required when sigma is scalar.
+        If sigma is a sequence, ndim is inferred from its length. Default is None.
+    normalize : {'sum', 'gaussian'} or None, default='sum'
+        How to normalize the kernel:
+        - 'sum': divide by the discrete sum of kernel values so the kernel sums to 1.
+        - 'gaussian': divide by the analytical Gaussian normalization constant
+          (2*pi)^(ndim/2) * prod(sigmas). The center value equals the true PDF peak.
+        - None: no normalization. Returns raw exp(-0.5 * (x/sigma)^2) values.
+    device : torch.device, optional
+        Device on which to create the kernel tensor. Default is None.
+    dtype : torch.dtype, optional
+        Data type of the kernel tensor. Default is torch.float32.
+
+    Returns
+    -------
+    torch.Tensor
+        Tensor representing the {1D, 2D, 3D} Gaussian kernel with automatically computed
+        shape. No batch or channel dimensions.
+
+    Examples
+    --------
+    >>> import torch
+    # Make a 3D kernel with automatic sizing (normalized by sum, default)
+    >>> gaussian_kernel_ = gaussian_kernel(sigma=1.0, ndim=3)
+    >>> gaussian_kernel_.shape
+    torch.Size([7, 7, 7])
+
+    # Make a 2D kernel with different sigmas per dimension
+    >>> gaussian_kernel_ = gaussian_kernel(sigma=(0.5, 2.0))
+    # Kernel sizes: [5, 13]
+    >>> gaussian_kernel_.shape
+    torch.Size([5, 13])
+
+    # Make a 1D kernel with custom truncate
+    >>> gaussian_kernel_ = gaussian_kernel(sigma=2.0, truncate=4, ndim=1)
+    >>> gaussian_kernel_.shape
+    torch.Size([17])
+
+    # Unnormalized kernel
+    >>> gaussian_kernel_ = gaussian_kernel(sigma=1.0, ndim=2, normalize=None)
+    >>> gaussian_kernel_.sum()  # Will NOT be 1.0
+
+    Notes
+    -----
+    The automatic kernel sizing follows the formula used in scipy and VoxelMorph:
+    kernel_size = 2 * int(truncate * sigma + 0.5) + 1
+
+    This ensures the kernel is always odd-sized and captures the specified number of
+    standard deviations. A truncate value of 3 captures ~99.7% of the Gaussian distribution.
+    """
+    if isinstance(sigma, (float, int)):
+        assert ndim is not None, (
+            "When sigma is a scalar, ndim must be specified to determine dimensionality"
+        )
+        assert ndim in [1, 2, 3], f"ndim must be 1, 2, or 3, got {ndim}"
+        sigma_list = [float(sigma)] * ndim
+
+    elif isinstance(sigma, Sequence):
+        sigma_list = [float(s) for s in sigma]
+        ndim = len(sigma_list)
+        assert ndim in [1, 2, 3], (
+            f"sigma length determines dimensionality and must be 1, 2, or 3. "
+            f"Got length {ndim}"
+        )
+    else:
+        raise TypeError(f"sigma must be a number or sequence, got {type(sigma)}")
+
+    if isinstance(truncate, (int, float)):
+        truncate_list = [float(truncate)] * ndim
+
+    elif isinstance(truncate, Sequence):
+        assert len(truncate) == ndim, (
+            f"If truncate is a sequence, it must have length equal to sigma length "
+            f"({ndim}). Got length {len(truncate)}"
+        )
+        truncate_list = [float(t) for t in truncate]
+    else:
+        raise TypeError(f"truncate must be a number or sequence, got {type(truncate)}")
+
+    # Compute kernel size for each dimension: 2 * int(truncate * sigma + 0.5) + 1
+    kernel_size_list = [2 * int(t * s + 0.5) + 1 for s, t in zip(sigma_list, truncate_list)]
+
+    # Create coordinate grid centered at zero
+    coords = [
+        torch.arange(ks, device=device, dtype=dtype).float() - (ks - 1) / 2
+        for ks in kernel_size_list
+    ]
+
+    grid = torch.stack(torch.meshgrid(*coords, indexing='ij'), dim=-1)
+    sigma_tensor = torch.tensor(sigma_list, device=device, dtype=dtype)
+
+    # Calculate the Gaussian function: exp(-0.5 * sum((x / sigma)^2))
+    kernel = torch.exp(-0.5 * (grid ** 2 / sigma_tensor**2).sum(dim=-1))
+
+    assert normalize in {"sum", "gaussian", None}, (
+        f"normalize must be 'sum', 'gaussian', or None, got '{normalize}'"
+    )
+
+    if normalize == "sum":
+        kernel /= kernel.sum()
+    elif normalize == "gaussian":
+        norm_const = (2 * torch.pi) ** (ndim / 2) * torch.prod(sigma_tensor)
+        kernel /= norm_const
+    return kernel
 
 def gaussian_smoothing(
     input_tensor: torch.Tensor,
@@ -86,8 +221,7 @@ def gaussian_smoothing(
     ndim = input_tensor.dim() - 2
     nchannels = input_tensor.shape[1]
 
-    # Create Gaussian kernel with automatic sizing (on same device/dtype as input)
-    kernel = ne.gaussian_kernel(
+    kernel = _gaussian_kernel(
         sigma=sigma,
         truncate=truncate,
         ndim=ndim,
@@ -96,13 +230,10 @@ def gaussian_smoothing(
         dtype=input_tensor.dtype,
     )
 
-    # Add channel dimensions for depthwise convolution: (nchannels, 1, *spatial)
     kernel = kernel.unsqueeze(0).unsqueeze(0)
     if nchannels > 1:
         kernel = kernel.repeat(nchannels, 1, *([1] * ndim))
 
-    # Depthwise: groups==nchannels ensures each channel is blurred independently
-    # Use padding="same" to maintain output shape (zero-padding)
     conv_fn = {1: F.conv1d, 2: F.conv2d, 3: F.conv3d}[ndim]
     smoothed_tensor = conv_fn(input=input_tensor, weight=kernel, padding="same", groups=nchannels)
 
@@ -174,7 +305,19 @@ def apply_bernoulli_mask(
     print((masked_shape/original_shape))
     ```
     """
-    return ne.apply_bernoulli_mask(input_tensor, p=p, returns=returns)
+    bernoulli_mask = bernoulli(p=p, shape=input_tensor.shape)
+    masked = torch.clone(input_tensor)
+
+    if returns == 'successes':
+        masked = masked[bernoulli_mask == 1]
+    elif returns == 'failures':
+        masked = masked[bernoulli_mask == 0]
+    elif returns is None:
+        masked[bernoulli_mask == 0] = 0
+    else:
+        assert returns in {'successes', 'failures', None}, f"{returns} isn't supported!"
+
+    return masked
 
 
 def subsample_random_dims(
@@ -323,13 +466,25 @@ def resample(
     >>> print(downsampled.shape)
     torch.Size([2, 1, 32, 32])
     """
-    return ne.resample(
-        input_tensor=input_tensor,
-        size=size,
+    assert size is not None or scale_factor is not None, "Either size or scale_factor must be specified"
+
+    spatial_ndim = input_tensor.ndim - 2
+    assert spatial_ndim in {1, 2, 3}, (
+        f"Unsupported spatial dimensionality: {spatial_ndim} spatial dimensions. "
+        "Only 1D, 2D, and 3D are supported."
+    )
+
+    if mode == 'linear':
+        mode = infer_linear_interpolation_mode(spatial_ndim)
+
+    if size is not None:
+        return F.interpolate(input=input_tensor, size=size, mode=mode, antialias=antialias)
+
+    return F.interpolate(
+        input=input_tensor,
         scale_factor=scale_factor,
         mode=mode,
-        non_spatial_dims=(0, 1),
-        antialias=antialias
+        antialias=antialias,
     )
 
 
@@ -414,7 +569,21 @@ def sample_image_from_labels(
     torch.Tensor
         A tensor of sampled image intensities with the same shape as `label_tensor`.
     """
-    return ne.sample_image_from_labels(label_tensor, mean_range=mean_range, noise_std=noise_std)
+    unique_labels = torch.unique(label_tensor)
+    min_val, max_val = mean_range
+
+    sampled_image = torch.zeros_like(label_tensor, dtype=torch.float32)
+    uniform_dist = torch.distributions.Uniform(low=min_val, high=max_val)
+
+    for label in unique_labels:
+        mask = label_tensor == label
+        num_elements = mask.sum().item()
+
+        mean_region_intensity = uniform_dist.sample().item()
+        texturized_region = mean_region_intensity + noise_std * torch.randn(num_elements)
+        sampled_image[mask] = texturized_region
+
+    return sampled_image
 
 
 def volshape_to_ndgrid(
@@ -464,17 +633,24 @@ def volshape_to_ndgrid(
     torch.Size([2, 4, 5])
     """
     # Extract spatial dimensions only (skip B and C)
+    normalized_dtype = dtype if isinstance(dtype, torch.dtype) else getattr(torch, dtype)
     spatial_size = size[2:]
 
-    # Get base grid - returns (ndim, *spatial) when stacked
-    return ne.volshape_to_ndgrid(
-        size=spatial_size,
-        device=device,
-        dtype=dtype,
-        normalize=normalize,
-        indexing=indexing,
-        stack=stack
-    )
+    if normalize:
+        axes = []
+        for sz in spatial_size:
+            axes.append(torch.linspace(-1, 1, steps=sz, device=device, dtype=normalized_dtype))
+    else:
+        axes = []
+        for sz in spatial_size:
+            axes.append(torch.arange(0, sz, device=device, dtype=normalized_dtype))
+
+    grid = torch.meshgrid(*axes, indexing=indexing)
+
+    if stack:
+        grid = torch.stack(grid, dim=0).contiguous()
+
+    return grid
 
 
 def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> torch.Tensor:
@@ -507,7 +683,40 @@ def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> tor
     >>> filtered.shape
     torch.Size([2, 2])
     """
-    return ne.filter_dim(tensor, dim=dim, verbose=verbose)
+    dims_to_test = list(range(tensor.dim()))
+    dims_to_test.remove(dim)
+
+    nan_mask = ~torch.isnan(tensor).any(dim=dims_to_test)
+    nan_mask = torch.nonzero(nan_mask, as_tuple=True)[0]
+    filtered_tensor = torch.index_select(tensor, dim, nan_mask)
+
+    inf_mask = ~torch.isinf(filtered_tensor).any(dim=dims_to_test)
+    inf_mask = torch.nonzero(inf_mask, as_tuple=True)[0]
+    filtered_tensor = torch.index_select(filtered_tensor, dim, inf_mask)
+
+    zero_mask = ~torch.all(filtered_tensor == 0, dim=dims_to_test)
+    zero_mask = torch.nonzero(zero_mask, as_tuple=True)[0]
+    filtered_tensor = torch.index_select(filtered_tensor, dim, zero_mask)
+
+    if verbose:
+        n_nans = torch.sum(~nan_mask)
+        print("N Batches with NaNs: ", n_nans)
+
+        n_infs = torch.sum(~inf_mask)
+        print("N Batches with Inf: ", n_infs)
+
+        n_zeros = torch.sum(zero_mask)
+        print("N Batches with Zero: ", n_zeros)
+
+    has_zero_dim = torch.any(torch.tensor(filtered_tensor.shape) == 0)
+    if has_zero_dim:
+        zero_dims = []
+        for d, size in enumerate(tensor.shape):
+            if size == 0:
+                zero_dims.append(d)
+        assert not has_zero_dim, f"Dimension {zero_dims} of the filtered tensor has shape == 0."
+
+    return filtered_tensor
 
 
 def logistic(
@@ -573,7 +782,7 @@ def mse(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
     >>> print(mse_value.shape)
     torch.Size([])
     """
-    return ne.mse(tensor1, tensor2)
+    return torch.mean((tensor1 - tensor2) ** 2)
 
 
 def dice(
@@ -626,22 +835,28 @@ def dice(
     torch.Size([1, 1])
     """
     # Compute Dice using base implementation with (B, L) preserved
-    dice_score = ne.dice(
-        *segs,
-        smooth_numerator=smooth_numerator,
-        smooth_denominator=smooth_denominator,
-        non_spatial_dims=(0, 1)
-    )
+    nsegs = len(segs)
+    assert nsegs >= 2, 'Provide at least two segmentation tensors.'
+
+    shapes_match = all(segs[0].shape == seg.shape for seg in segs)
+    assert shapes_match, f'All segmentations must share shape; got {{seg.shape for seg in segs}}'
+
+    for seg in segs:
+        assert seg.min() >= 0 and seg.max() <= 1, (
+            f'Segmentations must be in [0,1]; got min {seg.min()}, max {seg.max()}'
+        )
+
+    stacked = torch.stack(segs, dim=0)
+    spatial_dims = tuple(range(2, segs[0].ndim))
+    intersection = stacked.prod(dim=0).sum(dim=spatial_dims)
+    union_dims = (0,) + tuple(range(3, stacked.ndim))
+    union = (stacked ** 2).sum(dim=union_dims)
+    dice_score = (nsegs * intersection + smooth_numerator) / (union + smooth_denominator)
 
     if reduction is None:
         return dice_score
 
-    return reduce(
-        tensor=dice_score,
-        reduction=reduction,
-        dim=reduction_dim,
-        keepdims=keepdims,
-    )
+    return reduce(tensor=dice_score, reduction=reduction, dim=reduction_dim, keepdims=keepdims)
 
 
 def ncc(
@@ -716,23 +931,70 @@ def ncc(
            Medical Image Registration", IEEE TMI, 2019.
     """
     # Compute NCC using base implementation with (B, C) preserved
-    ncc_score = ne.ncc(
-        tensor1=tensor1,
-        tensor2=tensor2,
-        window_size=window_size,
-        non_spatial_dims=(0, 1),
-        eps=eps,
+    assert tensor1.shape == tensor2.shape, (
+        f"Tensors must have same shape. Got {tensor1.shape} and {tensor2.shape}"
     )
+
+    num_spatial = tensor1.ndim - 2
+    assert num_spatial in [1, 2, 3], (
+        f"Only 1D, 2D, 3D spatial dimensions supported. Got {num_spatial}D"
+    )
+
+    batch_shape = tensor1.shape[:2]
+    spatial_shape = tensor1.shape[2:]
+    tensor1 = tensor1.reshape(-1, 1, *spatial_shape)
+    tensor2 = tensor2.reshape(-1, 1, *spatial_shape)
+
+    if isinstance(window_size, int):
+        win = [window_size] * num_spatial
+    else:
+        win = list(window_size)
+        assert len(win) == num_spatial, (
+            f'window_size length {len(win)} does not match spatial dims {num_spatial}'
+        )
+
+    sum_filt = torch.ones(1, 1, *win, device=tensor1.device, dtype=tensor1.dtype)
+    padding = [w // 2 for w in win]
+    stride = [1] * num_spatial
+    conv_fn = {1: F.conv1d, 2: F.conv2d, 3: F.conv3d}[num_spatial]
+
+    Ii = tensor1
+    Ji = tensor2
+    I2 = Ii * Ii
+    J2 = Ji * Ji
+    IJ = Ii * Ji
+
+    I_sum = conv_fn(Ii, sum_filt, stride=stride, padding=padding)
+    J_sum = conv_fn(Ji, sum_filt, stride=stride, padding=padding)
+    I2_sum = conv_fn(I2, sum_filt, stride=stride, padding=padding)
+    J2_sum = conv_fn(J2, sum_filt, stride=stride, padding=padding)
+    IJ_sum = conv_fn(IJ, sum_filt, stride=stride, padding=padding)
+
+    win_size = torch.tensor(win, device=tensor1.device, dtype=tensor1.dtype).prod()
+    u_I = I_sum / win_size
+    u_J = J_sum / win_size
+
+    cross = IJ_sum - u_J * I_sum - u_I * J_sum + u_I * u_J * win_size
+    I_var = I2_sum - 2 * u_I * I_sum + u_I * u_I * win_size
+    J_var = J2_sum - 2 * u_J * J_sum + u_J * u_J * win_size
+
+    cc = cross * cross / (I_var * J_var + eps)
+    ncc_score = cc.mean(dim=tuple(range(2, 2 + num_spatial))).reshape(*batch_shape)
 
     if reduction is None:
         return ncc_score
 
-    return reduce(
-        tensor=ncc_score,
-        reduction=reduction,
-        dim=reduction_dim,
-        keepdims=keepdims,
-    )
+    return reduce(tensor=ncc_score, reduction=reduction, dim=reduction_dim, keepdims=keepdims)
+
+
+def _spatial_gradients(input_tensor: torch.Tensor) -> Tuple[torch.Tensor, ...]:
+    """Compute first-order finite differences over spatial dimensions."""
+    num_spatial = input_tensor.ndim - 2
+    assert num_spatial >= 1, f"Need at least 1 spatial dim to compute gradients, got {num_spatial}"
+    gradients = []
+    for spatial_dim in range(num_spatial):
+        gradients.append(torch.diff(input_tensor, dim=2 + spatial_dim))
+    return tuple(gradients)
 
 
 def spatial_gradient(
@@ -789,28 +1051,24 @@ def spatial_gradient(
     .. [1] Balakrishnan et al., "VoxelMorph: A Learning Framework for Deformable
            Medical Image Registration", IEEE TMI, 2019.
     """
-    if penalty not in ['l1', 'l2']:
-        raise ValueError(f"penalty must be 'l1' or 'l2', got '{penalty}'")
+    assert penalty in ['l1', 'l2'], f"penalty must be 'l1' or 'l2', got '{penalty}'"
 
-    # Compute spatial gradients (list of tensors, one per spatial dim)
-    grads = ne.spatial_gradient(input_tensor, non_spatial_dims=(0, 1))
+    grads = _spatial_gradients(input_tensor)
 
-    # Apply penalty
     if penalty == 'l1':
         penalties = [g.abs() for g in grads]
-    else:  # l2
+    else:
         penalties = [g * g for g in grads]
 
     if reduction is None:
         return penalties
 
-    # Reduce each penalty tensor and average across spatial dimensions
     reduced = []
-    for p in penalties:
-        r = reduce(tensor=p, reduction=reduction, dim=reduction_dim, keepdims=keepdims)
-        reduced.append(r)
+    for penalty_tensor in penalties:
+        reduced.append(
+            reduce(tensor=penalty_tensor, reduction=reduction, dim=reduction_dim, keepdims=keepdims)
+        )
 
-    # Average across spatial dimensions
     return sum(reduced) / len(reduced)
 
 
@@ -930,7 +1188,30 @@ def reduce(
     >>> reduce(input_tensor, reduction='amax', dim=(1, 2, 3))
     tensor([4.6618, 3.9218, 4.1831])
     """
-    return ne.reduce(tensor, reduction=reduction, dim=dim, keepdims=keepdims)
+    if reduction is None:
+        return tensor
+
+    torch_multidim_reductions = [
+        'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'
+    ]
+    torch_singledim_reductions = ['argmin', 'argmax']
+
+    if reduction in torch_multidim_reductions:
+        return getattr(torch, reduction)(tensor, dim=dim, keepdim=keepdims)
+
+    if reduction in torch_singledim_reductions:
+        assert isinstance(dim, int), (
+            f"Reduction type {reduction} is only compatible with one reduction dimension. Got "
+            f"{dim}"
+        )
+        return getattr(torch, reduction)(tensor, dim=dim, keepdim=keepdims)
+
+    assert reduction in [*torch_multidim_reductions, *torch_singledim_reductions], (
+        f"reduce received an invalid `reduction`. Got {reduction}. Valid options"
+        " are {'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean', 'argmin', "
+        "'argmax'}"
+    )
+    return tensor
 
 
 def random_flip(dim: int, *args, prob: float = 0.5):
@@ -959,7 +1240,14 @@ def random_flip(dim: int, *args, prob: float = 0.5):
     >>> x = torch.randn(1, 1, 4, 4)
     >>> flipped = random_flip(dim=3, x, prob=1.0)  # dim=3 is width
     """
-    return ne.random_flip(dim, *args, prob=prob)
+    if bernoulli(prob).item():
+        result = tuple(arg.flip([dim]) for arg in args)
+    else:
+        result = args
+
+    if len(result) == 1:
+        return result[0]
+    return result
 
 
 def resize(
@@ -1007,7 +1295,7 @@ def resize(
                 reset_type = image.dtype
             image = image.type(torch.float32)
 
-        linear = ne.utils.infer_linear_interpolation_mode(image.ndim - 1)
+        linear = infer_linear_interpolation_mode(image.ndim - 1)
         mode = 'nearest' if nearest else linear
 
         if nearest:
@@ -1094,14 +1382,43 @@ def bw_grid(
     >>> grid.shape
     torch.Size([1, 1, 5, 5])
     """
-    return ne.bw_grid(
-        vol_shape=vol_shape,
-        spacing=spacing,
-        thickness=thickness,
-        indexing=indexing,
-        device=device,
-        dtype=dtype,
+    shape_values = list(vol_shape)
+    assert len(shape_values) > 0, "vol_shape must contain at least one dimension."
+    assert all(isinstance(value, int) and value > 0 for value in shape_values), (
+        f"vol_shape must contain positive integers, got {vol_shape}."
     )
+
+    if isinstance(spacing, int):
+        spacing = [spacing] * len(shape_values)
+    else:
+        spacing = list(spacing)
+
+    assert len(spacing) == len(shape_values), "spacing and vol_shape must have the same length."
+    assert all(isinstance(value, int) and value > 0 for value in spacing), (
+        f"spacing must contain positive integers, got {spacing}."
+    )
+    assert isinstance(thickness, int) and thickness > 0, (
+        f"thickness must be a positive integer, got {thickness}."
+    )
+    assert indexing in ("ij", "xy"), f"indexing must be 'ij' or 'xy', got {indexing}."
+
+    normalized_dtype = dtype if isinstance(dtype, torch.dtype) else getattr(torch, dtype)
+    grid_image = torch.zeros(shape_values, device=device, dtype=normalized_dtype)
+
+    for dim, size in enumerate(shape_values):
+        ranges = []
+        for axis_size in shape_values:
+            ranges.append(torch.arange(0, axis_size, device=device, dtype=torch.long))
+
+        for offset_value in range(thickness):
+            line_coords = torch.arange(
+                offset_value, size, spacing[dim] + 1, device=device, dtype=torch.long
+            )
+            last_coord = torch.tensor([size - 1], device=device, dtype=torch.long)
+            ranges[dim] = torch.unique(torch.cat([line_coords, last_coord]))
+            grid_image[torch.meshgrid(*ranges, indexing=indexing)] = 1
+
+    return grid_image
 
 
 def crop(
@@ -1138,7 +1455,7 @@ def crop(
 
     Raises
     ------
-    ValueError
+    AssertionError
         If both `size` and `scale_factor` are specified or both are None.
 
     Examples
@@ -1158,13 +1475,64 @@ def crop(
     >>> offset = torch.randint(0, 33, (2,)).tolist()
     >>> cropped = nef.crop(x, size=32, offset=offset)
     """
-    return ne.crop(
-        input_tensor=input_tensor,
-        size=size,
-        scale_factor=scale_factor,
-        non_spatial_dims=(0, 1),
-        offset=offset
-    )
+    assert size is not None or scale_factor is not None, "Either size or scale_factor must be specified"
+    assert size is None or scale_factor is None, "size and scale_factor are mutually exclusive"
+
+    num_spatial = input_tensor.dim() - 2
+    spatial_dims = list(range(2, input_tensor.dim()))
+
+    if size is not None:
+        if isinstance(size, int):
+            crop_sizes = [size] * num_spatial
+        else:
+            assert len(size) == num_spatial, (
+                f"size length {len(size)} doesn't match number of spatial dims {num_spatial}"
+            )
+            crop_sizes = list(size)
+    else:
+        if isinstance(scale_factor, (int, float)):
+            scale_factors = [scale_factor] * num_spatial
+        else:
+            assert len(scale_factor) == num_spatial, (
+                f"scale_factor length {len(scale_factor)} doesn't match spatial"
+                f"dims {num_spatial}"
+            )
+            scale_factors = list(scale_factor)
+
+        crop_sizes = []
+        for dim_idx, dim in enumerate(spatial_dims):
+            input_size = input_tensor.shape[dim]
+            crop_sizes.append(round(input_size * scale_factors[dim_idx]))
+
+    for dim_idx, dim in enumerate(spatial_dims):
+        input_size = input_tensor.shape[dim]
+        assert crop_sizes[dim_idx] <= input_size, (
+            f"Crop size {crop_sizes[dim_idx]} exceeds input size {input_size} at dim {dim}"
+        )
+
+    if isinstance(offset, int):
+        offsets = [offset] * num_spatial
+    else:
+        assert len(offset) == num_spatial, (
+            f"offset length {len(offset)} doesn't match number of spatial dims {num_spatial}"
+        )
+        offsets = list(offset)
+
+    for dim_idx, dim in enumerate(spatial_dims):
+        input_size = input_tensor.shape[dim]
+        crop_size = crop_sizes[dim_idx]
+        max_valid_offset = input_size - crop_size
+        assert 0 <= offsets[dim_idx] <= max_valid_offset, (
+            f"offset {offsets[dim_idx]} out of range [0, {max_valid_offset}] for dim {dim}"
+        )
+
+    slices = [slice(None)] * input_tensor.dim()
+    for dim_idx, dim in enumerate(spatial_dims):
+        crop_size = crop_sizes[dim_idx]
+        dim_offset = offsets[dim_idx]
+        slices[dim] = slice(dim_offset, dim_offset + crop_size)
+
+    return input_tensor[tuple(slices)]
 
 
 def clip(
@@ -1199,7 +1567,7 @@ def clip(
     >>> clipped.shape
     torch.Size([2, 3, 32, 32])
     """
-    return ne.clip(input_tensor, min=min, max=max)
+    return torch.clamp(input_tensor, min=min, max=max)
 
 
 def random_smoothed_noise(
@@ -1246,14 +1614,13 @@ def random_smoothed_noise(
     >>> noise_3d.shape
     torch.Size([2, 3, 32, 32, 32])
     """
-    return ne.random_smoothed_noise(
-        shape=shape,
-        sigma=sigma,
-        magnitude=magnitude,
-        non_spatial_dims=(0, 1),
-        normalize=normalize,
-        device=device,
-    )
+    noise = torch.normal(0, 1, size=shape, device=device)
+    noise = gaussian_smoothing(noise, sigma=sigma, truncate=3, normalize=normalize)
+
+    noise -= noise.mean()
+    noise *= magnitude / noise.std()
+
+    return noise
 
 
 def upsample_noise(
@@ -1291,12 +1658,13 @@ def upsample_noise(
     >>> noise_3d.shape
     torch.Size([2, 3, 32, 32, 32])
     """
-    return ne.upsample_noise(
-        shape=shape,
-        scale=scale,
-        non_spatial_dims=(0, 1),
-        device=device,
-    )
+    spatial_shape = shape[2:]
+    coarse_spatial = tuple(max(int(s // scale), 2) for s in spatial_shape)
+    coarse_shape = (*shape[:2], *coarse_spatial)
+    noise = torch.randn(coarse_shape, device=device)
+
+    mode = infer_linear_interpolation_mode(num_spatial=len(spatial_shape))
+    return F.interpolate(noise, size=spatial_shape, mode=mode, align_corners=False)
 
 
 def fractal_noise(
@@ -1347,13 +1715,45 @@ def fractal_noise(
     >>> noise_3d.shape
     torch.Size([1, 1, 32, 32, 32])
     """
-    return ne.fractal_noise(
-        shape=shape,
-        scales=scales,
-        magnitude=magnitude,
-        weights=weights,
-        non_spatial_dims=(0, 1),
-        normalize=normalize,
-        device=device,
-        method=method,
+    num_spatial = len(shape) - 2
+    spatial_shape = shape[2:]
+
+    if scales is None:
+        scales = 2 ** np.arange(np.log2(max(spatial_shape)))[1:]
+
+    if np.isscalar(scales):
+        scales = [scales]
+
+    if len(scales) == 1:
+        weights = [1.0]
+    elif weights is None:
+        weights = list(np.arange(len(scales)) + 1)
+
+    assert len(weights) == len(scales), (
+        f'weights length ({len(weights)}) must match scales length ({len(scales)})'
     )
+
+    noise = None
+    for scale, weight in zip(scales, weights):
+        if method == 'blur':
+            sample = random_smoothed_noise(
+                shape=shape,
+                sigma=scale,
+                magnitude=1.0,
+                normalize=normalize,
+                device=device,
+            )
+        else:
+            sample = upsample_noise(shape=shape, scale=scale, device=device)
+
+        sample *= weight
+
+        if noise is None:
+            noise = sample
+        else:
+            noise += sample
+
+    noise -= noise.mean()
+    noise *= magnitude / noise.std()
+
+    return noise

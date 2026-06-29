@@ -9,7 +9,6 @@ import torch
 import torch.nn.functional as F
 
 # Custom imports
-import neurite as ne
 import neurite.nn.functional as nef
 
 __all__ = [
@@ -88,7 +87,7 @@ def mse(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
     >>> print(mse_value)
     """
 
-    return torch.mean((tensor1 - tensor2) ** 2)
+    return nef.mse(tensor1, tensor2)
 
 
 def dice(
@@ -112,9 +111,9 @@ def dice(
     smooth_denominator : float, optional
         Smoothing constant added to the denominator. Default is 1e-12.
     non_spatial_dims : Tuple[int, ...] or None, optional
-        Indices of non-spatial dimensions. Must be a contiguous sequence starting from 0.
-        Valid values: `None`, `(0,)`, or `(0, 1)`. If None, assumes all dimensions are spatial
-        and computes a single scalar Dice score. Default is None.
+        Indices of leading non-spatial dimensions. Must be a contiguous sequence starting from 0.
+        If None, assumes all dimensions are spatial and computes a single scalar Dice score.
+        Default is None.
 
     Returns
     -------
@@ -148,40 +147,20 @@ def dice(
     >>> print(score.shape)
     torch.Size([2, 3])
     """
-    nsegs = len(segs)
-
-    if nsegs < 2:
-        raise ValueError('Provide at least two segmentation tensors.')
-
-    if not all(segs[0].shape == seg.shape for seg in segs):
-        shapes = {seg.shape for seg in segs}
-        raise ValueError(f'All segmentations must share shape; got {shapes}')
-
+    tensor_batch = []
+    original_shape = None
     for seg in segs:
-        if seg.min() < 0 or seg.max() > 1:
-            raise AssertionError(
-                f'Segmentations must be in [0,1]; got min {seg.min()}, max {seg.max()}'
-            )
+        batched, original_shape = batch_nonspatial(seg, non_spatial_dims)
+        tensor_batch.append(batched)
 
-    # Parse and validate non_spatial_dims (handles None by setting num_non_spatial=0)
-    num_non_spatial, num_spatial = parse_non_spatial_dims(non_spatial_dims, segs[0].ndim)
+    dice_score = nef.dice(
+        *tensor_batch,
+        smooth_numerator=smooth_numerator,
+        smooth_denominator=smooth_denominator,
+        reduction=None,
+    )
 
-    # Flatten spatial dimensions (when num_non_spatial=0, this flattens all dims)
-    segs_flat = [seg.flatten(num_non_spatial) for seg in segs]
-
-    # Stack segmentations: (nsegs, *non_spatial_dims, spatial_flat)
-    stacked = torch.stack(segs_flat, dim=0)
-
-    # Intersection: product across segs, sum over spatial
-    intersection = stacked.prod(dim=0).sum(dim=-1)
-
-    # Union: sum of squared values across segs and spatial
-    union = (stacked ** 2).sum(dim=(0, -1))
-
-    # Dice for N tensors: N * intersection / union
-    dice_score = (nsegs * intersection + smooth_numerator) / (union + smooth_denominator)
-
-    return dice_score
+    return unbatch_nonspatial(dice_score, original_shape)
 
 
 def ncc(
@@ -205,9 +184,8 @@ def ncc(
         spatial dimensions. If Sequence, per-dimension window sizes (must match
         number of spatial dimensions).
     non_spatial_dims : Tuple[int, ...] or None, default=None
-        Indices of non-spatial dimensions. Must be a contiguous sequence starting from 0.
-        Valid values: None, (0,), or (0, 1). If None, assumes all dimensions are spatial
-        and computes a single scalar NCC score.
+        Indices of leading non-spatial dimensions. Must be a contiguous sequence starting from 0.
+        If None, assumes all dimensions are spatial and computes a single scalar NCC score.
     eps : float, default=1e-5
         Small constant for numerical stability in division.
 
@@ -258,80 +236,18 @@ def ncc(
     .. [1] Balakrishnan et al., "VoxelMorph: A Learning Framework for Deformable
            Medical Image Registration", IEEE TMI, 2019.
     """
-    if tensor1.shape != tensor2.shape:
-        raise ValueError(
-            f"Tensors must have same shape. Got {tensor1.shape} and {tensor2.shape}"
-        )
-
-    # Parse non_spatial_dims
-    num_non_spatial, num_spatial = parse_non_spatial_dims(non_spatial_dims, tensor1.ndim)
-
-    if num_spatial not in [1, 2, 3]:
-        raise ValueError(
-            f"Only 1D, 2D, 3D spatial dimensions supported. Got {num_spatial}D"
-        )
-
     tensor1, orig_shape = batch_nonspatial(tensor1, non_spatial_dims)
     tensor2, _ = batch_nonspatial(tensor2, non_spatial_dims)
 
-    # Parse window size
-    if isinstance(window_size, int):
-        win = [window_size] * num_spatial
-    else:
-        win = list(window_size)
-        assert len(win) == num_spatial, (
-            f'window_size length {len(win)} does not match spatial dims {num_spatial}'
-        )
+    ncc_score = nef.ncc(
+        tensor1=tensor1,
+        tensor2=tensor2,
+        window_size=window_size,
+        eps=eps,
+        reduction=None,
+    )
 
-    # Create sum filter: (1, 1, *win) - single channel since we use vectorization
-    sum_filt = torch.ones(1, 1, *win, device=tensor1.device, dtype=tensor1.dtype)
-
-    # Convolution parameters for "same" output size
-    padding = [w // 2 for w in win]
-    stride = [1] * num_spatial
-
-    # Select conv function based on spatial dimensionality
-    conv_fn = {1: F.conv1d, 2: F.conv2d, 3: F.conv3d}[num_spatial]
-
-    # Compute products
-    Ii = tensor1
-    Ji = tensor2
-    I2 = Ii * Ii
-    J2 = Ji * Ji
-    IJ = Ii * Ji
-
-    # Local sums using convolution (each batch element independent)
-    I_sum = conv_fn(Ii, sum_filt, stride=stride, padding=padding)
-    J_sum = conv_fn(Ji, sum_filt, stride=stride, padding=padding)
-    I2_sum = conv_fn(I2, sum_filt, stride=stride, padding=padding)
-    J2_sum = conv_fn(J2, sum_filt, stride=stride, padding=padding)
-    IJ_sum = conv_fn(IJ, sum_filt, stride=stride, padding=padding)
-
-    # Window size for normalization
-    win_size = torch.tensor(win, device=tensor1.device, dtype=tensor1.dtype).prod()
-
-    # Local means
-    u_I = I_sum / win_size
-    u_J = J_sum / win_size
-
-    # Cross-correlation: cov(I, J) * win_size
-    cross = IJ_sum - u_J * I_sum - u_I * J_sum + u_I * u_J * win_size
-
-    # Variances: var(I) * win_size, var(J) * win_size
-    I_var = I2_sum - 2 * u_I * I_sum + u_I * u_I * win_size
-    J_var = J2_sum - 2 * u_J * J_sum + u_J * u_J * win_size
-
-    # Squared correlation coefficient
-    cc = cross * cross / (I_var * J_var + eps)
-
-    # Average over spatial dimensions (keep non-spatial structure)
-    spatial_dims = tuple(range(2, 2 + num_spatial))
-    ncc_score = cc.mean(dim=spatial_dims)
-
-    # Remove added dimensions to restore original non-spatial structure
-    ncc_score = unbatch_nonspatial(ncc_score, orig_shape)
-
-    return ncc_score
+    return unbatch_nonspatial(ncc_score, orig_shape)
 
 
 def spatial_gradient(
@@ -386,10 +302,9 @@ def spatial_gradient(
            Medical Image Registration", IEEE TMI, 2019.
     """
     # Parse non_spatial_dims
-    num_non_spatial, num_spatial = parse_non_spatial_dims(non_spatial_dims, input_tensor.ndim)
-    assert num_spatial >= 1, f"Need at least 1 spatial dim to compute gradients, got {num_spatial}"
-
-    return [torch.diff(input_tensor, dim=num_non_spatial + i) for i in range(num_spatial)]
+    input_tensor, orig_shape = batch_nonspatial(input_tensor, non_spatial_dims)
+    gradients = nef._spatial_gradients(input_tensor)
+    return [unbatch_nonspatial(gradient, orig_shape) for gradient in gradients]
 
 
 def reduce(
@@ -446,35 +361,7 @@ def reduce(
     """
 
     # Handle None reduction (return tensor unchanged)
-    if reduction is None:
-        return tensor
-
-    # PyTorch multidimensional reductions (also work for single dimensions)
-    torch_multidim_reductions = [
-        'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'
-    ]
-
-    # PyTorch single-dimension-only reductions
-    torch_singledim_reductions = ['argmin', 'argmax']
-
-    if reduction in torch_multidim_reductions:
-        return getattr(torch, reduction)(tensor, dim=dim, keepdim=keepdims)
-
-    elif reduction in torch_singledim_reductions:
-
-        assert isinstance(dim, int), (
-            f"Reduction type {reduction} is only compatible with one reduction dimension. Got "
-            f"{dim}"
-        )
-
-        return getattr(torch, reduction)(tensor, dim=dim, keepdim=keepdims)
-
-    else:
-        raise ValueError(
-            f"reduce received an invalid `reduction`. Got {reduction}. Valid options"
-            " are {'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean', 'argmin', "
-            "'argmax'}"
-        )
+    return nef.reduce(tensor, reduction=reduction, dim=dim, keepdims=keepdims)
 
 
 def volshape_to_ndgrid(
@@ -536,20 +423,14 @@ def volshape_to_ndgrid(
     >>> print(the_grid.shape)
     torch.Size([2, 19, 32])
     """
-    normalized_dtype = dtype if isinstance(dtype, torch.dtype) else getattr(torch, dtype)
-
-    if normalize:
-        axes = [
-            torch.linspace(-1, 1, steps=sz, device=device, dtype=normalized_dtype) for sz in size]
-    else:
-        axes = [torch.arange(0, sz, device=device, dtype=normalized_dtype) for sz in size]
-
-    grid = torch.meshgrid(*axes, indexing=indexing)
-
-    if stack:
-        grid = torch.stack(grid, dim=0).contiguous()
-
-    return grid
+    return nef.volshape_to_ndgrid(
+        size=(1, 1, *size),
+        device=device,
+        dtype=dtype,
+        normalize=normalize,
+        indexing=indexing,
+        stack=stack,
+    )
 
 
 def bw_grid(
@@ -601,43 +482,14 @@ def bw_grid(
     This follows the original pystrum convention used by VoxelMorph: line starts repeat every
     `spacing + 1` pixels, and the last pixel along each axis is always set to a grid line.
     """
-    shape_values = list(vol_shape)
-    assert len(shape_values) > 0, "vol_shape must contain at least one dimension."
-    assert all(isinstance(value, int) and value > 0 for value in shape_values), (
-        f"vol_shape must contain positive integers, got {vol_shape}."
+    return nef.bw_grid(
+        vol_shape=vol_shape,
+        spacing=spacing,
+        thickness=thickness,
+        indexing=indexing,
+        device=device,
+        dtype=dtype,
     )
-
-    if isinstance(spacing, int):
-        spacing = [spacing] * len(shape_values)
-    else:
-        spacing = list(spacing)
-
-    if len(spacing) != len(shape_values):
-        raise ValueError("spacing and vol_shape must have the same length.")
-
-    assert all(isinstance(value, int) and value > 0 for value in spacing), (
-        f"spacing must contain positive integers, got {spacing}."
-    )
-    assert isinstance(thickness, int) and thickness > 0, (
-        f"thickness must be a positive integer, got {thickness}."
-    )
-    assert indexing in ("ij", "xy"), f"indexing must be 'ij' or 'xy', got {indexing}."
-
-    normalized_dtype = dtype if isinstance(dtype, torch.dtype) else getattr(torch, dtype)
-    grid_image = torch.zeros(shape_values, device=device, dtype=normalized_dtype)
-
-    for dim, size in enumerate(shape_values):
-        ranges = []
-        for axis_size in shape_values:
-            ranges.append(torch.arange(0, axis_size, device=device, dtype=torch.long))
-
-        for offset in range(thickness):
-            line_coords = torch.arange(offset, size, spacing[dim] + 1, device=device, dtype=torch.long)
-            last_coord = torch.tensor([size - 1], device=device, dtype=torch.long)
-            ranges[dim] = torch.unique(torch.cat([line_coords, last_coord]))
-            grid_image[torch.meshgrid(*ranges, indexing=indexing)] = 1
-
-    return grid_image
 
 
 def subsample(
@@ -726,20 +578,7 @@ def apply_bernoulli_mask(
     ```
     """
     # Sample the Bernoulli mask with parameter `p`
-    bernoulli_mask = ne.utils.bernoulli(p=p, shape=input_tensor.shape)
-    masked = torch.clone(input_tensor)
-
-    # Get successes or failures
-    if returns == 'successes':
-        masked = masked[bernoulli_mask == 1]
-    elif returns == 'failures':
-        masked = masked[bernoulli_mask == 0]
-    elif returns is None:
-        masked[bernoulli_mask == 0] = 0
-    else:
-        raise ValueError(f"{returns} isn't supported!")
-
-    return masked
+    return nef.apply_bernoulli_mask(input_tensor, p=p, returns=returns)
 
 
 def random_flip(dim: int, *args, prob: float = 0.5):
@@ -775,10 +614,7 @@ def random_flip(dim: int, *args, prob: float = 0.5):
     >>> y = torch.tensor([[5, 6], [7, 8]])
     >>> flipped_x, flipped_y = random_flip(dim=0, x, y, prob=1.0)
     """
-    result = tuple([arg.flip([dim]) for arg in args]) if ne.utils.bernoulli(prob) else args
-    if len(args) == 1:
-        return result[0]
-    return result
+    return nef.random_flip(dim, *args, prob=prob)
 
 
 def sample_image_from_labels(
@@ -816,21 +652,11 @@ def sample_image_from_labels(
     >>> sampled.shape
     torch.Size([1, 4, 4])
     """
-    unique_labels = torch.unique(label_tensor)
-    min_val, max_val = mean_range
-
-    sampled_image = torch.zeros_like(label_tensor, dtype=torch.float32)
-    uniform_dist = torch.distributions.Uniform(low=min_val, high=max_val)
-
-    for label in unique_labels:
-        mask = label_tensor == label
-        num_elements = mask.sum().item()
-
-        mean_region_intensity = uniform_dist.sample().item()
-        texturized_region = mean_region_intensity + noise_std * torch.randn(num_elements)
-        sampled_image[mask] = texturized_region
-
-    return sampled_image
+    return nef.sample_image_from_labels(
+        label_tensor=label_tensor,
+        mean_range=mean_range,
+        noise_std=noise_std,
+    )
 
 
 def resample(
@@ -860,9 +686,9 @@ def resample(
         Interpolation mode for resampling. 'linear' will be automatically converted to the
         appropriate mode ('linear', 'bilinear', or 'trilinear') based on spatial dimensionality.
     non_spatial_dims : Tuple[int, ...] or None, default=None
-        Indices of non-spatial dimensions. Must be a contiguous sequence starting from 0.
-        Valid values: `()`, `(0,)`, or `(0, 1)`. If None, assumes all dimensions are spatial
-        and will add 2 leading dimensions for batch and channel.
+        Indices of leading non-spatial dimensions. Must be a contiguous sequence starting from 0.
+        If None or `()`, assumes all dimensions are spatial and will add batch and channel
+        dimensions for interpolation.
     antialias : bool, default=False
         If True, apply antialiasing when downsampling. Only supported with 'bilinear' and
         'bicubic' modes.
@@ -892,40 +718,15 @@ def resample(
     >>> print(resampled.shape)
     torch.Size([10, 50, 50])
     """
-    if size is None and scale_factor is None:
-        raise ValueError("Either size or scale_factor must be specified")
-
-    num_non_spatial, _ = parse_non_spatial_dims(non_spatial_dims, input_tensor.ndim)
-    dims_to_add = 2 - num_non_spatial
-
-    # Add batch and/or channel dimensions if needed
-    for _ in range(dims_to_add):
-        input_tensor = input_tensor.unsqueeze(0)
-
-    spatial_ndim = input_tensor.ndim - 2
-    if spatial_ndim not in {1, 2, 3}:
-        raise ValueError(
-            f"Unsupported spatial dimensionality: {spatial_ndim} spatial dimensions. "
-            "Only 1D, 2D, and 3D are supported."
-        )
-
-    # Infer interpolation mode for linear interpolation
-    if mode == 'linear':
-        mode = ne.utils.infer_linear_interpolation_mode(spatial_ndim)
-
-    # F.interpolate requires exactly one of size or scale_factor
-    if size is not None:
-        resampled = F.interpolate(input=input_tensor, size=size, mode=mode, antialias=antialias)
-    else:
-        resampled = F.interpolate(
-            input=input_tensor, scale_factor=scale_factor, mode=mode, antialias=antialias
-        )
-
-    # Remove added dimensions to match original tensor shape
-    for _ in range(dims_to_add):
-        resampled = resampled.squeeze(0)
-
-    return resampled
+    input_tensor, orig_shape = batch_nonspatial(input_tensor, non_spatial_dims)
+    resampled = nef.resample(
+        input_tensor=input_tensor,
+        size=size,
+        scale_factor=scale_factor,
+        mode=mode,
+        antialias=antialias,
+    )
+    return unbatch_nonspatial(resampled, orig_shape)
 
 
 def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> torch.Tensor:
@@ -958,49 +759,7 @@ def filter_dim(tensor: torch.Tensor, dim: int = 0, verbose: bool = False) -> tor
     >>> filtered.shape
     torch.Size([2, 2])
     """
-    dims_to_test = list(range(tensor.dim()))
-    dims_to_test.remove(dim)
-
-    # Remove NaNs
-    nan_mask = ~torch.isnan(tensor).any(dim=dims_to_test)
-    nan_mask = torch.nonzero(nan_mask, as_tuple=True)[0]
-    filtered_tensor = torch.index_select(tensor, dim, nan_mask)
-
-    # Remove infs
-    inf_mask = ~torch.isinf(filtered_tensor).any(dim=dims_to_test)
-    inf_mask = torch.nonzero(inf_mask, as_tuple=True)[0]
-    filtered_tensor = torch.index_select(filtered_tensor, dim, inf_mask)
-
-    # Remove all zeros
-    zero_mask = ~torch.all(filtered_tensor == 0, dim=dims_to_test)
-    zero_mask = torch.nonzero(zero_mask, as_tuple=True)[0]
-    filtered_tensor = torch.index_select(filtered_tensor, dim, zero_mask)
-
-    if verbose:
-        n_nans = torch.sum(~nan_mask)
-        print("N Batches with NaNs: ", n_nans)
-
-        n_infs = torch.sum(~inf_mask)
-        print("N Batches with Inf: ", n_infs)
-
-        n_zeros = torch.sum(zero_mask)
-        print("N Batches with Zero: ", n_zeros)
-
-    has_zero_dim = torch.any(
-        torch.tensor(filtered_tensor.shape) == 0
-    )
-
-    if has_zero_dim:
-        zero_dims = []
-        for d, size in enumerate(tensor.shape):
-            if size == 0:
-                zero_dims.append(d)
-
-        raise ValueError(
-            f"Dimension {zero_dims} of the filtered tensor has shape == 0."
-        )
-
-    return filtered_tensor
+    return nef.filter_dim(tensor, dim=dim, verbose=verbose)
 
 
 def parse_non_spatial_dims(
@@ -1013,8 +772,8 @@ def parse_non_spatial_dims(
     Parameters
     ----------
     non_spatial_dims : Sequence[int] or None
-        Indices of non-spatial dimensions (dimensions to vectorize over). Can be any sequence of
-        dimension indices. If None, assumes all dimensions are spatial.
+        Indices of leading non-spatial dimensions to vectorize over. Must be a contiguous
+        sequence starting at 0. If None, assumes all dimensions are spatial.
     tensor_ndim : int
         Total number of dimensions in the tensor.
 
@@ -1027,7 +786,7 @@ def parse_non_spatial_dims(
 
     Raises
     ------
-    ValueError
+    AssertionError
         If non_spatial_dims contains invalid indices or exceeds tensor dimensions.
 
     Examples
@@ -1045,19 +804,22 @@ def parse_non_spatial_dims(
     non_spatial_dims = tuple(non_spatial_dims)
     num_non_spatial = len(non_spatial_dims)
 
-    if num_non_spatial > tensor_ndim:
-        raise ValueError(
-            f"non_spatial_dims has {num_non_spatial} elements but tensor only has "
+    assert num_non_spatial <= tensor_ndim, (
+        f"non_spatial_dims has {num_non_spatial} elements but tensor only has "
+        f"{tensor_ndim} dimensions"
+    )
+
+    for dim in non_spatial_dims:
+        assert 0 <= dim < tensor_ndim, (
+            f"non_spatial_dims contains invalid index {dim} for tensor with "
             f"{tensor_ndim} dimensions"
         )
 
-    # Validate all indices are valid
-    for dim in non_spatial_dims:
-        if dim < 0 or dim >= tensor_ndim:
-            raise ValueError(
-                f"non_spatial_dims contains invalid index {dim} for tensor with "
-                f"{tensor_ndim} dimensions"
-            )
+    expected_dims = tuple(range(num_non_spatial))
+    assert non_spatial_dims == expected_dims, (
+        "non_spatial_dims must be a leading contiguous sequence starting at 0. "
+        f"Expected {expected_dims}, got {non_spatial_dims}."
+    )
 
     num_spatial = tensor_ndim - num_non_spatial
 
@@ -1144,64 +906,14 @@ def gaussian_kernel(
     This ensures the kernel is always odd-sized and captures the specified number of
     standard deviations. A truncate value of 3 captures ~99.7% of the Gaussian distribution.
     """
-    if isinstance(sigma, (float, int)):
-        if ndim is None:
-            raise ValueError(
-                "When sigma is a scalar, ndim must be specified to determine dimensionality"
-            )
-        if ndim not in [1, 2, 3]:
-            raise ValueError(f"ndim must be 1, 2, or 3, got {ndim}")
-        sigma_list = [float(sigma)] * ndim
-
-    elif isinstance(sigma, Sequence):
-        sigma_list = [float(s) for s in sigma]
-        ndim = len(sigma_list)
-        if ndim not in [1, 2, 3]:
-            raise ValueError(
-                f"sigma length determines dimensionality and must be 1, 2, or 3. "
-                f"Got length {ndim}"
-            )
-    else:
-        raise TypeError(f"sigma must be a number or sequence, got {type(sigma)}")
-
-    if isinstance(truncate, (int, float)):
-        truncate_list = [float(truncate)] * ndim
-
-    elif isinstance(truncate, Sequence):
-        if len(truncate) != ndim:
-            raise ValueError(
-                f"If truncate is a sequence, it must have length equal to sigma length "
-                f"({ndim}). Got length {len(truncate)}"
-            )
-        truncate_list = [float(t) for t in truncate]
-    else:
-        raise TypeError(f"truncate must be a number or sequence, got {type(truncate)}")
-
-    # Compute kernel size for each dimension: 2 * int(truncate * sigma + 0.5) + 1
-    kernel_size_list = [2 * int(t * s + 0.5) + 1 for s, t in zip(sigma_list, truncate_list)]
-
-    # Create coordinate grid centered at zero
-    coords = [
-        torch.arange(ks, device=device, dtype=dtype).float() - (ks - 1) / 2
-        for ks in kernel_size_list
-    ]
-
-    grid = torch.stack(torch.meshgrid(*coords, indexing='ij'), dim=-1)
-    sigma_tensor = torch.tensor(sigma_list, device=device, dtype=dtype)
-
-    # Calculate the Gaussian function: exp(-0.5 * sum((x / sigma)^2))
-    kernel = torch.exp(-0.5 * (grid ** 2 / sigma_tensor**2).sum(dim=-1))
-
-    assert normalize in {"sum", "gaussian", None}, (
-        f"normalize must be 'sum', 'gaussian', or None, got '{normalize}'"
+    return nef._gaussian_kernel(
+        sigma=sigma,
+        truncate=truncate,
+        ndim=ndim,
+        normalize=normalize,
+        device=device,
+        dtype=dtype,
     )
-
-    if normalize == "sum":
-        kernel /= kernel.sum()
-    elif normalize == "gaussian":
-        norm_const = (2 * torch.pi) ** (ndim / 2) * torch.prod(sigma_tensor)
-        kernel /= norm_const
-    return kernel
 
 
 def crop(
@@ -1238,7 +950,7 @@ def crop(
 
     Raises
     ------
-    ValueError
+    AssertionError
         If both `size` and `scale_factor` are specified or both are None. If crop size exceeds
         input size for any dimension. If offset is out of valid range.
 
@@ -1263,77 +975,14 @@ def crop(
     >>> random_offset = torch.randint(0, 33, (3,)).tolist()
     >>> cropped = ne.crop(x, size=32, offset=random_offset)
     """
-    if size is None and scale_factor is None:
-        raise ValueError("Either size or scale_factor must be specified")
-    if size is not None and scale_factor is not None:
-        raise ValueError("size and scale_factor are mutually exclusive")
-
-    # Handle non-spatial dimensions
-    num_non_spatial, num_spatial = parse_non_spatial_dims(non_spatial_dims, input_tensor.dim())
-    spatial_dims = list(range(num_non_spatial, input_tensor.dim()))
-
-    if size is not None:
-        if isinstance(size, int):
-            crop_sizes = [size] * num_spatial
-        else:
-            if len(size) != num_spatial:
-                raise ValueError(
-                    f"size length {len(size)} doesn't match number of spatial dims {num_spatial}"
-                )
-            crop_sizes = list(size)
-    else:
-        if isinstance(scale_factor, (int, float)):
-            scale_factors = [scale_factor] * num_spatial
-        else:
-            if len(scale_factor) != num_spatial:
-                raise ValueError(
-                    f"scale_factor length {len(scale_factor)} doesn't match spatial"
-                    f"dims {num_spatial}"
-                )
-            scale_factors = list(scale_factor)
-
-        # Compute crop sizes from scale factors
-        crop_sizes = []
-        for dim_idx, dim in enumerate(spatial_dims):
-            input_size = input_tensor.shape[dim]
-            crop_size = round(input_size * scale_factors[dim_idx])
-            crop_sizes.append(crop_size)
-
-    # Validate crop sizes
-    for dim_idx, dim in enumerate(spatial_dims):
-        input_size = input_tensor.shape[dim]
-        if crop_sizes[dim_idx] > input_size:
-            raise ValueError(
-                f"Crop size {crop_sizes[dim_idx]} exceeds input size {input_size} at dim {dim}"
-            )
-
-    # Parse offset
-    if isinstance(offset, int):
-        offsets = [offset] * num_spatial
-    else:
-        if len(offset) != num_spatial:
-            raise ValueError(
-                f"offset length {len(offset)} doesn't match number of spatial dims {num_spatial}"
-            )
-        offsets = list(offset)
-
-    # Validate offsets
-    for dim_idx, dim in enumerate(spatial_dims):
-        input_size = input_tensor.shape[dim]
-        crop_size = crop_sizes[dim_idx]
-        max_valid_offset = input_size - crop_size
-        if offsets[dim_idx] < 0 or offsets[dim_idx] > max_valid_offset:
-            raise ValueError(
-                f"offset {offsets[dim_idx]} out of range [0, {max_valid_offset}] for dim {dim}"
-            )
-
-    slices = [slice(None)] * input_tensor.dim()
-    for dim_idx, dim in enumerate(spatial_dims):
-        crop_size = crop_sizes[dim_idx]
-        dim_offset = offsets[dim_idx]
-        slices[dim] = slice(dim_offset, dim_offset + crop_size)
-
-    return input_tensor[tuple(slices)]
+    input_tensor, orig_shape = batch_nonspatial(input_tensor, non_spatial_dims)
+    cropped = nef.crop(
+        input_tensor=input_tensor,
+        size=size,
+        scale_factor=scale_factor,
+        offset=offset,
+    )
+    return unbatch_nonspatial(cropped, orig_shape)
 
 
 def clip(
@@ -1373,7 +1022,7 @@ def clip(
     >>> # Clip only maximum
     >>> clipped = ne.clip(x, max=1)
     """
-    return torch.clamp(input_tensor, min=min, max=max)
+    return nef.clip(input_tensor, min=min, max=max)
 
 
 def batch_nonspatial(
@@ -1445,12 +1094,8 @@ def batch_nonspatial(
     --------
     unbatch_nonspatial : Reverse operation to restore original shape.
     """
-    if non_spatial_dims is None:
-        num_non_spatial = 0
-        original_non_spatial_shape = ()
-    else:
-        num_non_spatial = len(non_spatial_dims)
-        original_non_spatial_shape = tuple(tensor.shape[:num_non_spatial])
+    num_non_spatial, _ = parse_non_spatial_dims(non_spatial_dims, tensor.ndim)
+    original_non_spatial_shape = tuple(tensor.shape[:num_non_spatial])
 
     spatial_shape = tensor.shape[num_non_spatial:]
 
@@ -1599,21 +1244,21 @@ def random_smoothed_noise(
         non_spatial_dims=non_spatial_dims,
         tensor_ndim=len(shape)
     )
-
     non_spatial_shape = shape[:num_non_spatial]
     spatial_shape = shape[num_non_spatial:]
 
-    shape = (*non_spatial_shape, *spatial_shape)
+    batch_size = 1
+    for dim_size in non_spatial_shape:
+        batch_size *= dim_size
 
-    noise = torch.normal(0, 1, size=shape, device=device)
-    noise, orig_shape = batch_nonspatial(noise, non_spatial_dims)
-    noise = nef.gaussian_smoothing(noise, sigma=sigma, truncate=3, normalize=normalize)
-
-    # Normalize to zero mean and specified magnitude
-    noise -= noise.mean()
-    noise *= magnitude / noise.std()
-
-    return unbatch_nonspatial(noise, orig_shape)
+    noise = nef.random_smoothed_noise(
+        shape=(batch_size, 1, *spatial_shape),
+        sigma=sigma,
+        magnitude=magnitude,
+        normalize=normalize,
+        device=device,
+    )
+    return unbatch_nonspatial(noise, tuple(non_spatial_shape))
 
 
 def upsample_noise(
@@ -1666,26 +1311,23 @@ def upsample_noise(
     >>> noise.shape
     torch.Size([2, 3, 64, 64])
     """
-    num_non_spatial, num_spatial = parse_non_spatial_dims(
+    num_non_spatial, _ = parse_non_spatial_dims(
         non_spatial_dims=non_spatial_dims,
-        tensor_ndim=len(shape)
+        tensor_ndim=len(shape),
     )
-
     non_spatial_shape = shape[:num_non_spatial]
     spatial_shape = shape[num_non_spatial:]
 
-    # Compute downsampled noise
-    coarse_spatial = tuple(max(int(s // scale), 2) for s in spatial_shape)
-    coarse_shape = (*non_spatial_shape, *coarse_spatial)
-    noise = torch.randn(coarse_shape, device=device)
+    batch_size = 1
+    for dim_size in non_spatial_shape:
+        batch_size *= dim_size
 
-    noise, orig_shape = batch_nonspatial(noise, non_spatial_dims)
-
-    # Interpolate to target spatial shape
-    mode = ne.utils.infer_linear_interpolation_mode(num_spatial=num_spatial)
-    noise = F.interpolate(noise, size=spatial_shape, mode=mode, align_corners=False)
-
-    return unbatch_nonspatial(noise, orig_shape)
+    noise = nef.upsample_noise(
+        shape=(batch_size, 1, *spatial_shape),
+        scale=scale,
+        device=device,
+    )
+    return unbatch_nonspatial(noise, tuple(non_spatial_shape))
 
 
 def fractal_noise(
@@ -1760,62 +1402,24 @@ def fractal_noise(
     >>> # Custom scales and weights
     >>> noise = ne.fractal_noise(shape=(64, 64), scales=[2.0, 4.0, 8.0], weights=[1.0, 0.5, 0.25])
     """
-    import numpy as np
-
     num_non_spatial, _ = parse_non_spatial_dims(
         non_spatial_dims=non_spatial_dims,
-        tensor_ndim=len(shape)
+        tensor_ndim=len(shape),
     )
+    non_spatial_shape = shape[:num_non_spatial]
     spatial_shape = shape[num_non_spatial:]
 
-    # Default scales: powers of 2 up to max spatial dimension
-    if scales is None:
-        scales = 2 ** np.arange(np.log2(max(spatial_shape)))[1:]
+    batch_size = 1
+    for dim_size in non_spatial_shape:
+        batch_size *= dim_size
 
-    # Convert scalar to list for uniform handling
-    if np.isscalar(scales):
-        scales = [scales]
-
-    # Set default weights if not provided
-    if len(scales) == 1:
-        weights = [1.0]
-    elif weights is None:
-        weights = list(np.arange(len(scales)) + 1)
-
-    if len(weights) != len(scales):
-        raise ValueError(
-            f'weights length ({len(weights)}) must match scales length ({len(scales)})'
-        )
-
-    # Generate noise at each scale
-    noise = None
-    for scale, weight in zip(scales, weights):
-        if method == 'blur':
-            sample = random_smoothed_noise(
-                shape=shape,
-                sigma=scale,
-                magnitude=1.0,
-                non_spatial_dims=non_spatial_dims,
-                normalize=normalize,
-                device=device,
-            )
-        else:  # method == 'upsample'
-            sample = upsample_noise(
-                shape=shape,
-                scale=scale,
-                non_spatial_dims=non_spatial_dims,
-                device=device
-            )
-
-        sample *= weight
-
-        if noise is None:
-            noise = sample
-        else:
-            noise += sample
-
-    # Normalize to target magnitude
-    noise -= noise.mean()
-    noise *= magnitude / noise.std()
-
-    return noise
+    noise = nef.fractal_noise(
+        shape=(batch_size, 1, *spatial_shape),
+        scales=scales,
+        magnitude=magnitude,
+        weights=weights,
+        normalize=normalize,
+        device=device,
+        method=method,
+    )
+    return unbatch_nonspatial(noise, tuple(non_spatial_shape))
