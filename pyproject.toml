@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "neurite"
-version = "0.2"
+version = "0.3"
 description = "Neural networks toolbox focused on medical image analysis."
 requires-python = ">=3.8"
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "Apache 2.0" }
 classifiers = [
   "Intended Audience :: Science/Research",
   "Programming Language :: Python :: 3",
@@ -28,11 +28,13 @@ dependencies = [
   "torch",
   "numpy",
   "einops",
-  "pystrum",
+  "packaging",
+  "pystrum>=0.2",
   "nibabel",
   "scipy",
   "matplotlib",
   "tqdm",
+  "six",
 ]
 
 keywords = [
@@ -46,7 +48,7 @@ keywords = [
 
 [project.urls]
 GitHub = "https://github.com/adalca/neurite"
-PyPi = "https://pypi.org/project/neurite/0.2/"
+PyPi = "https://pypi.org/project/neurite/0.3/"
 
 [tool.pyright]
 reportRedeclaration = false
