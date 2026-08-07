@@ -2,10 +2,84 @@
 Python utilities for `neurite`.
 """
 
+from datetime import datetime
+import os
+from pathlib import Path
+import tarfile
+from typing import Dict, Union
+import urllib.request
+
 # Third party imports
 import numpy as np
 import matplotlib
 import torch
+
+
+def get_cache_dir(*parts: str) -> Path:
+    """
+    Resolve a path within the user cache directory.
+
+    Parameters
+    ----------
+    *parts : str
+        Optional path components appended to the cache directory.
+
+    Returns
+    -------
+    pathlib.Path
+        Path under `$XDG_CACHE_HOME`, or `~/.cache` when `XDG_CACHE_HOME` is unset.
+    """
+    cache_dir = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    return cache_dir.joinpath(*parts)
+
+
+def load_tutorial_data(
+    filename: str = "tutorial_data.npz",
+    return_tensors: bool = False,
+) -> Union[Dict[str, np.ndarray], Dict[str, torch.Tensor]]:
+    """
+    Load VoxelMorph tutorial data as NumPy arrays or PyTorch tensors.
+
+    The first uncached call downloads the official archive into the user cache and extracts the
+    requested NPZ file.
+
+    Parameters
+    ----------
+    filename : str, default="tutorial_data.npz"
+        Tutorial file to load: `tutorial_data.npz`, `subj1.npz`, or `subj2.npz`.
+    return_tensors : bool, default=False
+        If True, return PyTorch tensors instead of NumPy arrays.
+
+    Returns
+    -------
+    dict of str to numpy.ndarray or torch.Tensor
+        Values stored in the requested NPZ file.
+    """
+    allowed_filenames = ("tutorial_data.npz", "subj1.npz", "subj2.npz")
+    assert filename in allowed_filenames, f"unknown file: {filename}"
+
+    cache_dir = get_cache_dir("voxelmorph")
+    data_path = cache_dir / filename
+
+    if not data_path.exists():
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        archive_path = cache_dir / "tutorial_data.tar.gz"
+        if not archive_path.exists():
+            timestamp = datetime.now().isoformat(timespec="seconds")
+            print(f"[{timestamp}] Downloading VoxelMorph tutorial data to {archive_path}")
+            urllib.request.urlretrieve(
+                "https://surfer.nmr.mgh.harvard.edu/pub/data/voxelmorph/tutorial_data.tar.gz",
+                archive_path,
+            )
+        with tarfile.open(archive_path, "r:gz") as archive:
+            archive.extract(filename, cache_dir)
+
+    with np.load(data_path, allow_pickle=False) as npz_file:
+        arrays = {key: npz_file[key] for key in npz_file.files}
+
+    if return_tensors:
+        return {key: torch.from_numpy(array) for key, array in arrays.items()}
+    return arrays
 
 
 def softmax(x, axis):

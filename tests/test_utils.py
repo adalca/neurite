@@ -1,9 +1,109 @@
-import pytest
+import io
 import itertools
+from pathlib import Path
+import shutil
+import tarfile
 
+import numpy as np
+import pytest
 import torch
+
 import neurite as ne
 import neurite.nn.functional as nef
+
+
+def test_get_cache_dir_uses_xdg_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Append path components to the configured XDG cache directory.
+    """
+    xdg_cache = tmp_path / "xdg"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(xdg_cache))
+
+    cache_dir = ne.py.utils.get_cache_dir("torch", "hub", "checkpoints")
+
+    assert cache_dir == xdg_cache / "torch" / "hub" / "checkpoints"
+
+
+def test_get_cache_dir_falls_back_to_home(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Use the conventional home cache when XDG_CACHE_HOME is unset.
+    """
+    monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+
+    cache_dir = ne.py.utils.get_cache_dir("torchvision")
+
+    assert cache_dir == Path.home() / ".cache" / "torchvision"
+
+
+def test_load_tutorial_data_uses_xdg_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    Load NumPy arrays from the configured XDG cache.
+    """
+    xdg_cache = tmp_path / "xdg"
+    cache_dir = xdg_cache / "voxelmorph"
+    cache_dir.mkdir(parents=True)
+    expected = np.array([1, 2, 3])
+    np.savez(cache_dir / "tutorial_data.npz", volumes=expected)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(xdg_cache))
+
+    data = ne.py.utils.load_tutorial_data()
+
+    assert isinstance(data["volumes"], np.ndarray)
+    np.testing.assert_array_equal(data["volumes"], expected)
+
+
+def test_load_tutorial_data_can_return_tensors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    Return tensors directly when requested.
+    """
+    xdg_cache = tmp_path / "xdg"
+    cache_dir = xdg_cache / "voxelmorph"
+    cache_dir.mkdir(parents=True)
+    expected = np.array([1, 2, 3], dtype=np.float32)
+    np.savez(cache_dir / "tutorial_data.npz", volumes=expected)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(xdg_cache))
+
+    data = ne.py.utils.load_tutorial_data(return_tensors=True)
+
+    assert isinstance(data["volumes"], torch.Tensor)
+    assert torch.equal(data["volumes"], torch.from_numpy(expected))
+
+
+def test_load_tutorial_data_downloads_and_extracts_archive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    Download the archive once and extract the requested tutorial file.
+    """
+    expected = np.array([4, 5, 6])
+    npz_buffer = io.BytesIO()
+    np.savez(npz_buffer, volume=expected)
+    source_archive = tmp_path / "source.tar.gz"
+    with tarfile.open(source_archive, "w:gz") as archive:
+        member = tarfile.TarInfo("subj2.npz")
+        member.size = len(npz_buffer.getvalue())
+        archive.addfile(member, io.BytesIO(npz_buffer.getvalue()))
+
+    def copy_archive(_url: str, destination: Path) -> None:
+        """
+        Copy the fixture archive instead of downloading it.
+        """
+        shutil.copyfile(source_archive, destination)
+
+    xdg_cache = tmp_path / "xdg"
+    cache_dir = xdg_cache / "voxelmorph"
+    monkeypatch.setenv("XDG_CACHE_HOME", str(xdg_cache))
+    monkeypatch.setattr(ne.py.utils.urllib.request, "urlretrieve", copy_archive)
+
+    data = ne.py.utils.load_tutorial_data("subj2.npz")
+
+    np.testing.assert_array_equal(data["volume"], expected)
+    assert (cache_dir / "tutorial_data.tar.gz").exists()
+    assert (cache_dir / "subj2.npz").exists()
 
 
 def test_base_gaussian_kernel_no_batch_channel():
