@@ -161,6 +161,7 @@ def _gaussian_kernel(
         kernel /= norm_const
     return kernel
 
+
 def gaussian_smoothing(
     input_tensor: torch.Tensor,
     sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
@@ -591,6 +592,129 @@ def mask_border(
     return border.to(dtype=mask.dtype)
 
 
+def normalize_reference_intensity(
+    image: torch.Tensor,
+    reference_mask: torch.Tensor,
+    target: Union[float, int, torch.Tensor] = 1.0,
+    *,
+    trim_fraction: float = 0.0,
+    eps: float = 1e-6,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Normalize image intensities using a masked reference-tissue mean.
+
+    The reference statistic and multiplicative scale are computed independently for every batch
+    and channel. A single-channel mask is broadcast across image channels. Symmetric trimming can
+    make the statistic less sensitive to partial-volume voxels and outliers.
+
+    Parameters
+    ----------
+    image : torch.Tensor
+        Floating-point image with shape ``[B, C, *spatial]``.
+    reference_mask : torch.Tensor
+        Boolean reference-tissue mask with shape ``[B, 1, *spatial]`` or
+        ``[B, C, *spatial]``.
+    target : float, int, or torch.Tensor, default=1
+        Positive target value for the trimmed reference mean. A tensor must be broadcastable to
+        ``[B, C]``.
+    trim_fraction : float, default=0
+        Fraction removed from each tail after sorting the masked values. Must lie in ``[0, 0.5)``.
+        Zero computes the ordinary masked mean.
+    eps : float, default=1e-6
+        Smallest permitted reference mean.
+
+    Returns
+    -------
+    normalized : torch.Tensor
+        Globally rescaled image with the same shape, dtype, and device as ``image``.
+    scale : torch.Tensor
+        Multiplicative scale with shape ``[B, C, 1, ..., 1]``.
+
+    Raises
+    ------
+    TypeError
+        If ``image`` is not floating point or ``reference_mask`` is not boolean.
+    ValueError
+        If shapes or parameters are invalid, a mask is empty, or a reference statistic is
+        nonfinite or too small.
+
+    Notes
+    -----
+    This operation does not clamp the normalized image or constrain it to a fixed range. Sorting
+    and averaging remain differentiable with respect to the selected image values.
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite as ne
+    >>> image = torch.tensor([1.0, 2.0, 3.0, 100.0]).reshape(1, 1, 2, 2)
+    >>> mask = torch.ones_like(image, dtype=torch.bool)
+    >>> normalized, scale = ne.nn.normalize_reference_intensity(
+    ...     image, mask, target=5.0, trim_fraction=0.25
+    ... )
+    >>> normalized[mask].sort().values[1:-1].mean().item()
+    5.0
+    >>> scale.item()
+    2.0
+    """
+
+    if not image.is_floating_point():
+        raise TypeError("image must be a floating-point tensor.")
+    if reference_mask.dtype != torch.bool:
+        raise TypeError("reference_mask must have boolean dtype.")
+    if image.ndim < 3:
+        raise ValueError("image must have shape [B, C, *spatial].")
+    if reference_mask.ndim != image.ndim:
+        raise ValueError("reference_mask and image must have the same number of dimensions.")
+    if reference_mask.shape[0] != image.shape[0]:
+        raise ValueError("reference_mask and image batch dimensions must match.")
+    if reference_mask.shape[1] not in (1, image.shape[1]):
+        raise ValueError("reference_mask must have one channel or match the image channels.")
+    if reference_mask.shape[2:] != image.shape[2:]:
+        raise ValueError("reference_mask and image spatial dimensions must match.")
+    if reference_mask.device != image.device:
+        raise ValueError("reference_mask and image must be on the same device.")
+    if not 0 <= trim_fraction < 0.5:
+        raise ValueError("trim_fraction must lie in [0, 0.5).")
+    if eps <= 0:
+        raise ValueError("eps must be positive.")
+
+    expanded_mask = reference_mask.expand(
+        image.shape[0], image.shape[1], *image.shape[2:]
+    )
+    reference_rows = []
+    for batch_index in range(image.shape[0]):
+        reference_channels = []
+        for channel_index in range(image.shape[1]):
+            values = image[batch_index, channel_index][
+                expanded_mask[batch_index, channel_index]
+            ]
+            if values.numel() == 0:
+                raise ValueError("Every batch and channel must contain reference-mask voxels.")
+
+            trim_count = int(trim_fraction * values.numel())
+            if trim_count:
+                values = values.sort().values
+                values = values[trim_count:-trim_count]
+            reference_channels.append(values.mean())
+        reference_rows.append(torch.stack(reference_channels))
+    reference = torch.stack(reference_rows)  # [B, C]
+
+    if not torch.isfinite(reference).all() or torch.any(reference <= eps):
+        raise ValueError("Reference means must be finite and greater than eps.")
+    target_tensor = torch.as_tensor(target, dtype=image.dtype, device=image.device)
+    try:
+        target_tensor = torch.broadcast_to(target_tensor, reference.shape)
+    except RuntimeError as error:
+        raise ValueError("target must be broadcastable to [B, C].") from error
+    if not torch.isfinite(target_tensor).all() or torch.any(target_tensor <= 0):
+        raise ValueError("target values must be finite and positive.")
+
+    scale = target_tensor / reference  # [B, C]
+    scale_shape = (*scale.shape, *((1,) * (image.ndim - 2)))
+    scale = scale.reshape(scale_shape)  # [B, C, 1, ..., 1]
+    return image * scale, scale
+
+
 def sample_locations_in_mask(
     mask: torch.Tensor,
     nb_samples: Union[int, Sequence[int]],
@@ -916,6 +1040,7 @@ def one_hot(
     assert int(classes.min().item()) >= 0, "class_list contains a negative class id."
 
     return encoded.index_select(1, classes)
+
 
 def resample_voxel_dimensions(
     input_tensor: torch.Tensor,

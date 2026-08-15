@@ -453,7 +453,6 @@ def test_resample_preserves_non_spatial_dims(shape, non_spatial_dims, expected_s
     assert result.shape == torch.Size(expected_shape)
 
 
-
 def test_pad_to_multiple_of_preserves_center_values():
     """Test that pad_to_multiple_of center-pads spatial dimensions."""
     tensor = torch.ones(1, 1, 3, 5)
@@ -499,6 +498,94 @@ def test_top_level_mask_border_handles_pure_spatial_masks():
 
     assert border.shape == mask.shape
     assert border.sum() == 8
+
+
+def test_normalize_reference_intensity_batches_channels_and_mask_broadcasting():
+    """Normalize each batch and channel independently with one-channel masks."""
+
+    image = torch.tensor(
+        [
+            [[[1.0, 2.0, 3.0, 4.0]], [[2.0, 4.0, 6.0, 8.0]]],
+            [[[3.0, 6.0, 9.0, 12.0]], [[4.0, 8.0, 12.0, 16.0]]],
+        ]
+    )
+    mask = torch.tensor([[[[True, True, False, False]]]]).expand(2, -1, -1, -1)
+    target = torch.tensor([[5.0], [10.0]])
+
+    normalized, scale = nef.normalize_reference_intensity(image, mask, target)
+    expanded_mask = mask.expand_as(image)
+    references = []
+    for batch_index in range(image.shape[0]):
+        channel_references = []
+        for channel_index in range(image.shape[1]):
+            values = normalized[batch_index, channel_index][
+                expanded_mask[batch_index, channel_index]
+            ]
+            channel_references.append(values.mean())
+        references.append(torch.stack(channel_references))
+
+    assert normalized.shape == image.shape
+    assert scale.shape == (2, 2, 1, 1)
+    assert torch.allclose(torch.stack(references), target.expand(2, 2))
+
+
+def test_normalize_reference_intensity_trims_outliers_and_preserves_gradients():
+    """Use a symmetric trimmed mean while retaining autograd support."""
+
+    values = torch.tensor([1.0, 2.0, 3.0, 100.0], requires_grad=True)
+    image = values.reshape(1, 1, 2, 2)
+    mask = torch.ones_like(image, dtype=torch.bool)
+
+    normalized, scale = nef.normalize_reference_intensity(
+        image, mask, target=5.0, trim_fraction=0.25
+    )
+    normalized.sum().backward()
+
+    assert torch.allclose(scale.flatten(), torch.tensor([2.0]))
+    assert image.grad_fn is not None
+    assert values.grad is not None
+    assert torch.isfinite(values.grad).all()
+
+
+@pytest.mark.parametrize(
+    ("image", "mask", "kwargs", "error_type"),
+    [
+        (torch.ones(1, 1, 2, 2, dtype=torch.int16), None, {}, TypeError),
+        (torch.ones(1, 1, 2, 2), torch.ones(1, 1, 2, 2), {}, TypeError),
+        (torch.ones(1, 1, 2, 2), torch.zeros(1, 1, 2, 2, dtype=torch.bool), {}, ValueError),
+        (torch.zeros(1, 1, 2, 2), torch.ones(1, 1, 2, 2, dtype=torch.bool), {}, ValueError),
+        (torch.ones(1, 1, 2, 2), torch.ones(1, 1, 2, 2, dtype=torch.bool),
+         {"trim_fraction": 0.5}, ValueError),
+        (torch.ones(1, 1, 2, 2), torch.ones(1, 1, 2, 2, dtype=torch.bool),
+         {"target": 0}, ValueError),
+    ],
+)
+def test_normalize_reference_intensity_rejects_invalid_inputs(
+    image, mask, kwargs, error_type
+):
+    """Reject invalid masks, reference values, targets, and trimming."""
+
+    if mask is None:
+        mask = torch.ones_like(image, dtype=torch.bool)
+    with pytest.raises(error_type):
+        nef.normalize_reference_intensity(image, mask, **kwargs)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
+def test_normalize_reference_intensity_cpu_cuda_agreement():
+    """Match normalized values and scales between CPU and CUDA."""
+
+    image = torch.rand(2, 2, 8, 9, 10)
+    mask = torch.rand(2, 1, 8, 9, 10) > 0.25
+    cpu_image, cpu_scale = nef.normalize_reference_intensity(
+        image, mask, target=0.859375, trim_fraction=0.1
+    )
+    cuda_image, cuda_scale = nef.normalize_reference_intensity(
+        image.cuda(), mask.cuda(), target=0.859375, trim_fraction=0.1
+    )
+
+    assert torch.allclose(cpu_image, cuda_image.cpu(), atol=1e-6, rtol=1e-5)
+    assert torch.allclose(cpu_scale, cuda_scale.cpu(), atol=1e-6, rtol=1e-5)
 
 
 def test_sample_locations_in_mask_samples_each_label():
@@ -588,6 +675,7 @@ def test_one_hot_top_level_and_nn_class_subset():
     assert torch.equal(top_level, nn_level)
     assert torch.equal(top_level[0, 0], torch.tensor([[0.0, 1.0], [0.0, 1.0]]))
     assert torch.equal(top_level[0, 1], torch.tensor([[0.0, 0.0], [1.0, 0.0]]))
+
 
 def test_filter_dim_removes_nan_slices():
     """Test that slices containing NaN are removed."""
