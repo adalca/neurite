@@ -1293,6 +1293,7 @@ class GaussianBlur(nn.Module):
         sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
         truncate: Union[int, float, Sequence[Union[int, float]]] = 3,
         normalize: Union[Literal["sum", "gaussian"], None] = "sum",
+        padding_mode: str = "constant",
     ):
         """
         Initialize `GaussianBlur`.
@@ -1308,6 +1309,8 @@ class GaussianBlur(nn.Module):
             can be specified per dimension (must match sigma length).
         normalize : {'sum', 'gaussian'} or None, default='sum'
             How to normalize the Gaussian kernel. See `neurite.gaussian_kernel` for details.
+        padding_mode : {'constant', 'reflect', 'replicate', 'circular'}, default='constant'
+            Boundary padding applied before convolution.
 
         Notes
         -----
@@ -1320,6 +1323,7 @@ class GaussianBlur(nn.Module):
         self.sigma = sigma
         self.truncate = truncate
         self.normalize = normalize
+        self.padding_mode = padding_mode
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
@@ -1341,6 +1345,7 @@ class GaussianBlur(nn.Module):
             sigma=self.sigma,
             truncate=self.truncate,
             normalize=self.normalize,
+            padding_mode=self.padding_mode,
         )
 
 
