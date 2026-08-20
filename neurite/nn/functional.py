@@ -167,6 +167,7 @@ def gaussian_smoothing(
     sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
     truncate: Union[int, float, Sequence[Union[int, float]]] = 3,
     normalize: Union[Literal["sum", "gaussian"], None] = "sum",
+    padding_mode: str = "constant",
 ) -> torch.Tensor:
     """
     Apply Gaussian smoothing to the {1D, 2D, 3D} input tensor.
@@ -188,6 +189,8 @@ def gaussian_smoothing(
         can be specified per dimension (must match sigma length).
     normalize : {'sum', 'gaussian'} or None, default='sum'
         How to normalize the Gaussian kernel. See `neurite.gaussian_kernel` for details.
+    padding_mode : {'constant', 'reflect', 'replicate', 'circular'}, default='constant'
+        Boundary padding applied before convolution.
 
     Returns
     -------
@@ -218,7 +221,10 @@ def gaussian_smoothing(
     the mathematical errors that occur when kernel_size is too small for the given sigma.
     """
 
-    # Infer spatial dimensionality (subtract batch and channel dims)
+    if padding_mode not in {"constant", "reflect", "replicate", "circular"}:
+        raise ValueError(f"unsupported padding mode: {padding_mode}")
+
+    # Infer spatial dimensionality and build one depthwise kernel per channel.
     ndim = input_tensor.dim() - 2
     nchannels = input_tensor.shape[1]
 
@@ -235,8 +241,15 @@ def gaussian_smoothing(
     if nchannels > 1:
         kernel = kernel.repeat(nchannels, 1, *([1] * ndim))
 
+    # Pad explicitly so callers can choose boundary behavior while preserving shape.
+    padding = []
+    for size in reversed(kernel.shape[2:]):
+        radius = size // 2
+        padding.extend((radius, radius))
+    padded = F.pad(input_tensor, padding, mode=padding_mode)
+
     conv_fn = {1: F.conv1d, 2: F.conv2d, 3: F.conv3d}[ndim]
-    smoothed_tensor = conv_fn(input=input_tensor, weight=kernel, padding="same", groups=nchannels)
+    smoothed_tensor = conv_fn(input=padded, weight=kernel, groups=nchannels)
 
     return smoothed_tensor
 
@@ -1343,6 +1356,7 @@ def dice(
     *segs: torch.Tensor,
     smooth_numerator: float = 1e-12,
     smooth_denominator: float = 1e-12,
+    bounds_tolerance: float = 1e-6,
     reduction: Union[str, None] = 'mean',
     reduction_dim: Union[int, Tuple[int, ...]] = (0, 1),
     keepdims: bool = True,
@@ -1358,6 +1372,8 @@ def dice(
         Smoothing constant added to the numerator.
     smooth_denominator : float, default=1e-12
         Smoothing constant added to the denominator.
+    bounds_tolerance : float, default=1e-6
+        Absolute tolerance for segmentation values outside [0, 1].
     reduction : str or None, default='mean'
         The type of reduction to apply. Supported values for multidimensional reductions are:
         'mean', 'sum', 'median', 'amax', 'amin', 'std', 'var', 'var_mean'; for single-dimension
@@ -1396,9 +1412,10 @@ def dice(
     assert shapes_match, f'All segmentations must share shape; got {{seg.shape for seg in segs}}'
 
     for seg in segs:
-        assert seg.min() >= 0 and seg.max() <= 1, (
-            f'Segmentations must be in [0,1]; got min {seg.min()}, max {seg.max()}'
-        )
+        seg_min = seg.min()
+        seg_max = seg.max()
+        assert seg_min >= -bounds_tolerance, f'Minimum {seg_min} is too low.'
+        assert seg_max <= 1 + bounds_tolerance, f'Maximum {seg_max} is too high.'
 
     stacked = torch.stack(segs, dim=0)
     spatial_dims = tuple(range(2, segs[0].ndim))
@@ -2132,6 +2149,8 @@ def random_smoothed_noise(
     magnitude: float = 1.0,
     normalize: Union[Literal["sum", "gaussian"], None] = "sum",
     device: Union[torch.device, None] = None,
+    dtype: torch.dtype = torch.float32,
+    generator: Optional[torch.Generator] = None,
 ) -> torch.Tensor:
     """
     Generate smooth Gaussian noise in (B, C, *spatial) format.
@@ -2150,6 +2169,10 @@ def random_smoothed_noise(
         How to normalize the Gaussian kernel. See `neurite.gaussian_kernel` for details.
     device : torch.device or None, default=None
         Device for tensor allocation. If None, defaults to CPU.
+    dtype : torch.dtype, default=torch.float32
+        Data type for the noise field.
+    generator : torch.Generator, optional
+        Generator controlling random sampling.
 
     Returns
     -------
@@ -2170,19 +2193,24 @@ def random_smoothed_noise(
     >>> noise_3d.shape
     torch.Size([2, 3, 32, 32, 32])
     """
-    noise = torch.normal(0, 1, size=shape, device=device)
+    noise = torch.randn(shape, device=device, dtype=dtype, generator=generator)
     noise = gaussian_smoothing(noise, sigma=sigma, truncate=3, normalize=normalize)
 
-    noise -= noise.mean()
-    noise *= magnitude / noise.std()
+    # Normalize every batch-channel field independently over its spatial axes.
+    spatial_dims = tuple(range(2, noise.ndim))
+    noise -= noise.mean(dim=spatial_dims, keepdim=True)
+    std = noise.std(dim=spatial_dims, keepdim=True).clamp_min(1e-8)
+    noise *= magnitude / std
 
     return noise
 
 
 def upsample_noise(
     shape: Sequence[int],
-    scale: Union[float, int],
-    device: Union[torch.device, None] = None
+    scale: Union[float, int, Sequence[Union[float, int]]],
+    device: Union[torch.device, None] = None,
+    dtype: torch.dtype = torch.float32,
+    generator: Optional[torch.Generator] = None,
 ) -> torch.Tensor:
     """
     Generate smooth noise by upsampling from a coarse grid in (B, C, *spatial) format.
@@ -2191,10 +2219,14 @@ def upsample_noise(
     ----------
     shape : Sequence[int]
         Target shape in (B, C, *spatial) format. Must have at least 3 dimensions.
-    scale : float or int
-        Downsampling factor. Larger values produce smoother noise.
+    scale : float, int, or Sequence[float or int]
+        Downsampling factor per spatial axis. Larger values produce smoother noise.
     device : torch.device or None, default=None
         Device for tensor allocation.
+    dtype : torch.dtype, default=torch.float32
+        Data type for the noise field.
+    generator : torch.Generator, optional
+        Generator controlling random sampling.
 
     Returns
     -------
@@ -2215,9 +2247,20 @@ def upsample_noise(
     torch.Size([2, 3, 32, 32, 32])
     """
     spatial_shape = shape[2:]
-    coarse_spatial = tuple(max(int(s // scale), 2) for s in spatial_shape)
+    if isinstance(scale, (float, int)):
+        scales = (float(scale),) * len(spatial_shape)
+    else:
+        scales = tuple(float(value) for value in scale)
+    if len(scales) != len(spatial_shape):
+        raise ValueError("scale must have one value per spatial dimension")
+    if any(value <= 0 for value in scales):
+        raise ValueError("scale values must be positive")
+
+    coarse_spatial = []
+    for size, axis_scale in zip(spatial_shape, scales):
+        coarse_spatial.append(max(int(size // axis_scale), 2))
     coarse_shape = (*shape[:2], *coarse_spatial)
-    noise = torch.randn(coarse_shape, device=device)
+    noise = torch.randn(coarse_shape, device=device, dtype=dtype, generator=generator)
 
     mode = infer_linear_interpolation_mode(num_spatial=len(spatial_shape))
     return F.interpolate(noise, size=spatial_shape, mode=mode, align_corners=False)
@@ -2225,12 +2268,20 @@ def upsample_noise(
 
 def fractal_noise(
     shape: Sequence[int],
-    scales: Union[float, int, Sequence[Union[float, int]], None] = None,
+    scales: Union[
+        float,
+        int,
+        Sequence[Union[float, int, Sequence[Union[float, int]]]],
+        None,
+    ] = None,
     magnitude: float = 1.0,
     weights: Union[Sequence[float], None] = None,
     normalize: Union[Literal["sum", "gaussian"], None] = "sum",
     device: Union[torch.device, None] = None,
-    method: Literal['blur', 'upsample'] = 'blur'
+    method: Literal['blur', 'upsample'] = 'blur',
+    dtype: torch.dtype = torch.float32,
+    generator: Optional[torch.Generator] = None,
+    standardize: bool = True,
 ) -> torch.Tensor:
     """
     Generate fractal noise in (B, C, *spatial) format.
@@ -2239,8 +2290,8 @@ def fractal_noise(
     ----------
     shape : Sequence[int]
         Target shape in (B, C, *spatial) format. Must have at least 3 dimensions.
-    scales : float, int, Sequence[float or int], or None, default=None
-        Smoothing scale(s) for each octave. If None, defaults to powers of 2.
+    scales : float, int, or sequence, optional
+        Smoothing scale for each octave. An octave can contain one value per spatial axis.
     magnitude : float, default=1.0
         Standard deviation of the final normalized noise.
     weights : Sequence[float] or None, default=None
@@ -2252,6 +2303,12 @@ def fractal_noise(
         Device for tensor allocation.
     method : {'blur', 'upsample'}, default='blur'
         Noise generation method.
+    dtype : torch.dtype, default=torch.float32
+        Data type for the noise field.
+    generator : torch.Generator, optional
+        Generator controlling random sampling.
+    standardize : bool, default=True
+        Whether to standardize each output field to zero mean and ``magnitude`` deviation.
 
     Returns
     -------
@@ -2271,7 +2328,6 @@ def fractal_noise(
     >>> noise_3d.shape
     torch.Size([1, 1, 32, 32, 32])
     """
-    num_spatial = len(shape) - 2
     spatial_shape = shape[2:]
 
     if scales is None:
@@ -2279,15 +2335,18 @@ def fractal_noise(
 
     if np.isscalar(scales):
         scales = [scales]
+    else:
+        scales = list(scales)
 
     if len(scales) == 1:
         weights = [1.0]
     elif weights is None:
         weights = list(np.arange(len(scales)) + 1)
 
-    assert len(weights) == len(scales), (
-        f'weights length ({len(weights)}) must match scales length ({len(scales)})'
-    )
+    if len(weights) != len(scales):
+        raise ValueError("weights length must match scales length")
+    if method not in {"blur", "upsample"}:
+        raise ValueError("method must be 'blur' or 'upsample'")
 
     noise = None
     for scale, weight in zip(scales, weights):
@@ -2298,9 +2357,17 @@ def fractal_noise(
                 magnitude=1.0,
                 normalize=normalize,
                 device=device,
+                dtype=dtype,
+                generator=generator,
             )
         else:
-            sample = upsample_noise(shape=shape, scale=scale, device=device)
+            sample = upsample_noise(
+                shape=shape,
+                scale=scale,
+                device=device,
+                dtype=dtype,
+                generator=generator,
+            )
 
         sample *= weight
 
@@ -2309,7 +2376,13 @@ def fractal_noise(
         else:
             noise += sample
 
-    noise -= noise.mean()
-    noise *= magnitude / noise.std()
+    if standardize:
+        # Normalize every batch-channel field independently over its spatial axes.
+        spatial_dims = tuple(range(2, noise.ndim))
+        noise -= noise.mean(dim=spatial_dims, keepdim=True)
+        std = noise.std(dim=spatial_dims, keepdim=True).clamp_min(1e-8)
+        noise *= magnitude / std
+    else:
+        noise *= magnitude
 
     return noise
