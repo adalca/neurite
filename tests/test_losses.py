@@ -3,6 +3,7 @@ Module for testing the losses of `neurite`. To be ran with `pytest`.
 """
 import pytest
 import torch
+
 import neurite as ne
 import neurite.nn.functional as nef
 
@@ -82,6 +83,22 @@ def test_dice_identical():
     assert torch.allclose(result, expected, atol=1e-6), (
         "Dice for identical inputs should be close to 1."
     )
+
+
+@pytest.mark.parametrize('value', [-5e-7, 1 + 5e-7])
+def test_dice_allows_values_within_bounds_tolerance(value):
+    """Test Dice accepts small numerical deviations outside probability bounds."""
+    seg = torch.tensor([[[value]]])
+    nef.dice(seg, seg)
+
+
+@pytest.mark.parametrize('value', [-2e-6, 1 + 2e-6])
+def test_dice_rejects_values_outside_bounds_tolerance(value):
+    """Test Dice rejects values that exceed the probability bounds tolerance."""
+    seg = torch.tensor([[[value]]])
+
+    with pytest.raises(AssertionError):
+        nef.dice(seg, seg)
 
 
 def test_dice_nonidentical():
@@ -241,6 +258,36 @@ def test_ncc_window_size():
     # Should work with per-dimension window sizes
     score = nef.ncc(t1, t2, window_size=[5, 9])
     assert score.shape == (1, 1), f"Expected (1, 1), got {score.shape} for per-dim window"
+
+
+@pytest.mark.parametrize(
+    'shape,window_size',
+    [
+        ((2, 3, 17), 4),
+        ((2, 3, 13, 15), (3, 4)),
+        ((1, 2, 9, 11, 13), (3, 4, 5)),
+        ((1, 2, 8, 8, 8), 9),
+    ],
+)
+def test_box_filter_matches_dense_convolution(shape, window_size):
+    """Compare separable local sums with a dense all-ones convolution."""
+    torch.manual_seed(17)
+    input_tensor = torch.randn(shape, dtype=torch.float64)
+    num_spatial = input_tensor.ndim - 2
+    window_size = [window_size] * num_spatial if isinstance(window_size, int) else window_size
+
+    channels = input_tensor.shape[1]
+    kernel = torch.ones((channels, 1, *window_size), dtype=input_tensor.dtype)
+    padding = [size // 2 for size in window_size]
+    conv_fn = {
+        1: torch.nn.functional.conv1d,
+        2: torch.nn.functional.conv2d,
+        3: torch.nn.functional.conv3d,
+    }[num_spatial]
+    expected = conv_fn(input_tensor, kernel, padding=padding, groups=channels)
+
+    actual = nef.box_filter(input_tensor, window_size=window_size)
+    torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
 
 
 def test_ncc_module():

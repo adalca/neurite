@@ -10,11 +10,12 @@ Notes
 """
 
 # Standard library imports
-from typing import Optional, Union, Tuple, Literal, Sequence
+import math
+from typing import Literal, Optional, Sequence, Tuple, Union
 
 # Third party imports
-import torch
 import numpy as np
+import torch
 import torch.nn.functional as F
 
 # Custom imports
@@ -252,6 +253,106 @@ def gaussian_smoothing(
     smoothed_tensor = conv_fn(input=padded, weight=kernel, groups=nchannels)
 
     return smoothed_tensor
+
+
+def box_filter(
+    input_tensor: torch.Tensor,
+    window_size: Union[int, Sequence[int]],
+) -> torch.Tensor:
+    """
+    Compute zero-padded local sums with a separable box filter.
+
+    The input must follow the ``(B, C, *spatial_dims)`` convention. Filtering is
+    independent across batches and channels, and the operation is differentiable with
+    respect to ``input_tensor``.
+
+    Parameters
+    ----------
+    input_tensor : torch.Tensor
+        Input tensor with one, two, or three spatial dimensions.
+    window_size : int or Sequence[int]
+        Width of the box window. An integer uses the same width along every spatial
+        dimension. A sequence specifies one width per spatial dimension.
+
+    Returns
+    -------
+    torch.Tensor
+        Local window sums. Odd window sizes preserve the input shape. As with a dense
+        convolution padded by ``window_size // 2``, even window sizes add one element
+        along the corresponding spatial dimension.
+
+    Examples
+    --------
+    >>> tensor = torch.ones(1, 1, 5, 5)
+    >>> filtered = box_filter(tensor, window_size=3)
+    >>> filtered[0, 0, 2, 2]
+    tensor(9.)
+
+    Notes
+    -----
+    A multidimensional box kernel is separable. Applying one one-dimensional pooling
+    pass per spatial dimension reduces the work for a cubic window of width ``W`` from
+    order ``W ** D`` to ``D * W`` operations per output element.
+    """
+    num_spatial = input_tensor.ndim - 2
+    assert num_spatial in [1, 2, 3], (
+        f"Only 1D, 2D, 3D spatial dimensions supported. Got {num_spatial}D"
+    )
+
+    if isinstance(window_size, int):
+        window_size = [window_size] * num_spatial
+    else:
+        window_size = list(window_size)
+        assert len(window_size) == num_spatial, (
+            f'window_size length {len(window_size)} does not match spatial dims {num_spatial}'
+        )
+
+    assert all(size > 0 for size in window_size), (
+        f'window_size values must be positive. Got {window_size}'
+    )
+
+    # Apply one local-sum pass per axis. Average pooling avoids constructing dense kernels.
+    filtered = input_tensor
+    if num_spatial == 1:
+        size = window_size[0]
+        padding = size // 2
+        if filtered.shape[2] < size:
+            filtered = F.pad(filtered, (padding, padding))
+            padding = 0
+
+        filtered = F.avg_pool1d(
+            filtered,
+            kernel_size=size,
+            stride=1,
+            padding=padding,
+            count_include_pad=True,
+        )
+        return filtered * size
+
+    pool_fn = {2: F.avg_pool2d, 3: F.avg_pool3d}[num_spatial]
+    for dim, size in enumerate(window_size):
+        kernel_size = [1] * num_spatial
+        kernel_size[dim] = size
+        padding = [0] * num_spatial
+        padding[dim] = size // 2
+
+        # Pooling rejects kernels wider than the input despite sufficient implicit padding.
+        if filtered.shape[2 + dim] < size:
+            explicit_padding = [0] * (2 * num_spatial)
+            padding_offset = 2 * (num_spatial - dim - 1)
+            explicit_padding[padding_offset:padding_offset + 2] = [size // 2] * 2
+            filtered = F.pad(filtered, explicit_padding)
+            padding[dim] = 0
+
+        filtered = pool_fn(
+            filtered,
+            kernel_size=kernel_size,
+            stride=1,
+            padding=padding,
+            divisor_override=1,
+        )
+
+    return filtered
 
 
 def apply_bernoulli_mask(
@@ -1449,8 +1550,8 @@ def ncc(
     tensor2 : torch.Tensor
         Second input tensor with same shape as tensor1.
     window_size : int or Sequence[int], default=9
-        Size of local window for computing correlation. If int, same size for all
-        spatial dimensions. If Sequence, per-dimension window sizes.
+        Size of local window for computing correlation. If int, the same size is used
+        for all spatial dimensions. If Sequence, specifies one size per dimension.
     eps : float, default=1e-5
         Small constant for numerical stability in division.
     reduction : str or None, default='mean'
@@ -1465,43 +1566,29 @@ def ncc(
     Returns
     -------
     torch.Tensor
-        NCC values (squared correlation coefficients) in range [0, 1].
-        If reduction=None, returns shape (B, C). Otherwise, reduced as specified.
+        Squared local correlation coefficients. If ``reduction=None``, returns shape
+        ``(B, C)``. Otherwise, the requested reduction is applied.
 
     Examples
     --------
-    >>> import torch
-    >>> import neurite.nn.functional as nef
-    # Compute mean NCC across batch and channels
-    >>> t1 = torch.rand(2, 3, 64, 64)
-    >>> t2 = torch.rand(2, 3, 64, 64)
-    >>> score = nef.ncc(t1, t2)
-    >>> print(score.shape)
-    torch.Size([1, 1])
-
-    # Compute per-batch-and-channel NCC (no reduction)
-    >>> score = nef.ncc(t1, t2, reduction=None)
-    >>> print(score.shape)
-    torch.Size([2, 3])
-
-    # Compute NCC with custom window size
-    >>> score = nef.ncc(t1, t2, window_size=5)
-    >>> print(score.shape)
+    >>> tensor1 = torch.rand(2, 3, 64, 64)
+    >>> tensor2 = torch.rand(2, 3, 64, 64)
+    >>> score = ncc(tensor1, tensor2)
+    >>> score.shape
     torch.Size([1, 1])
 
     Notes
     -----
-    The NCC is computed as the squared Pearson correlation coefficient:
-        NCC = (cov(I, J))^2 / (var(I) * var(J))
+    The five local moment images are packed along the channel dimension and filtered
+    together with :func:`box_filter`. The covariance and variances use their reduced
+    algebraic forms:
 
-    Values close to 1 indicate high similarity, values close to 0 indicate low similarity.
+    ``cross = sum(I * J) - sum(I) * sum(J) / N``
 
-    References
-    ----------
-    .. [1] Balakrishnan et al., "VoxelMorph: A Learning Framework for Deformable
-           Medical Image Registration", IEEE TMI, 2019.
+    ``variance(I) = sum(I ** 2) - sum(I) ** 2 / N``
+
+    where ``N`` is the number of elements in the local window.
     """
-    # Compute NCC using base implementation with (B, C) preserved
     assert tensor1.shape == tensor2.shape, (
         f"Tensors must have same shape. Got {tensor1.shape} and {tensor2.shape}"
     )
@@ -1511,11 +1598,6 @@ def ncc(
         f"Only 1D, 2D, 3D spatial dimensions supported. Got {num_spatial}D"
     )
 
-    batch_shape = tensor1.shape[:2]
-    spatial_shape = tensor1.shape[2:]
-    tensor1 = tensor1.reshape(-1, 1, *spatial_shape)
-    tensor2 = tensor2.reshape(-1, 1, *spatial_shape)
-
     if isinstance(window_size, int):
         win = [window_size] * num_spatial
     else:
@@ -1524,33 +1606,34 @@ def ncc(
             f'window_size length {len(win)} does not match spatial dims {num_spatial}'
         )
 
-    sum_filt = torch.ones(1, 1, *win, device=tensor1.device, dtype=tensor1.dtype)
-    padding = [w // 2 for w in win]
-    stride = [1] * num_spatial
-    conv_fn = {1: F.conv1d, 2: F.conv2d, 3: F.conv3d}[num_spatial]
+    assert all(size > 0 for size in win), f'window_size values must be positive. Got {win}'
 
-    Ii = tensor1
-    Ji = tensor2
-    I2 = Ii * Ii
-    J2 = Ji * Ji
-    IJ = Ii * Ji
+    # Flatten batch and channel so the five moments can be filtered as one tensor.
+    batch_shape = tensor1.shape[:2]
+    spatial_shape = tensor1.shape[2:]
+    tensor1 = tensor1.reshape(-1, 1, *spatial_shape)  # [B * C, 1, *V]
+    tensor2 = tensor2.reshape(-1, 1, *spatial_shape)  # [B * C, 1, *V]
 
-    I_sum = conv_fn(Ii, sum_filt, stride=stride, padding=padding)
-    J_sum = conv_fn(Ji, sum_filt, stride=stride, padding=padding)
-    I2_sum = conv_fn(I2, sum_filt, stride=stride, padding=padding)
-    J2_sum = conv_fn(J2, sum_filt, stride=stride, padding=padding)
-    IJ_sum = conv_fn(IJ, sum_filt, stride=stride, padding=padding)
+    tensor1_squared = tensor1.square()
+    tensor2_squared = tensor2.square()
+    tensor_product = tensor1 * tensor2
+    moments = torch.cat(
+        (tensor1, tensor2, tensor1_squared, tensor2_squared, tensor_product), dim=1
+    )  # [B * C, 5, *V]
 
-    win_size = torch.tensor(win, device=tensor1.device, dtype=tensor1.dtype).prod()
-    u_I = I_sum / win_size
-    u_J = J_sum / win_size
+    # Filter all moments together, then recover their individual local sums.
+    moment_sums = box_filter(moments, window_size=win)  # [B * C, 5, *V]
+    I_sum, J_sum, I2_sum, J2_sum, IJ_sum = moment_sums.chunk(5, dim=1)
 
-    cross = IJ_sum - u_J * I_sum - u_I * J_sum + u_I * u_J * win_size
-    I_var = I2_sum - 2 * u_I * I_sum + u_I * u_I * win_size
-    J_var = J2_sum - 2 * u_J * J_sum + u_J * u_J * win_size
+    # Use the reduced covariance and variance formulas to avoid redundant volume operations.
+    inv_win_size = 1 / math.prod(win)
+    cross = IJ_sum - I_sum * J_sum * inv_win_size
+    I_var = I2_sum - I_sum.square() * inv_win_size
+    J_var = J2_sum - J_sum.square() * inv_win_size
 
-    cc = cross * cross / (I_var * J_var + eps)
-    ncc_score = cc.mean(dim=tuple(range(2, 2 + num_spatial))).reshape(*batch_shape)
+    cc = cross.square() / (I_var * J_var + eps)
+    spatial_dims = tuple(range(2, 2 + num_spatial))
+    ncc_score = cc.mean(dim=spatial_dims).reshape(*batch_shape)
 
     if reduction is None:
         return ncc_score

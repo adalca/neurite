@@ -293,6 +293,17 @@ def test_gaussian_kernel_normalize_gaussian_anisotropic():
     assert torch.allclose(kernel[center], torch.tensor(expected_peak), atol=1e-6)
 
 
+def test_gaussian_smoothing_supports_replicate_padding():
+    """Preserve constant boundary values when replicate padding is requested."""
+    image = torch.ones((1, 1, 9, 11))
+
+    replicated = ne.gaussian_smoothing(image, sigma=1.0, padding_mode="replicate")
+    constant = ne.gaussian_smoothing(image, sigma=1.0, padding_mode="constant")
+
+    assert torch.allclose(replicated, image)
+    assert constant[0, 0, 0, 0] < 1
+
+
 @pytest.mark.parametrize("shape,non_spatial_dims", [
     ((64, 64), None),
     ((3, 64, 64), (0,)),
@@ -312,6 +323,37 @@ def test_random_smoothed_noise_normalization(magnitude):
     noise = ne.random_smoothed_noise(shape=(128, 128), sigma=3.0, magnitude=magnitude)
     assert abs(noise.mean().item()) < 1e-6
     assert abs(noise.std().item() - magnitude) < 1e-6
+
+
+def test_random_smoothed_noise_normalizes_fields_independently():
+    """Normalize each batch-channel field across spatial dimensions only."""
+    noise = ne.random_smoothed_noise(
+        shape=(2, 3, 24, 25),
+        sigma=2.0,
+        magnitude=1.7,
+        non_spatial_dims=(0, 1),
+    )
+
+    means = noise.mean(dim=(-2, -1))
+    stds = noise.std(dim=(-2, -1))
+    assert torch.allclose(means, torch.zeros_like(means), atol=1e-6)
+    assert torch.allclose(stds, torch.full_like(stds, 1.7), atol=1e-6)
+
+
+def test_random_smoothed_noise_honors_dtype_and_generator():
+    """Reproduce a floating-point noise field from an explicit generator."""
+    first_generator = torch.Generator().manual_seed(19)
+    second_generator = torch.Generator().manual_seed(19)
+
+    first = ne.random_smoothed_noise(
+        (20, 21), sigma=(1.0, 2.0), dtype=torch.float64, generator=first_generator
+    )
+    second = ne.random_smoothed_noise(
+        (20, 21), sigma=(1.0, 2.0), dtype=torch.float64, generator=second_generator
+    )
+
+    assert first.dtype == torch.float64
+    assert torch.equal(first, second)
 
 
 @pytest.mark.parametrize("sigma_small,sigma_large", [(1.0, 5.0), (0.5, 3.0)])
@@ -364,6 +406,23 @@ def test_upsample_noise_smoothness_increases_with_scale(scale_small, scale_large
     assert grad_large < grad_small
 
 
+def test_upsample_noise_accepts_anisotropic_scale_and_generator():
+    """Sample reproducible coarse noise with one scale per spatial axis."""
+    first_generator = torch.Generator().manual_seed(23)
+    second_generator = torch.Generator().manual_seed(23)
+
+    first = ne.upsample_noise(
+        (31, 37), scale=(4, 12), dtype=torch.float64, generator=first_generator
+    )
+    second = ne.upsample_noise(
+        (31, 37), scale=(4, 12), dtype=torch.float64, generator=second_generator
+    )
+
+    assert first.shape == (31, 37)
+    assert first.dtype == torch.float64
+    assert torch.equal(first, second)
+
+
 @pytest.mark.parametrize("shape,non_spatial_dims", [
     ((64, 64), None),
     ((3, 64, 64), (0,)),
@@ -383,6 +442,63 @@ def test_fractal_noise_normalization(magnitude):
     noise = ne.fractal_noise(shape=(128, 128), scales=[2.0, 4.0], magnitude=magnitude)
     assert abs(noise.mean().item()) < 1e-6
     assert abs(noise.std().item() - magnitude) < 1e-6
+
+
+def test_fractal_noise_accepts_anisotropic_octaves_and_generator():
+    """Combine reproducible octaves with per-axis scales."""
+    scales = [(2, 8), (4, 16)]
+    first_generator = torch.Generator().manual_seed(29)
+    second_generator = torch.Generator().manual_seed(29)
+
+    first = ne.fractal_noise(
+        (32, 36),
+        scales=scales,
+        method="upsample",
+        dtype=torch.float64,
+        generator=first_generator,
+    )
+    second = ne.fractal_noise(
+        (32, 36),
+        scales=scales,
+        method="upsample",
+        dtype=torch.float64,
+        generator=second_generator,
+    )
+
+    assert first.dtype == torch.float64
+    assert torch.equal(first, second)
+
+
+def test_fractal_noise_can_skip_output_standardization():
+    """Return the raw weighted octave sum when standardization is disabled."""
+    generator = torch.Generator().manual_seed(30)
+    noise = ne.fractal_noise(
+        (24, 25),
+        scales=[2, 4],
+        method="upsample",
+        generator=generator,
+        standardize=False,
+    )
+
+    assert abs(noise.mean().item()) > 1e-4
+    assert abs(noise.std().item() - 1) > 1e-3
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
+def test_noise_generators_preserve_cuda_device():
+    """Sample promoted noise APIs directly on CUDA."""
+    generator = torch.Generator(device="cuda").manual_seed(31)
+    noise = ne.fractal_noise(
+        (2, 17, 19),
+        scales=[(2, 5), (4, 10)],
+        non_spatial_dims=(0,),
+        device=torch.device("cuda"),
+        generator=generator,
+        method="upsample",
+    )
+
+    assert noise.device.type == "cuda"
+    assert torch.isfinite(noise).all()
 
 
 @pytest.mark.parametrize("reduction", ['mean', 'sum', 'amax', 'amin', 'std', 'var'])
