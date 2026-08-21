@@ -260,6 +260,20 @@ def test_ncc_window_size():
     assert score.shape == (1, 1), f"Expected (1, 1), got {score.shape} for per-dim window"
 
 
+def test_ncc_rejects_invalid_inputs():
+    """Test NCC raises value errors for invalid shapes and windows."""
+    tensor = torch.rand(1, 1, 8, 8)
+
+    with pytest.raises(ValueError, match='Shape mismatch'):
+        nef.ncc(tensor, tensor[..., :-1])
+    with pytest.raises(ValueError, match='Only 1-3D dimensions supported'):
+        nef.ncc(torch.rand(1, 1), torch.rand(1, 1))
+    with pytest.raises(ValueError, match='window_size len'):
+        nef.ncc(tensor, tensor, window_size=[3])
+    with pytest.raises(ValueError, match='window_size values must be positive'):
+        nef.ncc(tensor, tensor, window_size=0)
+
+
 @pytest.mark.parametrize(
     'shape,window_size',
     [

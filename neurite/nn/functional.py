@@ -1589,24 +1589,22 @@ def ncc(
 
     where ``N`` is the number of elements in the local window.
     """
-    assert tensor1.shape == tensor2.shape, (
-        f"Tensors must have same shape. Got {tensor1.shape} and {tensor2.shape}"
-    )
+    if tensor1.shape != tensor2.shape:
+        raise ValueError(f"Shape mismatch: {tensor1.shape} vs {tensor2.shape}")
 
     num_spatial = tensor1.ndim - 2
-    assert num_spatial in [1, 2, 3], (
-        f"Only 1D, 2D, 3D spatial dimensions supported. Got {num_spatial}D"
-    )
+    if num_spatial not in [1, 2, 3]:
+        raise ValueError(f"Only 1-3D dimensions supported. Got {num_spatial}D")
 
     if isinstance(window_size, int):
         win = [window_size] * num_spatial
     else:
         win = list(window_size)
-        assert len(win) == num_spatial, (
-            f'window_size length {len(win)} does not match spatial dims {num_spatial}'
-        )
+        if len(win) != num_spatial:
+            raise ValueError(f'window_size len {len(win)} does not match dims {num_spatial}')
 
-    assert all(size > 0 for size in win), f'window_size values must be positive. Got {win}'
+    if not all(size > 0 for size in win):
+        raise ValueError(f'window_size values must be positive. Got {win}')
 
     # Flatten batch and channel so the five moments can be filtered as one tensor.
     batch_shape = tensor1.shape[:2]
