@@ -307,7 +307,7 @@ def spatial_gradient(
     """
     # Parse non_spatial_dims
     input_tensor, orig_shape = batch_nonspatial(input_tensor, non_spatial_dims)
-    gradients = nef._spatial_gradients(input_tensor)
+    gradients = nef.spatial_gradients(input_tensor)
     return [unbatch_nonspatial(gradient, orig_shape) for gradient in gradients]
 
 
@@ -1058,7 +1058,7 @@ def gaussian_kernel(
     This ensures the kernel is always odd-sized and captures the specified number of
     standard deviations. A truncate value of 3 captures ~99.7% of the Gaussian distribution.
     """
-    return nef._gaussian_kernel(
+    return nef.gaussian_kernel(
         sigma=sigma,
         truncate=truncate,
         ndim=ndim,

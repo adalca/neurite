@@ -207,9 +207,21 @@ def test_bw_grid_rejects_spacing_length_mismatch():
         ne.bw_grid((5, 5), spacing=(1, 2, 3))
 
 
+def test_spatial_gradients_returns_each_spatial_difference():
+    """Test the public NN gradient primitive over every spatial dimension."""
+    input_tensor = torch.arange(12).reshape(1, 1, 3, 4)
+
+    gradients = nef.spatial_gradients(input_tensor)
+
+    assert isinstance(gradients, tuple)
+    assert len(gradients) == 2
+    assert torch.equal(gradients[0], torch.diff(input_tensor, dim=2))
+    assert torch.equal(gradients[1], torch.diff(input_tensor, dim=3))
+
+
 def test_gaussian_kernel_sums_to_one():
-    """Make sure base kernel is normalized (sums to 1)."""
-    kernel = ne.gaussian_kernel(sigma=2.5, ndim=2,)
+    """Make sure the public NN kernel is normalized (sums to 1)."""
+    kernel = nef.gaussian_kernel(sigma=2.5, ndim=2)
     total = kernel.sum()
     assert torch.allclose(total, torch.tensor(1.0), atol=1e-6)
 

@@ -27,7 +27,7 @@ def identity(input_argument):
     return input_argument
 
 
-def _gaussian_kernel(
+def gaussian_kernel(
     sigma: Union[float, int, Sequence[Union[float, int]]] = 1,
     truncate: Union[int, float, Sequence[Union[int, float]]] = 3,
     ndim: Optional[int] = None,
@@ -229,7 +229,7 @@ def gaussian_smoothing(
     ndim = input_tensor.dim() - 2
     nchannels = input_tensor.shape[1]
 
-    kernel = _gaussian_kernel(
+    kernel = gaussian_kernel(
         sigma=sigma,
         truncate=truncate,
         ndim=ndim,
@@ -1638,8 +1638,21 @@ def ncc(
     return ncc_score
 
 
-def _spatial_gradients(input_tensor: torch.Tensor) -> Tuple[torch.Tensor, ...]:
-    """Compute first-order finite differences over spatial dimensions."""
+def spatial_gradients(input_tensor: torch.Tensor) -> Tuple[torch.Tensor, ...]:
+    """
+    Compute first-order forward differences over all spatial dimensions.
+
+    Parameters
+    ----------
+    input_tensor : torch.Tensor
+        Input tensor with shape (B, C, *spatial).
+
+    Returns
+    -------
+    tuple[torch.Tensor, ...]
+        Gradient tensor for each spatial dimension. Each tensor is one element shorter along
+        the dimension over which its difference was computed.
+    """
     num_spatial = input_tensor.ndim - 2
     assert num_spatial >= 1, f"Need at least 1 spatial dim to compute gradients, got {num_spatial}"
     gradients = []
@@ -1704,7 +1717,7 @@ def spatial_gradient(
     """
     assert penalty in ['l1', 'l2'], f"penalty must be 'l1' or 'l2', got '{penalty}'"
 
-    grads = _spatial_gradients(input_tensor)
+    grads = spatial_gradients(input_tensor)
 
     if penalty == 'l1':
         penalties = [g.abs() for g in grads]
