@@ -1615,9 +1615,8 @@ def ncc(
     tensor1_squared = tensor1.square()
     tensor2_squared = tensor2.square()
     tensor_product = tensor1 * tensor2
-    moments = torch.cat(
-        (tensor1, tensor2, tensor1_squared, tensor2_squared, tensor_product), dim=1
-    )  # [B * C, 5, *V]
+    moments_list = (tensor1, tensor2, tensor1_squared, tensor2_squared, tensor_product)
+    moments = torch.cat(moments_list, dim=1)  # [B * C, 5, *V]
 
     # Filter all moments together, then recover their individual local sums.
     moment_sums = box_filter(moments, window_size=win)  # [B * C, 5, *V]
