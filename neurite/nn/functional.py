@@ -1632,10 +1632,10 @@ def ncc(
     spatial_dims = tuple(range(2, 2 + num_spatial))
     ncc_score = cc.mean(dim=spatial_dims).reshape(*batch_shape)
 
-    if reduction is None:
-        return ncc_score
+    if reduction is not None:
+        ncc_score = reduce(ncc_score, reduction, dim=reduction_dim, keepdims=keepdims)
 
-    return reduce(tensor=ncc_score, reduction=reduction, dim=reduction_dim, keepdims=keepdims)
+    return ncc_score
 
 
 def _spatial_gradients(input_tensor: torch.Tensor) -> Tuple[torch.Tensor, ...]:
