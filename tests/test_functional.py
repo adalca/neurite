@@ -548,6 +548,30 @@ def test_reduce_none_returns_unchanged():
     assert result is tensor
 
 
+def test_zscore_normalizes_selected_dimensions_and_preserves_gradients():
+    """Standardize each leading field independently through the public API."""
+    tensor = torch.randn(2, 3, 4, dtype=torch.float64, requires_grad=True)
+
+    standardized = ne.zscore(tensor, dim=(1, 2))
+    standardized.square().sum().backward()
+
+    assert torch.allclose(standardized.mean(dim=(1, 2)), torch.zeros(2, dtype=tensor.dtype))
+    assert torch.allclose(standardized.std(dim=(1, 2)), torch.ones(2, dtype=tensor.dtype))
+    assert tensor.grad is not None
+    assert torch.isfinite(tensor.grad).all()
+
+
+def test_nn_zscore_handles_constant_fields_and_validates_inputs():
+    """Return zero for constant fields and reject invalid numerical contracts."""
+    constant = torch.ones(2, 3, 4)
+
+    assert torch.equal(nef.zscore(constant, dim=(1, 2)), torch.zeros_like(constant))
+    with pytest.raises(AssertionError, match="floating point"):
+        nef.zscore(torch.ones(3, dtype=torch.int64))
+    with pytest.raises(AssertionError, match="eps must be positive"):
+        nef.zscore(constant, eps=0)
+
+
 @pytest.mark.parametrize("scale_factor,expected_spatial", [
     (2.0, (128, 128)),
     (0.5, (32, 32)),

@@ -792,16 +792,12 @@ def normalize_reference_intensity(
     if eps <= 0:
         raise ValueError("eps must be positive.")
 
-    expanded_mask = reference_mask.expand(
-        image.shape[0], image.shape[1], *image.shape[2:]
-    )
+    expanded_mask = reference_mask.expand(image.shape[0], image.shape[1], *image.shape[2:])
     reference_rows = []
     for batch_index in range(image.shape[0]):
         reference_channels = []
         for channel_index in range(image.shape[1]):
-            values = image[batch_index, channel_index][
-                expanded_mask[batch_index, channel_index]
-            ]
+            values = image[batch_index, channel_index][expanded_mask[batch_index, channel_index]]
             if values.numel() == 0:
                 raise ValueError("Every batch and channel must contain reference-mask voxels.")
 
@@ -1878,6 +1874,51 @@ def reduce(
     return tensor
 
 
+def zscore(
+    input_tensor: torch.Tensor,
+    dim: Union[int, Tuple[int, ...], None] = None,
+    eps: float = 1e-8,
+) -> torch.Tensor:
+    """
+    Standardize a tensor to zero mean and unit standard deviation.
+
+    Parameters
+    ----------
+    input_tensor : torch.Tensor
+        Floating-point tensor to standardize.
+    dim : int, tuple of ints, or None, default=None
+        Dimension or dimensions over which to compute the mean and standard deviation. `None`
+        standardizes the complete tensor.
+    eps : float, default=1e-8
+        Lower bound for the standard deviation, preventing division by zero.
+
+    Returns
+    -------
+    torch.Tensor
+        Standardized tensor with the same shape as `input_tensor`.
+
+    Notes
+    -----
+    Dimensions reduced during standardization are retained internally so the result broadcasts to
+    the original shape. Inputs with a standard deviation below `eps` are centered and divided by
+    `eps`.
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite.nn.functional as nef
+    >>> tensor = torch.tensor([1.0, 2.0, 3.0])
+    >>> nef.zscore(tensor)
+    tensor([-1.,  0.,  1.])
+    """
+    assert input_tensor.is_floating_point(), "input_tensor must be floating point"
+    assert eps > 0, "eps must be positive"
+
+    mean = input_tensor.mean(dim=dim, keepdim=True)
+    std = input_tensor.std(dim=dim, keepdim=True).clamp_min(eps)
+    return (input_tensor - mean) / std
+
+
 def random_flip(dim: int, *args, prob: float = 0.5):
     """
     Randomly flip tensor(s) along the given dimension.
@@ -2289,13 +2330,8 @@ def random_smoothed_noise(
     noise = torch.randn(shape, device=device, dtype=dtype, generator=generator)
     noise = gaussian_smoothing(noise, sigma=sigma, truncate=3, normalize=normalize)
 
-    # Normalize every batch-channel field independently over its spatial axes.
     spatial_dims = tuple(range(2, noise.ndim))
-    noise -= noise.mean(dim=spatial_dims, keepdim=True)
-    std = noise.std(dim=spatial_dims, keepdim=True).clamp_min(1e-8)
-    noise *= magnitude / std
-
-    return noise
+    return zscore(noise, dim=spatial_dims) * magnitude
 
 
 def upsample_noise(
@@ -2361,12 +2397,7 @@ def upsample_noise(
 
 def fractal_noise(
     shape: Sequence[int],
-    scales: Union[
-        float,
-        int,
-        Sequence[Union[float, int, Sequence[Union[float, int]]]],
-        None,
-    ] = None,
+    scales: Optional[Union[float, int, Sequence[Union[float, int, Sequence[float]]]]] = None,
     magnitude: float = 1.0,
     weights: Union[Sequence[float], None] = None,
     normalize: Union[Literal["sum", "gaussian"], None] = "sum",
@@ -2470,12 +2501,7 @@ def fractal_noise(
             noise += sample
 
     if standardize:
-        # Normalize every batch-channel field independently over its spatial axes.
         spatial_dims = tuple(range(2, noise.ndim))
-        noise -= noise.mean(dim=spatial_dims, keepdim=True)
-        std = noise.std(dim=spatial_dims, keepdim=True).clamp_min(1e-8)
-        noise *= magnitude / std
-    else:
-        noise *= magnitude
+        noise = zscore(noise, dim=spatial_dims)
 
-    return noise
+    return noise * magnitude

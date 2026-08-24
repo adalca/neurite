@@ -17,6 +17,7 @@ __all__ = [
     "ncc",
     "spatial_gradient",
     "reduce",
+    "zscore",
     "volshape_to_ndgrid",
     "bw_grid",
     "apply_bernoulli_mask",
@@ -366,6 +367,41 @@ def reduce(
 
     # Handle None reduction (return tensor unchanged)
     return nef.reduce(tensor, reduction=reduction, dim=dim, keepdims=keepdims)
+
+
+def zscore(
+    input_tensor: torch.Tensor,
+    dim: Union[int, Tuple[int, ...], None] = None,
+    eps: float = 1e-8,
+) -> torch.Tensor:
+    """
+    Standardize a tensor to zero mean and unit standard deviation.
+
+    Parameters
+    ----------
+    input_tensor : torch.Tensor
+        Floating-point tensor to standardize.
+    dim : int, tuple of ints, or None, default=None
+        Dimension or dimensions over which to compute the mean and standard deviation. `None`
+        standardizes the complete tensor.
+    eps : float, default=1e-8
+        Lower bound for the standard deviation, preventing division by zero.
+
+    Returns
+    -------
+    torch.Tensor
+        Standardized tensor with the same shape as `input_tensor`.
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite as ne
+    >>> tensor = torch.randn(2, 3, 16, 16)
+    >>> standardized = ne.zscore(tensor, dim=(1, 2, 3))
+    >>> standardized.mean(dim=(1, 2, 3))
+    tensor([0., 0.])
+    """
+    return nef.zscore(input_tensor, dim=dim, eps=eps)
 
 
 def volshape_to_ndgrid(
@@ -1535,12 +1571,7 @@ def upsample_noise(
 
 def fractal_noise(
     shape: Sequence[int],
-    scales: Union[
-        float,
-        int,
-        Sequence[Union[float, int, Sequence[Union[float, int]]]],
-        None,
-    ] = None,
+    scales: Optional[Union[float, int, Sequence[Union[float, int, Sequence[float]]]]] = None,
     magnitude: float = 1.0,
     weights: Union[Sequence[float], None] = None,
     non_spatial_dims: Union[Sequence[int], None] = None,
