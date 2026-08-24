@@ -195,6 +195,8 @@ class BasicUNet(nn.Module):
             ndim=ndim,
             in_channels=down_output_channels,
             out_channels=bottleneck_out_channels,
+            normalization=self.normalizations[-1],
+            activation=self.activations[-1],
             order=order,
             padding_mode=padding_mode,
         )

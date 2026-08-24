@@ -37,7 +37,7 @@ models
 
 
 # Define the version of neurite
-__version__ = '0.3.2'
+__version__ = '0.3.3'
 
 # Third-party imports
 from packaging import version
