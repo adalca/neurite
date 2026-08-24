@@ -1110,34 +1110,55 @@ def gaussian_smoothing(
     truncate: Union[int, float, Sequence[Union[int, float]]] = 3,
     normalize: Union[Literal["sum", "gaussian"], None] = "sum",
     padding_mode: str = "constant",
+    non_spatial_dims: Union[Sequence[int], None] = None,
 ) -> torch.Tensor:
-    """Apply Gaussian smoothing to a ``[B, C, *spatial]`` tensor.
+    """
+    Smooth a tensor with a Gaussian kernel.
+
+    Each field indexed by leading non-spatial dimensions is smoothed independently. The output
+    preserves the original non-spatial shape.
 
     Parameters
     ----------
     input_tensor : torch.Tensor
-        Input tensor with one to three spatial dimensions.
-    sigma : float, int, or sequence
+        Input tensor with shape `(*non_spatial, *spatial)` and one to three spatial dimensions.
+    sigma : float, int, or Sequence[float or int], default=1
         Gaussian standard deviation per spatial dimension.
-    truncate : float, int, or sequence
-        Kernel radius in multiples of ``sigma``.
-    normalize : {'sum', 'gaussian'} or None
+    truncate : float, int, or Sequence[float or int], default=3
+        Kernel radius in multiples of `sigma` per spatial dimension.
+    normalize : {'sum', 'gaussian'} or None, default='sum'
         Kernel normalization mode.
-    padding_mode : {'constant', 'reflect', 'replicate', 'circular'}
+    padding_mode : {'constant', 'reflect', 'replicate', 'circular'}, default='constant'
         Boundary padding applied before convolution.
+    non_spatial_dims : Sequence[int] or None, default=None
+        Leading dimensions that index independent fields. They must form a contiguous sequence
+        starting at zero. If None, every input dimension is spatial.
 
     Returns
     -------
     torch.Tensor
-        Smoothed tensor with the same shape, dtype, and device.
+        Smoothed tensor with the same shape, dtype, and device as `input_tensor`.
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite as ne
+    >>> image = torch.rand(32, 32)
+    >>> ne.gaussian_smoothing(image).shape
+    torch.Size([32, 32])
+    >>> images = torch.rand(2, 3, 32, 32)
+    >>> ne.gaussian_smoothing(images, non_spatial_dims=(0, 1)).shape
+    torch.Size([2, 3, 32, 32])
     """
-    return nef.gaussian_smoothing(
+    input_tensor, original_shape = batch_nonspatial(input_tensor, non_spatial_dims)
+    smoothed = nef.gaussian_smoothing(
         input_tensor=input_tensor,
         sigma=sigma,
         truncate=truncate,
         normalize=normalize,
         padding_mode=padding_mode,
     )
+    return unbatch_nonspatial(smoothed, original_shape)
 
 
 def crop(

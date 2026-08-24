@@ -305,15 +305,51 @@ def test_gaussian_kernel_normalize_gaussian_anisotropic():
     assert torch.allclose(kernel[center], torch.tensor(expected_peak), atol=1e-6)
 
 
+@pytest.mark.parametrize("shape,non_spatial_dims", [
+    ((17,), None),
+    ((9, 11), None),
+    ((7, 9, 11), None),
+    ((3, 9, 11), (0,)),
+    ((2, 3, 9, 11), (0, 1)),
+    ((2, 3, 4, 5, 9, 11), (0, 1, 2, 3)),
+])
+def test_gaussian_smoothing_preserves_arbitrary_non_spatial_dims(shape, non_spatial_dims):
+    """Preserve pure-spatial and arbitrary leading non-spatial shapes."""
+    image = torch.rand(shape)
+
+    smoothed = ne.gaussian_smoothing(image, sigma=0.75, non_spatial_dims=non_spatial_dims)
+
+    assert smoothed.shape == image.shape
+
+
+def test_gaussian_smoothing_matches_vectorized_nn_operation():
+    """Smooth each indexed field independently through the top-level API."""
+    image = torch.rand(2, 3, 4, 5, 9, 11, dtype=torch.float64)
+
+    smoothed = ne.gaussian_smoothing(
+        image,
+        sigma=(0.75, 1.25),
+        truncate=2,
+        non_spatial_dims=(0, 1, 2, 3),
+    )
+    expected = nef.gaussian_smoothing(
+        image.reshape(-1, 1, 9, 11),
+        sigma=(0.75, 1.25),
+        truncate=2,
+    ).reshape(image.shape)
+
+    assert torch.allclose(smoothed, expected)
+
+
 def test_gaussian_smoothing_supports_replicate_padding():
     """Preserve constant boundary values when replicate padding is requested."""
-    image = torch.ones((1, 1, 9, 11))
+    image = torch.ones((9, 11))
 
     replicated = ne.gaussian_smoothing(image, sigma=1.0, padding_mode="replicate")
     constant = ne.gaussian_smoothing(image, sigma=1.0, padding_mode="constant")
 
     assert torch.allclose(replicated, image)
-    assert constant[0, 0, 0, 0] < 1
+    assert constant[0, 0] < 1
 
 
 @pytest.mark.parametrize("shape,non_spatial_dims", [
