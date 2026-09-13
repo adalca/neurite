@@ -28,8 +28,6 @@ dependencies = [
   "torch",
   "numpy",
   "einops",
-  "packaging",
-  "pystrum>=0.2",
   "nibabel",
   "scipy",
   "matplotlib",

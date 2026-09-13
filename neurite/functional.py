@@ -769,8 +769,8 @@ def bw_grid(
 
     Notes
     -----
-    This follows the original pystrum convention used by VoxelMorph: line starts repeat every
-    `spacing + 1` pixels, and the last pixel along each axis is always set to a grid line.
+    This follows the legacy convention used by VoxelMorph: line starts repeat every `spacing + 1`
+    pixels, and the last pixel along each axis is always set to a grid line.
     """
     return nef.bw_grid(
         vol_shape=vol_shape,

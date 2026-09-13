@@ -32,39 +32,19 @@ models
 """
 
 # This module is the top-level initializer for the Neurite package.
-# It validates the required pystrum version, imports the PyTorch nn package,
-# and re-exports selected helpers from the pure-Python subpackages.
+# It imports the PyTorch nn package and re-exports selected helpers from the
+# pure-Python subpackages.
 
 
 # Define the version of neurite
 __version__ = '0.3.3'
 
-# Third-party imports
-from packaging import version
-
-# Custom imports
-import pystrum
-
-# Set the minimum allowable pystrum version
-_MIN_PYSTRUM_VERSION = "0.2"
-
-current_pystrum_version = getattr(pystrum, '__version__', None)
-
-# Determine if the installed version of pystrum is valid
-if (
-    current_pystrum_version is None or
-    version.parse(current_pystrum_version) <
-    version.parse(_MIN_PYSTRUM_VERSION)
-):
-    raise ImportError(
-        f'neurite requires pystrum version {_MIN_PYSTRUM_VERSION} or greater, but found version '
-        f'{current_pystrum_version}'
-    )
-
-from . import py        # noqa: E402, F401
-from . import nn  # noqa: E402
-from . import utils  # noqa: E402
-from .functional import *  # noqa: E402
+from . import nn as nn
+from . import py as py
+from . import utils as utils
+from .functional import *
 
 # Importing submodules from `py` to top level. Not `utils` to avoid shadowing
-from .py import data, dataproc, plot  # noqa: E402
+from .py import data as data
+from .py import dataproc as dataproc
+from .py import plot as plot

@@ -30,7 +30,6 @@ setuptools.setup(
         'Operating System :: OS Independent',
     ],
     install_requires=[
-        'packaging',
         'six',
         'numpy>=1.17',
         'scipy',
@@ -38,7 +37,6 @@ setuptools.setup(
         'matplotlib',
         'scikit-learn',
         'nibabel',
-        'pystrum>=0.2',
         'torch>=2.0'
     ]
 )

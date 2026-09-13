@@ -3,23 +3,19 @@ Data processing for `neurite`.
 """
 
 # Standard library imports
-import sys
 import os
-import shutil
-import six
 import re
+import shutil
+import sys
 
-# Third party imports
+# Third-party imports
+import matplotlib.pyplot as plt
 import nibabel as nib
 import numpy as np
 import scipy.ndimage.interpolation
-from tqdm import tqdm_notebook as tqdm  # for verbosity for forloops
-import matplotlib.pyplot as plt
+import six
 import torch
-
-
-# Custom imports
-import pystrum.pynd.ndutils as nd
+from tqdm import tqdm_notebook as tqdm  # for verbosity for forloops
 
 
 def proc_mgh_vols(inpath,
@@ -174,8 +170,9 @@ def vol_proc(vol_data,
     vol_data : numpy.ndarray or torch.Tensor
         Volume data. Tensor inputs support options with direct torch equivalents: `offset`,
         `rescale`, `rescale_prctle`, `clip`, `extract_nd`, and `force_binary`.
-    crop : optional
-        Crop argument passed to `pystrum.pynd.ndutils.volcrop`. Tensor inputs do not support crop.
+    crop : sequence of int or sequence of tuple[int, int], default=None
+        Per-axis crop margins. Integers crop both ends equally, while pairs specify separate start
+        and end margins. Tensor inputs do not support crop.
     resize_shape : sequence of int, default=None
         Target shape for scipy-based resizing. Tensor inputs only allow `None` or the current shape.
     interp_order : int, default=None
@@ -251,7 +248,16 @@ def vol_proc(vol_data,
 
     # crop data if necessary
     if crop is not None:
-        vol_data = nd.volcrop(vol_data, crop=crop)
+        assert len(crop) == vol_data.ndim, "crop must contain one entry per volume dimension"
+        if isinstance(crop[0], (list, tuple)):
+            crop_margins = crop
+        else:
+            crop_margins = [(margin, margin) for margin in crop]
+
+        crop_slices = []
+        for size, (start_margin, end_margin) in zip(vol_data.shape, crop_margins):
+            crop_slices.append(slice(start_margin, size - end_margin))
+        vol_data = vol_data[tuple(crop_slices)]
 
     # needs to be last to guarantee clip limits.
     # For e.g., resize might screw this up due to bicubic interpolation if it was done after.
