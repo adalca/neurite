@@ -258,6 +258,29 @@ def test_basicunet_list_normalizations():
     assert y.shape == (1, out_ch, 32, 32)
 
 
+def test_basicunet_lowest_resolution_configuration():
+    """
+    Test that the lowest-resolution block uses the deepest per-level configuration.
+    """
+    model = ne.nn.models.BasicUNet(
+        ndim=2,
+        in_channels=1,
+        out_channels=1,
+        nb_features=[8, 16, 32],
+        normalizations=['batch', 'batch', 'instance'],
+        activations=['elu', 'leaky_relu', 'relu'],
+        order='cna',
+    )
+
+    bottleneck = model.lowest_resolution_conv_block
+    assert isinstance(bottleneck.normalization0, torch.nn.InstanceNorm2d)
+    assert isinstance(bottleneck.activation0.activation, torch.nn.ReLU)
+
+    feature_tensor = torch.randn(2, 32, 4, 4)
+    output_tensor = bottleneck(feature_tensor)
+    assert torch.all(output_tensor >= 0)
+
+
 def test_upsampling_normalization_order():
     """
     Test that upsampling blocks use normalizations in reversed order.

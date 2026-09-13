@@ -37,7 +37,7 @@ models
 
 
 # Define the version of neurite
-__version__ = '0.3.2'
+__version__ = '0.3.3'
 
 # Third-party imports
 from packaging import version
@@ -61,10 +61,10 @@ if (
         f'{current_pystrum_version}'
     )
 
-from . import py        # Noqa: F401
-from . import nn
-from . import utils
-from .functional import *
+from . import py        # noqa: E402, F401
+from . import nn  # noqa: E402
+from . import utils  # noqa: E402
+from .functional import *  # noqa: E402
 
 # Importing submodules from `py` to top level. Not `utils` to avoid shadowing
-from .py import data, dataproc, plot
+from .py import data, dataproc, plot  # noqa: E402

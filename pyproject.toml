@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "neurite"
-version = "0.3.2"
+version = "0.3.3"
 description = "Neural networks toolbox focused on medical image analysis."
 requires-python = ">=3.8"
 readme = "README.md"

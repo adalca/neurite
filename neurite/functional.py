@@ -19,6 +19,7 @@ __all__ = [
     "ncc",
     "spatial_gradient",
     "reduce",
+    "zscore",
     "volshape_to_ndgrid",
     "bw_grid",
     "apply_bernoulli_mask",
@@ -616,6 +617,41 @@ def reduce(
 
     # Handle None reduction (return tensor unchanged)
     return nef.reduce(tensor, reduction=reduction, dim=dim, keepdims=keepdims)
+
+
+def zscore(
+    input_tensor: torch.Tensor,
+    dim: Union[int, Tuple[int, ...], None] = None,
+    eps: float = 1e-8,
+) -> torch.Tensor:
+    """
+    Standardize a tensor to zero mean and unit standard deviation.
+
+    Parameters
+    ----------
+    input_tensor : torch.Tensor
+        Floating-point tensor to standardize.
+    dim : int, tuple of ints, or None, default=None
+        Dimension or dimensions over which to compute the mean and standard deviation. `None`
+        standardizes the complete tensor.
+    eps : float, default=1e-8
+        Lower bound for the standard deviation, preventing division by zero.
+
+    Returns
+    -------
+    torch.Tensor
+        Standardized tensor with the same shape as `input_tensor`.
+
+    Examples
+    --------
+    >>> import torch
+    >>> import neurite as ne
+    >>> tensor = torch.randn(2, 3, 16, 16)
+    >>> standardized = ne.zscore(tensor, dim=(1, 2, 3))
+    >>> standardized.mean(dim=(1, 2, 3))
+    tensor([0., 0.])
+    """
+    return nef.zscore(input_tensor, dim=dim, eps=eps)
 
 
 def volshape_to_ndgrid(
@@ -1335,11 +1371,11 @@ def gaussian_smoothing(
         Tensor of shape ``[*non_spatial, *spatial]`` with one to three spatial dimensions.
     sigma : float, int, or sequence
         Gaussian standard deviation per spatial dimension.
-    truncate : float, int, or sequence
-        Kernel radius in multiples of ``sigma``.
-    normalize : {'sum', 'gaussian'} or None
+    truncate : float, int, or Sequence[float or int], default=3
+        Kernel radius in multiples of `sigma` per spatial dimension.
+    normalize : {'sum', 'gaussian'} or None, default='sum'
         Kernel normalization mode.
-    padding_mode : {'constant', 'reflect', 'replicate', 'circular'}
+    padding_mode : {'constant', 'reflect', 'replicate', 'circular'}, default='constant'
         Boundary padding applied before convolution.
     method : {'dense', 'separable'}, default='dense'
         Apply one multidimensional kernel or one one-dimensional kernel per spatial axis.
@@ -1368,6 +1404,7 @@ def gaussian_smoothing(
         padding_mode=padding_mode,
         method=method,
     )
+    return unbatch_nonspatial(smoothed, original_shape)
     return unbatch_nonspatial(smoothed, original_shape)
 
 
@@ -1802,12 +1839,7 @@ def upsample_noise(
 
 def fractal_noise(
     shape: Sequence[int],
-    scales: Union[
-        float,
-        int,
-        Sequence[Union[float, int, Sequence[Union[float, int]]]],
-        None,
-    ] = None,
+    scales: Optional[Union[float, int, Sequence[Union[float, int, Sequence[float]]]]] = None,
     magnitude: float = 1.0,
     weights: Union[Sequence[float], None] = None,
     non_spatial_dims: Union[Sequence[int], None] = None,
