@@ -169,6 +169,7 @@ def gaussian_smoothing(
     truncate: Union[int, float, Sequence[Union[int, float]]] = 3,
     normalize: Union[Literal["sum", "gaussian"], None] = "sum",
     padding_mode: str = "constant",
+    method: Literal["dense", "separable"] = "dense",
 ) -> torch.Tensor:
     """
     Apply Gaussian smoothing to the {1D, 2D, 3D} input tensor.
@@ -192,6 +193,9 @@ def gaussian_smoothing(
         How to normalize the Gaussian kernel. See `neurite.gaussian_kernel` for details.
     padding_mode : {'constant', 'reflect', 'replicate', 'circular'}, default='constant'
         Boundary padding applied before convolution.
+    method : {'dense', 'separable'}, default='dense'
+        Convolution method. The dense method applies one multidimensional kernel. The
+        separable method applies one one-dimensional kernel along each spatial axis.
 
     Returns
     -------
@@ -224,11 +228,58 @@ def gaussian_smoothing(
 
     if padding_mode not in {"constant", "reflect", "replicate", "circular"}:
         raise ValueError(f"unsupported padding mode: {padding_mode}")
+    if method not in {"dense", "separable"}:
+        raise ValueError(f"unsupported Gaussian smoothing method: {method}")
 
-    # Infer spatial dimensionality and build one depthwise kernel per channel.
+    # Infer spatial dimensionality and select the matching convolution.
     ndim = input_tensor.dim() - 2
     nchannels = input_tensor.shape[1]
+    conv_fn = {1: F.conv1d, 2: F.conv2d, 3: F.conv3d}[ndim]
 
+    if method == "separable":
+        if isinstance(sigma, (float, int)):
+            sigma_values = (float(sigma),) * ndim
+        elif isinstance(sigma, Sequence):
+            assert len(sigma) == ndim, "sigma must have one value per spatial dimension"
+            sigma_values = tuple(float(value) for value in sigma)
+        else:
+            raise TypeError(f"sigma must be a number or sequence, got {type(sigma)}")
+
+        if isinstance(truncate, (float, int)):
+            truncate_values = (float(truncate),) * ndim
+        elif isinstance(truncate, Sequence):
+            assert len(truncate) == ndim, "truncate must have one value per spatial dimension"
+            truncate_values = tuple(float(value) for value in truncate)
+        else:
+            raise TypeError(f"truncate must be a number or sequence, got {type(truncate)}")
+
+        # Apply each one-dimensional factor independently along its spatial axis.
+        smoothed_tensor = input_tensor
+        axis_parameters = zip(sigma_values, truncate_values)
+        for axis, (axis_sigma, axis_truncate) in enumerate(axis_parameters):
+            kernel = gaussian_kernel(
+                sigma=axis_sigma,
+                truncate=axis_truncate,
+                ndim=1,
+                normalize=normalize,
+                device=input_tensor.device,
+                dtype=input_tensor.dtype,
+            )
+            kernel_shape = [1, 1] + [1] * ndim
+            kernel_shape[axis + 2] = len(kernel)
+            weight = kernel.reshape(kernel_shape)
+            if nchannels > 1:
+                weight = weight.repeat(nchannels, 1, *([1] * ndim))
+
+            padding = [0] * (2 * ndim)
+            reverse_axis = ndim - axis - 1
+            radius = len(kernel) // 2
+            padding[2 * reverse_axis:2 * reverse_axis + 2] = (radius, radius)
+            padded = F.pad(smoothed_tensor, padding, mode=padding_mode)
+            smoothed_tensor = conv_fn(input=padded, weight=weight, groups=nchannels)
+        return smoothed_tensor
+
+    # Build and apply one dense depthwise kernel per channel.
     kernel = gaussian_kernel(
         sigma=sigma,
         truncate=truncate,
@@ -249,7 +300,6 @@ def gaussian_smoothing(
         padding.extend((radius, radius))
     padded = F.pad(input_tensor, padding, mode=padding_mode)
 
-    conv_fn = {1: F.conv1d, 2: F.conv2d, 3: F.conv3d}[ndim]
     smoothed_tensor = conv_fn(input=padded, weight=kernel, groups=nchannels)
 
     return smoothed_tensor

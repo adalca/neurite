@@ -2,7 +2,9 @@
 Single tensor operations (no B, C dimension assumption)
 """
 # Standard library imports
-from typing import Union, Sequence, Tuple, Literal, Optional, List
+import importlib
+import itertools
+from typing import List, Literal, Optional, Sequence, Tuple, Union
 
 # Third party imports
 import torch
@@ -26,6 +28,9 @@ __all__ = [
     "pad_to_multiple_of",
     "mask_border",
     "one_hot",
+    "connected_components",
+    "component_sizes",
+    "fill_nearest",
     "filter_dim",
     "gaussian_kernel",
     "gaussian_smoothing",
@@ -38,6 +43,251 @@ __all__ = [
     "fractal_noise",
     "parse_non_spatial_dims",
 ]
+
+
+def connected_components(
+    mask: torch.Tensor,
+    connectivity: int = 1,
+    *,
+    method: Literal["auto", "torch", "triton"] = "auto",
+) -> Tuple[torch.Tensor, int]:
+    """
+    Label connected components in a spatial binary mask.
+
+    Parameters
+    ----------
+    mask : torch.Tensor
+        Spatial binary mask of shape [*V].
+    connectivity : int
+        Neighborhood connectivity from 1 through the number of spatial
+        dimensions. One uses face connectivity; `mask.ndim` uses full
+        connectivity.
+    method : {'auto', 'torch', 'triton'}, default='auto'
+        Labeling implementation. Auto uses Triton for supported CUDA tensors
+        and otherwise uses portable Torch operations. Torch forces the portable
+        implementation on any device. Triton requires both Triton and CUDA.
+
+    Returns
+    -------
+    tuple[torch.Tensor, int]
+        Integer component labels with shape [*V] and the number of components.
+        Background is zero and components are numbered from one.
+
+    Raises
+    ------
+    ValueError
+        If the mask, connectivity, method, or forced Triton device and size are unsupported.
+    RuntimeError
+        If Triton is forced but unavailable, or if its labeling does not converge.
+
+    Notes
+    -----
+    The Triton method supports tensors with at most ``int32`` elements. Auto
+    falls back to Torch for larger tensors. Triton raises an error instead.
+    The optional Triton backend is loaded only when explicitly requested or
+    when an eligible CUDA tensor reaches automatic dispatch.
+    """
+    if mask.ndim not in (1, 2, 3):
+        raise ValueError("mask must have one, two, or three spatial dimensions")
+    if connectivity < 1 or connectivity > mask.ndim:
+        raise ValueError("connectivity must be between 1 and mask.ndim")
+    if method not in {"auto", "torch", "triton"}:
+        raise ValueError("method must be 'auto', 'torch', or 'triton'")
+
+    max_triton_elements = torch.iinfo(torch.int32).max
+    if method == "triton":
+        ne_triton = importlib.import_module("neurite.triton")
+
+        return ne_triton.connected_components(mask, connectivity)
+    if mask.numel() == 0:
+        components = torch.zeros_like(mask, dtype=torch.long)
+        return components, 0
+
+    triton_candidate = mask.is_cuda and mask.numel() <= max_triton_elements
+    if method == "auto" and triton_candidate:
+        ne_triton = importlib.import_module("neurite.triton")
+
+        if ne_triton.is_available():
+            return ne_triton.connected_components(mask, connectivity)
+
+    # Pad the mask so neighbor rolls cannot connect opposite spatial edges.
+    padding = [1, 1] * mask.ndim
+    foreground = F.pad(mask.bool(), pad=padding, value=False)  # [*Vp]
+    flat_ids = torch.arange(foreground.numel(), device=mask.device, dtype=torch.long)
+    flat_ids = flat_ids.reshape(foreground.shape)  # [*Vp]
+    sentinel = foreground.numel()
+    background = torch.full_like(flat_ids, sentinel)
+    labels = torch.where(foreground, flat_ids, background)  # [*Vp]
+
+    # Include offsets whose squared grid distance is within the requested
+    # connectivity, matching the usual 1D-3D connectivity convention.
+    offsets = []
+    for offset in itertools.product((-1, 0, 1), repeat=mask.ndim):
+        offset_distance = sum(step != 0 for step in offset)
+        if 0 < offset_distance <= connectivity:
+            offsets.append(offset)
+
+    # Propagate the minimum flat index throughout each component.
+    spatial_dims = tuple(range(mask.ndim))
+    while True:
+        updated = labels
+        for offset in offsets:
+            neighbor = torch.roll(labels, shifts=offset, dims=spatial_dims)  # [*Vp]
+            updated = torch.minimum(updated, neighbor)  # [*Vp]
+        updated = torch.where(foreground, updated, background)  # [*Vp]
+        if torch.equal(updated, labels):
+            break
+        labels = updated
+
+    # Remove padding and remap component roots to contiguous scan-order IDs.
+    interior = (slice(1, -1),) * mask.ndim
+    roots = labels[interior]  # [*V]
+    foreground = mask.bool()  # [*V]
+    root_values = roots[foreground]  # [Nfg]
+    if root_values.numel() == 0:
+        components = torch.zeros_like(mask, dtype=torch.long)
+        return components, 0
+
+    unique_roots, inverse = torch.unique(root_values, sorted=True, return_inverse=True)
+    components = torch.zeros_like(mask, dtype=torch.long)
+    components[foreground] = inverse + 1
+
+    return components, int(unique_roots.numel())
+
+
+def component_sizes(
+    components: torch.Tensor,
+    num_components: Optional[int] = None,
+) -> torch.Tensor:
+    """
+    Count voxels in connected-component labels.
+
+    Parameters
+    ----------
+    components : torch.Tensor
+        Nonnegative component labels of shape [*V]. Background is zero.
+    num_components : int, optional
+        Number of foreground components. Defaults to the maximum component ID.
+
+    Returns
+    -------
+    torch.Tensor
+        Component sizes for IDs one through `num_components`, shape [N].
+    """
+    if torch.is_floating_point(components) or torch.is_complex(components):
+        raise TypeError("components must have an integer dtype")
+    if components.numel() and torch.any(components < 0):
+        raise ValueError("components must be nonnegative")
+
+    inferred_count = int(components.max().item()) if components.numel() else 0
+    if num_components is None:
+        num_components = inferred_count
+    num_components = int(num_components)
+    if num_components < inferred_count:
+        message = "num_components cannot be smaller than the largest component ID"
+        raise ValueError(message)
+    if num_components < 0:
+        raise ValueError("num_components must be nonnegative")
+
+    flat_components = components.long().reshape(-1)
+    counts = torch.bincount(flat_components, minlength=num_components + 1)
+
+    return counts[1:num_components + 1]  # [N]
+
+
+def fill_nearest(
+    tensor: torch.Tensor,
+    fill_mask: torch.Tensor,
+) -> torch.Tensor:
+    """
+    Fill masked spatial elements from their nearest retained element.
+
+    Euclidean nearest-neighbor indices are computed exactly in voxel space with
+    chunked Torch operations on the input tensor's device.
+
+    Parameters
+    ----------
+    tensor : torch.Tensor
+        Spatial values of shape [*V].
+    fill_mask : torch.Tensor
+        Boolean-like mask with the same shape and device as `tensor`. Nonzero
+        elements are replaced and zero elements provide retained source values.
+
+    Returns
+    -------
+    torch.Tensor
+        Filled tensor with the same shape, dtype, and device as `tensor`.
+    """
+    if tensor.ndim not in (1, 2, 3):
+        raise ValueError("tensor must have one, two, or three spatial dimensions")
+    if fill_mask.shape != tensor.shape:
+        raise ValueError("fill_mask must have the same shape as tensor")
+    if fill_mask.device != tensor.device:
+        raise ValueError("fill_mask must be on the same device as tensor")
+
+    fill = fill_mask.bool()
+    if not torch.any(fill):
+        return tensor.clone()
+    if torch.all(fill):
+        raise ValueError("fill_mask must leave at least one retained source element")
+
+    # Only retained pixels bordering the fill mask can be nearest donors. Full
+    # connectivity preserves diagonal boundary donors in 2D and 3D.
+    spatial_fill = fill[None, None].float()  # [1, 1, *V]
+    if tensor.ndim == 1:
+        neighboring_fill = F.max_pool1d(spatial_fill, kernel_size=3, stride=1, padding=1)
+    elif tensor.ndim == 2:
+        neighboring_fill = F.max_pool2d(spatial_fill, kernel_size=3, stride=1, padding=1)
+    else:
+        neighboring_fill = F.max_pool3d(spatial_fill, kernel_size=3, stride=1, padding=1)
+    donor_mask = (~fill) & neighboring_fill[0, 0].bool()  # [*V]
+
+    fill_coords = torch.nonzero(fill, as_tuple=False)  # [Nf, D]
+    donor_coords = torch.nonzero(donor_mask, as_tuple=False)  # [Nd, D]
+    fill_coords_float = fill_coords.to(dtype=torch.float64)  # [Nf, D]
+    donor_coords_float = donor_coords.to(dtype=torch.float64)  # [Nd, D]
+
+    # Bound pairwise distance matrices while preserving exact Euclidean choices.
+    max_pairwise_elements = 4_000_000
+    donor_chunk_size = min(donor_coords.shape[0], 4096)
+    fill_chunk_size = max(1, max_pairwise_elements // donor_chunk_size)
+    nearest_donor = torch.empty(fill_coords.shape[0], device=tensor.device, dtype=torch.long)
+
+    for fill_start in range(0, fill_coords.shape[0], fill_chunk_size):
+        fill_end = min(fill_start + fill_chunk_size, fill_coords.shape[0])
+        fill_chunk = fill_coords_float[fill_start:fill_end]  # [Fc, D]
+        fill_squared = (fill_chunk * fill_chunk).sum(dim=1)  # [Fc]
+        best_distance = torch.full(
+            (fill_chunk.shape[0],),
+            torch.inf,
+            device=tensor.device,
+            dtype=torch.float64,
+        )  # [Fc]
+        best_donor = torch.zeros(fill_chunk.shape[0], device=tensor.device, dtype=torch.long)
+
+        for donor_start in range(0, donor_coords.shape[0], donor_chunk_size):
+            donor_end = min(donor_start + donor_chunk_size, donor_coords.shape[0])
+            donor_chunk = donor_coords_float[donor_start:donor_end]  # [Dc, D]
+            donor_squared = (donor_chunk * donor_chunk).sum(dim=1)  # [Dc]
+            cross_term = fill_chunk @ donor_chunk.T  # [Fc, Dc]
+            distances = fill_squared[:, None] + donor_squared[None, :] - 2 * cross_term
+            chunk_distance, chunk_index = distances.min(dim=1)  # [Fc], [Fc]
+
+            closer = chunk_distance < best_distance  # [Fc]
+            best_distance = torch.where(closer, chunk_distance, best_distance)  # [Fc]
+            global_index = donor_start + chunk_index
+            best_donor = torch.where(closer, global_index, best_donor)  # [Fc]
+
+        nearest_donor[fill_start:fill_end] = best_donor
+
+    nearest_coords = donor_coords[nearest_donor]  # [Nf, D]
+    fill_index = tuple(fill_coords[:, axis] for axis in range(tensor.ndim))
+    donor_index = tuple(nearest_coords[:, axis] for axis in range(tensor.ndim))
+
+    output = tensor.clone()
+    output[fill_index] = tensor[donor_index]
+
+    return output
 
 
 def soft_quantize(
@@ -1074,13 +1324,15 @@ def gaussian_smoothing(
     truncate: Union[int, float, Sequence[Union[int, float]]] = 3,
     normalize: Union[Literal["sum", "gaussian"], None] = "sum",
     padding_mode: str = "constant",
+    method: Literal["dense", "separable"] = "dense",
+    non_spatial_dims: Union[Sequence[int], None] = None,
 ) -> torch.Tensor:
-    """Apply Gaussian smoothing to a ``[B, C, *spatial]`` tensor.
+    """Apply Gaussian smoothing while preserving leading non-spatial dimensions.
 
     Parameters
     ----------
     input_tensor : torch.Tensor
-        Input tensor with one to three spatial dimensions.
+        Tensor of shape ``[*non_spatial, *spatial]`` with one to three spatial dimensions.
     sigma : float, int, or sequence
         Gaussian standard deviation per spatial dimension.
     truncate : float, int, or sequence
@@ -1089,19 +1341,34 @@ def gaussian_smoothing(
         Kernel normalization mode.
     padding_mode : {'constant', 'reflect', 'replicate', 'circular'}
         Boundary padding applied before convolution.
+    method : {'dense', 'separable'}, default='dense'
+        Apply one multidimensional kernel or one one-dimensional kernel per spatial axis.
+    non_spatial_dims : sequence[int] or None, default=None
+        Leading dimensions that index independent tensors. If None, every dimension is spatial.
 
     Returns
     -------
     torch.Tensor
         Smoothed tensor with the same shape, dtype, and device.
+
+    Examples
+    --------
+    >>> import torch
+    >>> image = torch.rand(64, 64)
+    >>> smoothed = gaussian_smoothing(image, sigma=2)
+    >>> images = torch.rand(2, 3, 64, 64)
+    >>> smoothed = gaussian_smoothing(images, sigma=2, non_spatial_dims=(0, 1))
     """
-    return nef.gaussian_smoothing(
+    input_tensor, original_shape = batch_nonspatial(input_tensor, non_spatial_dims)
+    smoothed = nef.gaussian_smoothing(
         input_tensor=input_tensor,
         sigma=sigma,
         truncate=truncate,
         normalize=normalize,
         padding_mode=padding_mode,
+        method=method,
     )
+    return unbatch_nonspatial(smoothed, original_shape)
 
 
 def crop(

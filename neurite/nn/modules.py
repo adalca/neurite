@@ -1294,6 +1294,7 @@ class GaussianBlur(nn.Module):
         truncate: Union[int, float, Sequence[Union[int, float]]] = 3,
         normalize: Union[Literal["sum", "gaussian"], None] = "sum",
         padding_mode: str = "constant",
+        method: Literal["dense", "separable"] = "dense",
     ):
         """
         Initialize `GaussianBlur`.
@@ -1311,6 +1312,8 @@ class GaussianBlur(nn.Module):
             How to normalize the Gaussian kernel. See `neurite.gaussian_kernel` for details.
         padding_mode : {'constant', 'reflect', 'replicate', 'circular'}, default='constant'
             Boundary padding applied before convolution.
+        method : {'dense', 'separable'}, default='dense'
+            Apply one multidimensional kernel or one one-dimensional kernel per spatial axis.
 
         Notes
         -----
@@ -1324,6 +1327,7 @@ class GaussianBlur(nn.Module):
         self.truncate = truncate
         self.normalize = normalize
         self.padding_mode = padding_mode
+        self.method = method
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
         """
@@ -1346,6 +1350,7 @@ class GaussianBlur(nn.Module):
             truncate=self.truncate,
             normalize=self.normalize,
             padding_mode=self.padding_mode,
+            method=self.method,
         )
 
 

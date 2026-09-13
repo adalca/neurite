@@ -5,12 +5,18 @@ These tests verify that vectorized implementations produce identical outputs
 to the original loop-based implementations.
 """
 
+import subprocess
+import sys
+
 import pytest
 import torch
 from pystrum.pynd.ndutils import bw_grid as pystrum_bw_grid
 
 import neurite as ne
 import neurite.nn.functional as nef
+import neurite.triton as netri
+
+TRITON_AVAILABLE = netri.is_available()
 
 
 # =============================================================================
@@ -309,11 +315,126 @@ def test_gaussian_smoothing_supports_replicate_padding():
     """Preserve constant boundary values when replicate padding is requested."""
     image = torch.ones((1, 1, 9, 11))
 
-    replicated = ne.gaussian_smoothing(image, sigma=1.0, padding_mode="replicate")
-    constant = ne.gaussian_smoothing(image, sigma=1.0, padding_mode="constant")
+    replicated = nef.gaussian_smoothing(image, sigma=1.0, padding_mode="replicate")
+    constant = nef.gaussian_smoothing(image, sigma=1.0, padding_mode="constant")
 
     assert torch.allclose(replicated, image)
     assert constant[0, 0, 0, 0] < 1
+
+
+@pytest.mark.parametrize(
+    "shape,sigma",
+    (
+        ((2, 3, 19), (1.3,)),
+        ((2, 3, 17, 19), (0.8, 1.4)),
+        ((1, 2, 11, 13, 15), (0.7, 0.9, 1.1)),
+    ),
+)
+@pytest.mark.parametrize("padding_mode", ("constant", "reflect", "replicate", "circular"))
+def test_gaussian_smoothing_separable_matches_dense(shape, sigma, padding_mode):
+    """Separable filtering should agree with the dense Gaussian in one to three dimensions."""
+    generator = torch.Generator().manual_seed(12)
+    image = torch.rand(shape, generator=generator)
+
+    dense = nef.gaussian_smoothing(image, sigma=sigma, padding_mode=padding_mode)
+    separable = nef.gaussian_smoothing(
+        image,
+        sigma=sigma,
+        padding_mode=padding_mode,
+        method="separable",
+    )
+
+    assert torch.allclose(separable, dense, rtol=1e-5, atol=1e-6)
+
+
+@pytest.mark.parametrize("normalize", ("sum", "gaussian", None))
+def test_gaussian_smoothing_separable_preserves_normalization(normalize):
+    """Separable factors should preserve every supported kernel normalization."""
+    image = torch.rand((1, 2, 17, 19))
+    options = {"sigma": (0.9, 1.2), "truncate": (2.0, 2.5), "normalize": normalize}
+
+    dense = nef.gaussian_smoothing(image, method="dense", **options)
+    separable = nef.gaussian_smoothing(image, method="separable", **options)
+
+    assert torch.allclose(separable, dense, rtol=1e-5, atol=1e-6)
+
+
+def test_gaussian_smoothing_keeps_dense_default_and_validates_method():
+    """The public default should retain the existing dense calculation."""
+    image = torch.rand((1, 1, 13, 15))
+
+    default = nef.gaussian_smoothing(image, sigma=1.1)
+    dense = nef.gaussian_smoothing(image, sigma=1.1, method="dense")
+
+    assert torch.equal(default, dense)
+    with pytest.raises(ValueError, match="method"):
+        nef.gaussian_smoothing(image, method="unknown")
+
+
+def test_gaussian_smoothing_separable_supports_gradients():
+    """The separable method should remain differentiable with respect to the input."""
+    image = torch.rand((1, 2, 13, 15), requires_grad=True)
+
+    smoothed = nef.gaussian_smoothing(image, sigma=(0.8, 1.1), method="separable")
+    smoothed.square().mean().backward()
+
+    assert image.grad is not None
+    assert torch.isfinite(image.grad).all()
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+def test_gaussian_smoothing_separable_matches_dense_on_cuda():
+    """The CUDA separable path should remain numerically close to the dense path."""
+    image = torch.rand((1, 3, 64, 67), device="cuda")
+
+    dense = nef.gaussian_smoothing(image, sigma=(2.0, 3.0), method="dense")
+    separable = nef.gaussian_smoothing(image, sigma=(2.0, 3.0), method="separable")
+
+    assert torch.allclose(separable, dense, rtol=1e-5, atol=1e-6)
+
+
+def test_gaussian_blur_module_supports_separable_method():
+    """The GaussianBlur module should expose the functional method choice."""
+    image = torch.rand((1, 2, 13, 15))
+    module = ne.nn.modules.GaussianBlur(sigma=(0.8, 1.1), method="separable")
+
+    result = module(image)
+    expected = nef.gaussian_smoothing(image, sigma=(0.8, 1.1), method="separable")
+
+    assert torch.equal(result, expected)
+
+
+@pytest.mark.parametrize(
+    "shape,non_spatial_dims,sigma",
+    (
+        ((19,), None, (1.1,)),
+        ((17, 19), None, (0.8, 1.1)),
+        ((3, 17, 19), (0,), (0.8, 1.1)),
+        ((2, 3, 17, 19), (0, 1), (0.8, 1.1)),
+        ((2, 3, 11, 13, 15), (0, 1), (0.7, 0.9, 1.1)),
+    ),
+)
+@pytest.mark.parametrize("method", ("dense", "separable"))
+def test_top_level_gaussian_smoothing_preserves_non_spatial_dims(
+    shape,
+    non_spatial_dims,
+    sigma,
+    method,
+):
+    """The top-level API should batch and restore independent leading dimensions."""
+    image = torch.rand(shape)
+
+    result = ne.gaussian_smoothing(
+        image,
+        sigma=sigma,
+        method=method,
+        non_spatial_dims=non_spatial_dims,
+    )
+    batched, original_shape = ne.batch_nonspatial(image, non_spatial_dims)
+    expected = nef.gaussian_smoothing(batched, sigma=sigma, method=method)
+    expected = ne.unbatch_nonspatial(expected, original_shape)
+
+    assert torch.equal(result, expected)
 
 
 @pytest.mark.parametrize("shape,non_spatial_dims", [
@@ -893,3 +1014,246 @@ def test_resample_supports_arbitrary_leading_non_spatial_dims():
     result = ne.resample(tensor, scale_factor=0.5, non_spatial_dims=(0, 1, 2, 3))
 
     assert result.shape == (2, 3, 4, 5, 8, 8)
+
+
+def test_connected_components_supports_1d_through_3d():
+    """Connected components should respect spatial dimension and connectivity."""
+    mask_1d = torch.tensor([1, 1, 0, 1], dtype=torch.bool)
+    components_1d, count_1d = ne.connected_components(mask_1d)
+
+    mask_2d = torch.eye(3, dtype=torch.bool)
+    _, face_count_2d = ne.connected_components(mask_2d, connectivity=1)
+    components_2d, full_count_2d = ne.connected_components(mask_2d, connectivity=2)
+
+    mask_3d = torch.zeros(2, 2, 2, dtype=torch.bool)
+    mask_3d[0, 0, 0] = True
+    mask_3d[1, 1, 1] = True
+    _, face_count_3d = ne.connected_components(mask_3d, connectivity=1)
+    _, full_count_3d = ne.connected_components(mask_3d, connectivity=3)
+
+    assert count_1d == 2
+    assert torch.equal(components_1d, torch.tensor([1, 1, 0, 2]))
+    assert face_count_2d == 3
+    assert full_count_2d == 1
+    assert components_2d.dtype == torch.long
+    assert face_count_3d == 2
+    assert full_count_3d == 1
+
+
+def test_connected_components_handles_empty_mask_and_invalid_connectivity():
+    """Empty masks should have no components and connectivity should be bounded."""
+    mask = torch.zeros(0, 3, dtype=torch.bool)
+    components, count = ne.connected_components(mask, method="torch")
+
+    assert components.shape == (0, 3)
+    assert count == 0
+    with pytest.raises(ValueError, match="connectivity"):
+        ne.connected_components(torch.ones(3, 3), connectivity=3)
+    with pytest.raises(ValueError, match="method"):
+        ne.connected_components(torch.ones(3, 3), method="unknown")
+
+
+def test_connected_components_auto_matches_forced_torch_on_cpu():
+    """Automatic dispatch should select the portable implementation for CPU tensors."""
+    mask = torch.eye(5, dtype=torch.bool)
+
+    automatic = ne.connected_components(mask, connectivity=2, method="auto")
+    portable = ne.connected_components(mask, connectivity=2, method="torch")
+
+    assert automatic[1] == portable[1]
+    assert torch.equal(automatic[0], portable[0])
+
+
+def test_cpu_connected_components_does_not_load_triton():
+    """Ordinary imports and CPU calls should not load either Triton module."""
+    code = (
+        "import sys; import torch; import neurite; "
+        "neurite.connected_components(torch.ones(3, dtype=torch.bool)); "
+        "assert 'neurite.triton' not in sys.modules; "
+        "assert 'triton' not in sys.modules"
+    )
+    command = [sys.executable, "-c", code]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_connected_components_forced_triton_validates_size():
+    """Triton parent indices should reject tensors larger than int32 can represent."""
+    max_triton_elements = torch.iinfo(torch.int32).max
+    oversized_mask = torch.ones(1, dtype=torch.bool).expand(max_triton_elements + 1)
+
+    with pytest.raises(ValueError, match="at most int32 elements"):
+        ne.connected_components(oversized_mask, method="triton")
+
+
+def test_connected_components_forced_triton_requires_dependency(monkeypatch):
+    """Forcing the Triton method should report when the optional dependency is unavailable."""
+    monkeypatch.setattr(netri, "tri", None)
+
+    with pytest.raises(RuntimeError, match="requires Triton"):
+        ne.connected_components(torch.ones(3, dtype=torch.bool), method="triton")
+    with pytest.raises(RuntimeError, match="requires Triton"):
+        netri.connected_components(torch.ones(3, dtype=torch.bool))
+
+
+@pytest.mark.skipif(not TRITON_AVAILABLE, reason="Triton is required")
+def test_connected_components_forced_triton_requires_cuda():
+    """Forcing the Triton method should reject CPU tensors."""
+    with pytest.raises(ValueError, match="requires a CUDA tensor"):
+        ne.connected_components(torch.ones(3, dtype=torch.bool), method="triton")
+    with pytest.raises(ValueError, match="requires a CUDA tensor"):
+        netri.connected_components(torch.ones(3, dtype=torch.bool))
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+def test_connected_components_auto_falls_back_without_triton(monkeypatch):
+    """Automatic dispatch should retain the portable CUDA path without Triton."""
+    mask = torch.eye(5, device="cuda", dtype=torch.bool)
+    expected = ne.connected_components(mask, connectivity=2, method="torch")
+    monkeypatch.setattr(netri, "tri", None)
+
+    actual = ne.connected_components(mask, connectivity=2, method="auto")
+
+    assert actual[1] == expected[1]
+    assert torch.equal(actual[0], expected[0])
+
+
+@pytest.mark.parametrize(
+    "device",
+    ["cpu"] + (["cuda"] if torch.cuda.is_available() else []),
+)
+def test_connected_components_preserves_device(device):
+    """Connected-component propagation should remain on the input device."""
+    mask = torch.eye(4, device=device, dtype=torch.bool)
+    components, count = ne.connected_components(mask, connectivity=2)
+
+    assert count == 1
+    assert components.device == mask.device
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not TRITON_AVAILABLE,
+    reason="CUDA and Triton are required",
+)
+@pytest.mark.parametrize(
+    "shape",
+    ((101,), (23, 19), (9, 11, 7)),
+)
+def test_connected_components_cuda_matches_cpu_for_every_connectivity(shape):
+    """The fast CUDA path should exactly match CPU labels and raster-order IDs."""
+    generator = torch.Generator().manual_seed(9)
+    mask = torch.rand(shape, generator=generator) > 0.65
+    cuda_mask = mask.cuda()
+
+    for connectivity in range(1, len(shape) + 1):
+        expected, expected_count = ne.connected_components(mask, connectivity, method="torch")
+        portable, portable_count = ne.connected_components(
+            cuda_mask,
+            connectivity,
+            method="torch",
+        )
+        actual, actual_count = ne.connected_components(
+            cuda_mask,
+            connectivity,
+            method="triton",
+        )
+        direct, direct_count = netri.connected_components(cuda_mask, connectivity)
+        automatic, automatic_count = ne.connected_components(cuda_mask, connectivity)
+
+        assert actual_count == expected_count
+        assert direct_count == expected_count
+        assert portable_count == expected_count
+        assert automatic_count == expected_count
+        assert torch.equal(actual.cpu(), expected)
+        assert torch.equal(direct, actual)
+        assert torch.equal(portable.cpu(), expected)
+        assert torch.equal(automatic, actual)
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not TRITON_AVAILABLE,
+    reason="CUDA and Triton are required",
+)
+@pytest.mark.parametrize("shape", ((1, 257), (257, 1), (1, 17, 19)))
+def test_connected_components_cuda_handles_degenerate_shapes(shape):
+    """Singleton spatial axes should not join unrelated flattened neighbors."""
+    mask = torch.eye(shape[-2], shape[-1], dtype=torch.bool)
+    if len(shape) == 3:
+        mask = mask.unsqueeze(0)
+    cuda_mask = mask.cuda()
+
+    for connectivity in range(1, len(shape) + 1):
+        expected, expected_count = ne.connected_components(mask, connectivity, method="torch")
+        actual, actual_count = ne.connected_components(
+            cuda_mask,
+            connectivity,
+            method="triton",
+        )
+
+        assert actual_count == expected_count
+        assert torch.equal(actual.cpu(), expected)
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or not TRITON_AVAILABLE,
+    reason="CUDA and Triton are required",
+)
+def test_connected_components_cuda_joins_region_across_kernel_blocks():
+    """A large component should converge across many independent kernel blocks."""
+    mask = torch.ones((257, 259), device="cuda", dtype=torch.bool)
+
+    components, count = ne.connected_components(mask, connectivity=1, method="triton")
+
+    assert count == 1
+    assert torch.equal(components, torch.ones_like(components))
+
+
+def test_component_sizes_counts_component_voxels():
+    """Component sizes should preserve missing IDs and return integer counts."""
+    components = torch.tensor([[0, 1, 1], [3, 3, 3]])
+    sizes = ne.component_sizes(components)
+
+    assert torch.equal(sizes, torch.tensor([2, 0, 3]))
+    with pytest.raises(ValueError, match="largest component"):
+        ne.component_sizes(components, num_components=2)
+
+
+@pytest.mark.parametrize(
+    "device",
+    ["cpu"] + (["cuda"] if torch.cuda.is_available() else []),
+)
+def test_fill_nearest_is_exact_and_preserves_tensor_properties(device):
+    """Nearest filling should use retained values and restore dtype and device."""
+    values = torch.tensor([1, 0, 0, 9], device=device, dtype=torch.int16)
+    fill_mask = torch.tensor([False, True, True, False], device=device)
+    filled = ne.fill_nearest(values, fill_mask)
+    expected = torch.tensor([1, 1, 9, 9], device=device, dtype=torch.int16)
+
+    assert torch.equal(filled, expected)
+    assert filled.dtype == values.dtype
+    assert filled.device == values.device
+    original = torch.tensor([1, 0, 0, 9], device=device, dtype=torch.int16)
+    assert torch.equal(values, original)
+
+
+def test_fill_nearest_handles_noop_and_missing_donor():
+    """Nearest filling should clone no-ops and reject masks without sources."""
+    values = torch.arange(4).reshape(2, 2)
+    unchanged = ne.fill_nearest(values, torch.zeros_like(values, dtype=torch.bool))
+
+    assert torch.equal(unchanged, values)
+    assert unchanged.data_ptr() != values.data_ptr()
+    with pytest.raises(ValueError, match="retained source"):
+        ne.fill_nearest(values, torch.ones_like(values, dtype=torch.bool))
+
+
+def test_fill_nearest_uses_exact_2d_euclidean_donors():
+    """A filled strip should divide at the exact nearest-donor boundary."""
+    values = torch.tensor([[1, 0, 0, 0, 9]]).repeat(3, 1)
+    fill_mask = torch.zeros_like(values, dtype=torch.bool)
+    fill_mask[:, 1:4] = True
+    filled = ne.fill_nearest(values, fill_mask)
+    expected = torch.tensor([[1, 1, 1, 9, 9]]).repeat(3, 1)
+
+    assert torch.equal(filled, expected)
