@@ -10,7 +10,6 @@ import sys
 
 import pytest
 import torch
-from pystrum.pynd.ndutils import bw_grid as pystrum_bw_grid
 
 import neurite as ne
 import neurite.nn.functional as nef
@@ -199,10 +198,25 @@ def test_functional_volshape_to_ndgrid_sizes():
     ((6, 7), 2, 1),
     ((5, 6, 4), (1, 2, 1), 2),
 ])
-def test_bw_grid_matches_pystrum(vol_shape, spacing, thickness):
-    """Test that bw_grid preserves the legacy pystrum grid convention."""
+def test_bw_grid_uses_legacy_spacing(vol_shape, spacing, thickness):
+    """Test the legacy spacing and final-border grid convention."""
     grid = ne.bw_grid(vol_shape=vol_shape, spacing=spacing, thickness=thickness)
-    expected = torch.as_tensor(pystrum_bw_grid(vol_shape, spacing, thickness), dtype=grid.dtype)
+
+    if isinstance(spacing, int):
+        spacing = [spacing] * len(vol_shape)
+
+    coordinates = []
+    for size in vol_shape:
+        coordinates.append(torch.arange(size))
+    coordinates = torch.meshgrid(*coordinates, indexing="ij")
+
+    expected = torch.zeros(vol_shape, dtype=torch.bool)
+    for axis, coordinate in enumerate(coordinates):
+        period = spacing[axis] + 1
+        lines = coordinate.remainder(period) < thickness
+        border = coordinate == vol_shape[axis] - 1
+        expected.logical_or_(lines | border)
+    expected = expected.to(grid.dtype)
 
     assert torch.equal(grid, expected)
 
