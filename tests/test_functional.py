@@ -348,11 +348,13 @@ def test_gaussian_smoothing_matches_vectorized_nn_operation():
 
 
 def test_gaussian_smoothing_supports_replicate_padding():
-    """Preserve constant boundary values when replicate padding is requested."""
+    """
+    Preserve constant boundary values when replicate padding is requested.
+    """
     image = torch.ones((9, 11))
 
-    replicated = nef.gaussian_smoothing(image, sigma=1.0, padding_mode="replicate")
-    constant = nef.gaussian_smoothing(image, sigma=1.0, padding_mode="constant")
+    replicated = ne.gaussian_smoothing(image, sigma=1.0, padding_mode="replicate")
+    constant = ne.gaussian_smoothing(image, sigma=1.0, padding_mode="constant")
 
     assert torch.allclose(replicated, image)
     assert constant[0, 0] < 1
