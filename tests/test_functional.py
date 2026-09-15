@@ -10,7 +10,6 @@ import sys
 
 import pytest
 import torch
-from pystrum.pynd.ndutils import bw_grid as pystrum_bw_grid
 
 import neurite as ne
 import neurite.nn.functional as nef
@@ -195,14 +194,29 @@ def test_functional_volshape_to_ndgrid_sizes():
     assert tuple(the_grid.shape) == (3, 43, 9, 10)
 
 
-@pytest.mark.parametrize("vol_shape,spacing,thickness", [
-    ((6, 7), 2, 1),
-    ((5, 6, 4), (1, 2, 1), 2),
-])
-def test_bw_grid_matches_pystrum(vol_shape, spacing, thickness):
-    """Test that bw_grid preserves the legacy pystrum grid convention."""
-    grid = ne.bw_grid(vol_shape=vol_shape, spacing=spacing, thickness=thickness)
-    expected = torch.as_tensor(pystrum_bw_grid(vol_shape, spacing, thickness), dtype=grid.dtype)
+def test_bw_grid_matches_expected_lines() -> None:
+    """
+    Preserve line spacing and the forced final row and column.
+    """
+    grid = ne.bw_grid(vol_shape=(6, 7), spacing=2, thickness=1)
+    expected = torch.tensor([
+        [1, 1, 1, 1, 1, 1, 1],
+        [1, 0, 0, 1, 0, 0, 1],
+        [1, 0, 0, 1, 0, 0, 1],
+        [1, 1, 1, 1, 1, 1, 1],
+        [1, 0, 0, 1, 0, 0, 1],
+        [1, 1, 1, 1, 1, 1, 1],
+    ], dtype=torch.float32)
+
+    assert torch.equal(grid, expected)
+
+
+def test_bw_grid_thick_lines_fill_volume() -> None:
+    """
+    Cover every voxel when one axis has no gap between thick grid lines.
+    """
+    grid = ne.bw_grid(vol_shape=(5, 6, 4), spacing=(1, 2, 1), thickness=2)
+    expected = torch.ones(5, 6, 4)
 
     assert torch.equal(grid, expected)
 
