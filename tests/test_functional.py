@@ -194,29 +194,29 @@ def test_functional_volshape_to_ndgrid_sizes():
     assert tuple(the_grid.shape) == (3, 43, 9, 10)
 
 
-@pytest.mark.parametrize("vol_shape,spacing,thickness", [
-    ((6, 7), 2, 1),
-    ((5, 6, 4), (1, 2, 1), 2),
-])
-def test_bw_grid_uses_legacy_spacing(vol_shape, spacing, thickness):
-    """Test the legacy spacing and final-border grid convention."""
-    grid = ne.bw_grid(vol_shape=vol_shape, spacing=spacing, thickness=thickness)
+def test_bw_grid_matches_expected_lines() -> None:
+    """
+    Preserve line spacing and the forced final row and column.
+    """
+    grid = ne.bw_grid(vol_shape=(6, 7), spacing=2, thickness=1)
+    expected = torch.tensor([
+        [1, 1, 1, 1, 1, 1, 1],
+        [1, 0, 0, 1, 0, 0, 1],
+        [1, 0, 0, 1, 0, 0, 1],
+        [1, 1, 1, 1, 1, 1, 1],
+        [1, 0, 0, 1, 0, 0, 1],
+        [1, 1, 1, 1, 1, 1, 1],
+    ], dtype=torch.float32)
 
-    if isinstance(spacing, int):
-        spacing = [spacing] * len(vol_shape)
+    assert torch.equal(grid, expected)
 
-    coordinates = []
-    for size in vol_shape:
-        coordinates.append(torch.arange(size))
-    coordinates = torch.meshgrid(*coordinates, indexing="ij")
 
-    expected = torch.zeros(vol_shape, dtype=torch.bool)
-    for axis, coordinate in enumerate(coordinates):
-        period = spacing[axis] + 1
-        lines = coordinate.remainder(period) < thickness
-        border = coordinate == vol_shape[axis] - 1
-        expected.logical_or_(lines | border)
-    expected = expected.to(grid.dtype)
+def test_bw_grid_thick_lines_fill_volume() -> None:
+    """
+    Cover every voxel when one axis has no gap between thick grid lines.
+    """
+    grid = ne.bw_grid(vol_shape=(5, 6, 4), spacing=(1, 2, 1), thickness=2)
+    expected = torch.ones(5, 6, 4)
 
     assert torch.equal(grid, expected)
 
@@ -362,11 +362,13 @@ def test_gaussian_smoothing_matches_vectorized_nn_operation():
 
 
 def test_gaussian_smoothing_supports_replicate_padding():
-    """Preserve constant boundary values when replicate padding is requested."""
+    """
+    Preserve constant boundary values when replicate padding is requested.
+    """
     image = torch.ones((9, 11))
 
-    replicated = nef.gaussian_smoothing(image, sigma=1.0, padding_mode="replicate")
-    constant = nef.gaussian_smoothing(image, sigma=1.0, padding_mode="constant")
+    replicated = ne.gaussian_smoothing(image, sigma=1.0, padding_mode="replicate")
+    constant = ne.gaussian_smoothing(image, sigma=1.0, padding_mode="constant")
 
     assert torch.allclose(replicated, image)
     assert constant[0, 0] < 1

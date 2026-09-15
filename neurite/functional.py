@@ -1405,7 +1405,6 @@ def gaussian_smoothing(
         method=method,
     )
     return unbatch_nonspatial(smoothed, original_shape)
-    return unbatch_nonspatial(smoothed, original_shape)
 
 
 def crop(
