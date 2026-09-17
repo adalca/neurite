@@ -274,6 +274,47 @@ def test_ncc_rejects_invalid_inputs():
         nef.ncc(tensor, tensor, window_size=0)
 
 
+@pytest.mark.parametrize('device', ['cpu'] + (['cuda'] if torch.cuda.is_available() else []))
+def test_ncc_rejects_numerical_cancellation(device):
+    """Reject invalid correlations from large offsets with small local variation."""
+    generator = torch.Generator().manual_seed(0)
+    tensor1 = 1000 + 0.01 * torch.randn(1, 1, 32, 32, generator=generator)
+    tensor2 = 1000 + 0.01 * torch.randn(1, 1, 32, 32, generator=generator)
+    tensor1, tensor2 = tensor1.to(device), tensor2.to(device)
+
+    with pytest.raises(AssertionError, match='NCC coefficients must be finite and in'):
+        nef.ncc(tensor1, tensor2)
+
+
+@pytest.mark.parametrize('value', [float('nan'), float('inf'), 1e20])
+def test_ncc_rejects_nonfinite_coefficients(value):
+    """Reject nonfinite correlations caused by invalid inputs or moment overflow."""
+    tensor = torch.full((1, 1, 8, 8), value)
+    with pytest.raises(AssertionError, match='NCC coefficients must be finite and in'):
+        nef.ncc(tensor, tensor)
+
+
+@pytest.mark.parametrize('value', [0.0, 1.0, 1000.0])
+def test_ncc_accepts_constant_inputs(value):
+    """Allow constant windows when their computed coefficients are finite and in range."""
+    tensor = torch.full((1, 1, 32, 32), value)
+    score = nef.ncc(tensor, tensor)
+    assert torch.isfinite(score).all()
+    assert ((score >= 0) & (score <= 1)).all()
+
+
+def test_ncc_sum_reduction_preserves_gradients():
+    """Allow a sum above one and retain finite gradients through valid correlations."""
+    generator = torch.Generator().manual_seed(42)
+    tensor = torch.randn(2, 3, 16, 16, generator=generator, requires_grad=True)
+    score = nef.ncc(tensor, tensor, reduction='sum')
+    expected = torch.full_like(score, 6.0)
+    torch.testing.assert_close(score, expected)
+
+    score.sum().backward()
+    assert torch.isfinite(tensor.grad).all()
+
+
 @pytest.mark.parametrize(
     'shape,window_size',
     [
