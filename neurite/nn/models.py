@@ -285,9 +285,7 @@ class BasicAutoencoder(nn.Module):
     Attributes
     ----------
     downsampling_conv_blocks : nn.ModuleList
-        Downsampling convolutional blocks.
-    lowest_resolution_conv_block : nn.Module
-        Central convolutional block at the lowest spatial resolution.
+        Downsampling convolutional blocks followed by the latent block.
     upsampling_conv_blocks : nn.ModuleList
         Upsampling convolutional blocks.
     out_layer : nn.Module
@@ -303,7 +301,7 @@ class BasicAutoencoder(nn.Module):
     ...    activations="elu"
     ... )
     >>> input_tensor = torch.randn(1, 1, 64, 64, 64)
-    >>> output = model(input_tensor)
+    >>> output = autoencoder(input_tensor)
     >>> output.shape
     torch.Size([1, 1, 64, 64, 64])
     """
@@ -338,11 +336,11 @@ class BasicAutoencoder(nn.Module):
             Number of features at each level of the autoencoder. Must be a sequence of positive
             integers.
         normalizations : Sequence[Union[Callable, str]], Callable, str, or None, default=None
-            Normalization layers to use in each block. Can be a string or a sequence
-            of strings specifying normalizations for each layer, or `None` for no normalization.
+            Normalization for encoder/decoder blocks: a string, callable, or sequence with one
+            entry per level. Use `None` for no normalization.
         activations : Sequence[Union[Callable, str]], Callable, str, or None, default=nn.ReLU
-            Activation functions to use in each block. Can be a callable,
-            a string, or a sequence of strings/callables.
+            Activation for each block: a callable, string, or sequence with one entry per level.
+            The latent block uses the deepest level's activation. Use `None` for no activation.
         order : str, default='caca'
             Order of operations in each convolutional block (e.g., 'ncaca').
         final_activation : Union[str, nn.Module, None], default=None
@@ -354,31 +352,37 @@ class BasicAutoencoder(nn.Module):
         super().__init__()
 
         # Normalization layers
-        if not isinstance(normalizations, list):
+        if isinstance(normalizations, Sequence) and not isinstance(normalizations, str):
+            self.normalizations = list(normalizations)
+        else:
             self.normalizations = [normalizations] * len(nb_features)
 
         # Activation layers
-        if not isinstance(activations, list):
+        if isinstance(activations, Sequence) and not isinstance(activations, str):
+            self.activations = list(activations)
+        else:
             self.activations = [activations] * len(nb_features)
 
         # Downsampling network
-        self.downsampling_conv_blocks = ne.utils.downsampling_conv_blocks(
+        downsampling_features = [in_channels, *nb_features]
+        self.downsampling_conv_blocks, down_channels = ne.utils.downsampling_conv_blocks(
             ndim=ndim,
-            nb_features=[in_channels, *nb_features],
+            nb_features=downsampling_features,
             normalizations=self.normalizations,
             activations=self.activations,
             order=order,
             return_skip=False,
+            padding_mode=padding_mode,
         )
 
         # Latent space layer (lowest resolution, highest feature dimension)
         latent_layer = ne.nn.modules.ConvBlock(
             ndim=ndim,
-            in_channels=nb_features[-1],
+            in_channels=down_channels[-1],
             out_channels=latent_features,
             kernel_size=1,
             padding=0,
-            activation=activations if callable(activations) else nn.ReLU(),
+            activation=self.activations[-1],
             order=order,
             padding_mode=padding_mode,
         )
@@ -387,19 +391,21 @@ class BasicAutoencoder(nn.Module):
         self.downsampling_conv_blocks.append(latent_layer)
 
         # Upsampling network
-        self.upsampling_conv_blocks = ne.utils.upsampling_conv_blocks(
+        upsampling_features = [latent_features, *reversed(nb_features[1:])]
+        self.upsampling_conv_blocks, up_channels = ne.utils.upsampling_conv_blocks(
             ndim=ndim,
-            nb_features=[latent_features, *reversed(nb_features[1:])],
+            nb_features=upsampling_features,
             normalizations=self.normalizations,
             activations=self.activations,
             accepts_skip=False,
             order=order,
+            padding_mode=padding_mode,
         )
 
         # Output layer
         self.out_layer = ne.nn.modules.ConvBlock(
             ndim=ndim,
-            in_channels=nb_features[1],
+            in_channels=up_channels[-1],
             out_channels=out_channels,
             kernel_size=1,
             padding=0,
