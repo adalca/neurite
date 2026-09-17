@@ -453,6 +453,16 @@ def ncc(
         - If (0,): shape (N,) where N is size of dim 0
         - If (0, 1): shape (N, M) where N, M are sizes of dims 0, 1
 
+    Raises
+    ------
+    AssertionError
+        If any local coefficient is nonfinite or outside [0, 1] with absolute tolerance 1e-5.
+
+    Warnings
+    --------
+    Extreme intensities or large offsets relative to local variation can cause floating-point
+    errors that ``eps`` does not prevent. The range check cannot detect incorrect values in [0, 1].
+
     Examples
     --------
     >>> import torch

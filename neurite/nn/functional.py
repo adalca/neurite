@@ -1612,8 +1612,19 @@ def ncc(
     Returns
     -------
     torch.Tensor
-        Squared local correlation coefficients. If ``reduction=None``, returns shape
-        ``(B, C)``. Otherwise, the requested reduction is applied.
+        Squared local correlation coefficients in [0, 1] before reduction. If
+        ``reduction=None``, returns shape ``(B, C)``. Otherwise, the requested reduction
+        is applied and may change the output range.
+
+    Raises
+    ------
+    AssertionError
+        If any local coefficient is nonfinite or outside [0, 1] with absolute tolerance 1e-5.
+
+    Warnings
+    --------
+    Extreme intensities or large offsets relative to local variation can cause floating-point
+    errors that ``eps`` does not prevent. The range check cannot detect incorrect values in [0, 1].
 
     Examples
     --------
@@ -1675,6 +1686,16 @@ def ncc(
     J_var = J2_sum - J_sum.square() * inv_win_size
 
     cc = cross.square() / (I_var * J_var + eps)
+
+    # Check local coefficients before averaging can hide errors or reductions change the range.
+    bounds_tolerance = 1e-5
+    valid = (cc >= -bounds_tolerance) & (cc <= 1 + bounds_tolerance)
+    assert torch.all(valid), (
+        "NCC coefficients must be finite and in [0, 1] within tolerance 1e-5. "
+        "Extreme intensities or large offsets relative to local variation "
+        "can cause numerical errors."
+    )
+
     spatial_dims = tuple(range(2, 2 + num_spatial))
     ncc_score = cc.mean(dim=spatial_dims).reshape(*batch_shape)
 
