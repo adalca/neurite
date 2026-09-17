@@ -95,18 +95,27 @@ def test_subsample_random_dims_deterministic():
 # Tests for sample_image_from_labels()
 # =============================================================================
 
-def test_sample_image_from_labels_shape():
-    """Test that output shape matches input shape."""
+@pytest.mark.parametrize('device', ['cpu'] + (['cuda'] if torch.cuda.is_available() else []))
+@pytest.mark.parametrize('sampler', [
+    nef.sample_image_from_labels,
+    ne.sample_image_from_labels,
+    ne.nn.modules.SampleImageFromLabels(),
+])
+def test_sample_image_from_labels_shape(device, sampler):
+    """Return finite float32 images on the input device through each public entry point."""
     label_tensor = torch.tensor([
         [[1, 1, 2, 2],
          [1, 1, 2, 2],
          [3, 3, 4, 4],
          [3, 3, 4, 4]]
-    ]).unsqueeze(0)
+    ], device=device).unsqueeze(0)  # [1, 1, 4, 4]
 
-    result = nef.sample_image_from_labels(label_tensor)
+    result = sampler(label_tensor)
 
     assert result.shape == label_tensor.shape
+    assert result.device == label_tensor.device
+    assert result.dtype == torch.float32
+    assert torch.isfinite(result).all()
 
 
 def test_sample_image_from_labels_constant_within_region():
@@ -158,9 +167,10 @@ def test_sample_image_from_labels_different_regions():
     assert region2_std < 0.1
 
 
-def test_sample_image_from_labels_deterministic():
-    """Test that same seed produces same result."""
-    label_tensor = torch.randint(0, 5, (1, 1, 8, 8))
+@pytest.mark.parametrize('device', ['cpu'] + (['cuda'] if torch.cuda.is_available() else []))
+def test_sample_image_from_labels_deterministic(device):
+    """Test that the same seed produces the same result on each device."""
+    label_tensor = torch.randint(0, 5, (1, 1, 8, 8), device=device)
 
     torch.manual_seed(42)
     result1 = nef.sample_image_from_labels(

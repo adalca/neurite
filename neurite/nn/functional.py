@@ -1281,20 +1281,22 @@ def sample_image_from_labels(
     Returns
     -------
     torch.Tensor
-        A tensor of sampled image intensities with the same shape as `label_tensor`.
+        Float32 sampled image intensities with the same shape and device as `label_tensor`.
     """
     unique_labels = torch.unique(label_tensor)
-    min_val, max_val = mean_range
 
     sampled_image = torch.zeros_like(label_tensor, dtype=torch.float32)
-    uniform_dist = torch.distributions.Uniform(low=min_val, high=max_val)
+    mean_bounds = sampled_image.new_tensor(mean_range)  # [2]
+    uniform_dist = torch.distributions.Uniform(low=mean_bounds[0], high=mean_bounds[1])
 
+    # Sample one mean per label and independent noise for its voxels.
     for label in unique_labels:
         mask = label_tensor == label
         num_elements = mask.sum().item()
 
-        mean_region_intensity = uniform_dist.sample().item()
-        texturized_region = mean_region_intensity + noise_std * torch.randn(num_elements)
+        mean_region_intensity = uniform_dist.sample()
+        noise = torch.randn(num_elements, device=label_tensor.device, dtype=sampled_image.dtype)
+        texturized_region = mean_region_intensity + noise_std * noise
         sampled_image[mask] = texturized_region
 
     return sampled_image
