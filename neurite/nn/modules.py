@@ -71,8 +71,8 @@ class Dice(nn.Module):
 
     def __init__(
         self,
-        smooth_numerator: float = 1e-12,
-        smooth_denominator: float = 1e-12,
+        smooth_numerator: float = 1e-5,
+        smooth_denominator: float = 1e-5,
         reduction: str = 'mean',
         reduction_dim: Union[int, Tuple] = (0, 1),
         keepdims: bool = True,
@@ -82,9 +82,9 @@ class Dice(nn.Module):
 
         Parameters
         ----------
-        smooth_numerator : float, default=1e-12
+        smooth_numerator : float, default=1e-5
             Smoothing constant added to the numerator.
-        smooth_denominator : float, default=1e-12
+        smooth_denominator : float, default=1e-5
             Smoothing constant added to the denominator.
         reduction : str, default='mean'
             The type of reduction to apply. Supported values for multidimensional reductions are:

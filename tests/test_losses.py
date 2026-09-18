@@ -85,6 +85,75 @@ def test_dice_identical():
     )
 
 
+@pytest.mark.parametrize('device', ['cpu', 'cuda'])
+@pytest.mark.parametrize('dice', [ne.dice, nef.dice, ne.nn.modules.Dice()])
+def test_dice_empty_float16(device, dice):
+    """Default smoothing should give Dice 1 for two empty float16 masks."""
+    if device == 'cuda' and not torch.cuda.is_available():
+        pytest.skip('CUDA device not available')
+
+    seg = torch.zeros(2, 3, 8, 8, dtype=torch.float16, device=device)
+    result = dice(seg, seg)
+    expected = torch.ones_like(result)
+    assert result.dtype == torch.float16
+    torch.testing.assert_close(result, expected)
+
+
+@pytest.mark.parametrize('device', ['cpu', 'cuda'])
+@pytest.mark.parametrize('dice', [ne.dice, nef.dice, ne.nn.modules.Dice()])
+@pytest.mark.parametrize('case', ['empty', 'dense', 'unequal', 'small_denominator'])
+def test_dice_float16_fallback(device, dice, case):
+    """Unsafe float16 scores and gradients should agree with a float32 reference."""
+    if device == 'cuda' and not torch.cuda.is_available():
+        pytest.skip('CUDA device not available')
+
+    # Cover overflow in both terms, denominator-only overflow, and small denominators.
+    sizes = {'empty': 8, 'dense': 32768, 'unequal': 65536, 'small_denominator': 8}
+    first = torch.ones(1, 1, sizes[case], dtype=torch.float16, device=device)
+    second = torch.ones_like(first)
+    if case == 'empty':
+        first.zero_()
+        second.zero_()
+    elif case == 'unequal':
+        second.zero_()
+        second[..., :8] = 1
+    elif case == 'small_denominator':
+        first.fill_(1e-4)
+        second.zero_()
+
+    # Compare the score and both input gradients against independent float32 inputs.
+    first.requires_grad_()
+    second.requires_grad_()
+    reference_first = first.detach().float().requires_grad_()
+    reference_second = second.detach().float().requires_grad_()
+    result = dice(first, second)
+    expected = dice(reference_first, reference_second)
+    assert result.dtype == torch.float32
+    torch.testing.assert_close(result, expected)
+
+    gradients = torch.autograd.grad(result.sum(), (first, second))
+    reference_inputs = (reference_first, reference_second)
+    reference_gradients = torch.autograd.grad(expected.sum(), reference_inputs)
+    for actual, reference in zip(gradients, reference_gradients):
+        assert torch.isfinite(actual).all()
+        torch.testing.assert_close(actual.float(), reference, rtol=1e-3, atol=1e-7)
+
+
+@pytest.mark.parametrize('device', ['cpu', 'cuda'])
+@pytest.mark.parametrize('dtype', [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+def test_dice_preserves_safe_dtype(device, dtype):
+    """Small nonempty masks should retain their dtype and have finite gradients."""
+    if device == 'cuda' and not torch.cuda.is_available():
+        pytest.skip('CUDA device not available')
+
+    seg = torch.ones(2, 3, 8, dtype=dtype, device=device, requires_grad=True)
+    result = nef.dice(seg, seg)
+    assert result.dtype == dtype
+    torch.testing.assert_close(result, torch.ones_like(result))
+    gradient, = torch.autograd.grad(result.sum(), seg)
+    assert torch.isfinite(gradient).all()
+
+
 @pytest.mark.parametrize('value', [-5e-7, 1 + 5e-7])
 def test_dice_allows_values_within_bounds_tolerance(value):
     """Test Dice accepts small numerical deviations outside probability bounds."""

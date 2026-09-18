@@ -347,8 +347,8 @@ def mse(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
 
 def dice(
     *segs: torch.Tensor,
-    smooth_numerator: float = 1e-12,
-    smooth_denominator: float = 1e-12,
+    smooth_numerator: float = 1e-5,
+    smooth_denominator: float = 1e-5,
     non_spatial_dims: Union[Tuple[int, ...], None] = None
 ) -> torch.Tensor:
     """
@@ -362,9 +362,9 @@ def dice(
     *segs : torch.Tensor
         Two or more segmentation tensors with the same shape and values in [0, 1].
     smooth_numerator : float, optional
-        Smoothing constant added to the numerator. Default is 1e-12.
+        Smoothing constant added to the numerator. Default is 1e-5.
     smooth_denominator : float, optional
-        Smoothing constant added to the denominator. Default is 1e-12.
+        Smoothing constant added to the denominator. Default is 1e-5.
     non_spatial_dims : Tuple[int, ...] or None, optional
         Indices of leading non-spatial dimensions. Must be a contiguous sequence starting from 0.
         If None, assumes all dimensions are spatial and computes a single scalar Dice score.

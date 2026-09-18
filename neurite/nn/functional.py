@@ -1503,8 +1503,8 @@ def mse(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
 
 def dice(
     *segs: torch.Tensor,
-    smooth_numerator: float = 1e-12,
-    smooth_denominator: float = 1e-12,
+    smooth_numerator: float = 1e-5,
+    smooth_denominator: float = 1e-5,
     bounds_tolerance: float = 1e-6,
     reduction: Union[str, None] = 'mean',
     reduction_dim: Union[int, Tuple[int, ...]] = (0, 1),
@@ -1517,9 +1517,9 @@ def dice(
     ----------
     *segs : torch.Tensor
         Two or more segmentation tensors of shape (B, L, *spatial_dims) with values in [0, 1].
-    smooth_numerator : float, default=1e-12
+    smooth_numerator : float, default=1e-5
         Smoothing constant added to the numerator.
-    smooth_denominator : float, default=1e-12
+    smooth_denominator : float, default=1e-5
         Smoothing constant added to the denominator.
     bounds_tolerance : float, default=1e-6
         Absolute tolerance for segmentation values outside [0, 1].
@@ -1537,6 +1537,12 @@ def dice(
     -------
     torch.Tensor
         Dice score. If reduction=None, returns shape (B, L). Otherwise, reduced as specified.
+
+    Notes
+    -----
+    Float16 arithmetic is retried in float32 if the numerator or denominator is nonfinite,
+    or if a small denominator risks gradient overflow. In these cases, the output is float32.
+    This check does not guarantee finite gradients under arbitrary upstream scaling.
 
     Examples
     --------
@@ -1571,7 +1577,25 @@ def dice(
     intersection = stacked.prod(dim=0).sum(dim=spatial_dims)
     union_dims = (0,) + tuple(range(3, stacked.ndim))
     union = (stacked ** 2).sum(dim=union_dims)
-    dice_score = (nsegs * intersection + smooth_numerator) / (union + smooth_denominator)
+    numerator = nsegs * intersection + smooth_numerator
+    denominator = union + smooth_denominator
+
+    # Retry unsafe float16 arithmetic, including small denominators during training.
+    if stacked.dtype == torch.float16:
+        unsafe = ~torch.isfinite(numerator) | ~torch.isfinite(denominator)
+        if stacked.requires_grad:
+            limit = nsegs / torch.finfo(torch.float16).max
+            unsafe |= denominator <= limit
+
+        if unsafe.any():
+            del intersection, union, numerator, denominator
+            stacked = stacked.float()
+            intersection = stacked.prod(dim=0).sum(dim=spatial_dims)
+            union = stacked.square().sum(dim=union_dims)
+            numerator = nsegs * intersection + smooth_numerator
+            denominator = union + smooth_denominator
+
+    dice_score = numerator / denominator
 
     if reduction is None:
         return dice_score
