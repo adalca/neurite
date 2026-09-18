@@ -1212,28 +1212,29 @@ def resample_voxel_dimensions(
     """
     Resample tensor to simulate different voxel dimensions.
 
-    Combines downsampling and upsampling by first subsampling `input_tensor` along
-    specified dimensions by `downsample_stride`, then upsampling back to `shape`.
+    Combines downsampling and upsampling by first resizing `input_tensor` using
+    `downsample_scale`, then upsampling to `shape` or by `upsample_scale`.
     This is useful for simulating anisotropic voxel dimensions in medical imaging.
 
     Parameters
     ----------
     input_tensor : torch.Tensor
         The tensor to resample, with shape (B, C, *spatial_dims).
-    downsample_stride : int or Sequence[int], default=2
-        Factor by which to subsample.
-    upsample_scale_factor : int, float, or Sequence[int or float], default=2
+    downsample_scale : int, float, or Sequence[int or float], default=0.5
+        Scale for each spatial dimension. Values below 1 downsample.
+    upsample_scale : int, float, or Sequence[int or float], default=2
         Factor by which to upsample.
     mode : {'linear', 'nearest', 'bicubic', 'area', 'nearest-exact'}, default='linear'
         Interpolation mode for upsampling.
     shape : Sequence[int] or None, default=None
         Spatial dimensions (without batch or channel dims) to upsample the subsampled tensor into.
+        If provided, overrides `upsample_scale`.
 
     Returns
     -------
     torch.Tensor
         The resampled tensor with the same batch and channel dims as `input_tensor`
-        and spatial dims equal to `shape`.
+        and spatial dims determined by `shape` or the resampling scales.
 
     Examples
     --------
@@ -1242,7 +1243,7 @@ def resample_voxel_dimensions(
     >>> # Subsample rows/cols by 2, then upsample to (64, 64)
     >>> res = resample_voxel_dimensions(
     ...     input_tensor, shape=(64, 64),
-    ...     downsample_stride=2,
+    ...     downsample_scale=0.5,
     ...     mode='linear'
     ... )
     >>> print(res.shape)

@@ -8,6 +8,55 @@ import neurite as ne
 import neurite.nn.functional as nef
 
 
+@pytest.mark.parametrize('device', ['cpu', 'cuda'])
+@pytest.mark.parametrize('spatial, options, downscale, output_shape', [
+    ((8,), {}, (0.5,), (8,)),
+    ((8, 8), {}, (0.5, 0.5), (8, 8)),
+    ((8, 8, 8), {}, (0.5, 0.5, 0.5), (8, 8, 8)),
+    ((9, 11), {}, (0.5, 0.5), (9, 11)),
+    ((8, 8), {'resample_dimension': 2}, (0.5, 1), (8, 8)),
+    ((8, 8), {'resample_dimension': -1}, (1, 0.5), (8, 8)),
+    ((8, 8, 8), {'resample_dimension': (2, 4)}, (0.5, 1, 0.5), (8, 8, 8)),
+    ((8, 8), {'downsample_stride': (2, 4), 'upsample_scale_factor': (2, 4)},
+     (0.5, 0.25), (8, 8)),
+    ((8, 8), {'upsample_scale_factor': 6}, (0.5, 0.5), (24, 24)),
+    ((8, 8), {'shape': (10, 12)}, (0.5, 0.5), (10, 12)),
+])
+def test_resample_voxel_dimensions(device, spatial, options, downscale, output_shape):
+    """Check resolution degradation, selected axes, output sizes, and gradients."""
+    if device == 'cuda' and not torch.cuda.is_available():
+        pytest.skip('CUDA device not available')
+
+    tensor = torch.randn(2, 3, *spatial, device=device, requires_grad=True)
+    layer = ne.nn.modules.ResampleVoxelDimensions(**options)
+    result = layer(tensor)
+
+    # Compare with explicit interpolation factors, including untouched spatial axes.
+    mode = {1: 'linear', 2: 'bilinear', 3: 'trilinear'}[len(spatial)]
+    reduced = torch.nn.functional.interpolate(tensor, scale_factor=downscale, mode=mode)
+    expected = torch.nn.functional.interpolate(reduced, size=output_shape, mode=mode)
+    torch.testing.assert_close(result, expected)
+    assert result.shape == (2, 3, *output_shape)
+    assert result.device == tensor.device
+    result.sum().backward()
+    assert torch.isfinite(tensor.grad).all()
+
+
+@pytest.mark.parametrize('options', [
+    {'resample_dimension': 0},
+    {'resample_dimension': 4},
+    {'downsample_stride': (2,)},
+    {'upsample_scale_factor': (2,)},
+    {'downsample_stride': 0},
+    {'upsample_scale_factor': -1},
+])
+def test_resample_voxel_dimensions_invalid_options(options):
+    """Reject nonspatial axes, incorrect factor lengths, and nonpositive factors."""
+    layer = ne.nn.modules.ResampleVoxelDimensions(**options)
+    with pytest.raises(ValueError):
+        layer(torch.ones(1, 1, 8, 8))
+
+
 @pytest.mark.parametrize("ndim", [1, 2, 3])
 def test_norm_instance(ndim: int):
     """

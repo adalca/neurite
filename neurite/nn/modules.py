@@ -1377,16 +1377,17 @@ class ResampleVoxelDimensions(nn.Module):
         Parameters
         ----------
         resample_dimension : int, Sequence[int], or None, default=None
-            The dimension(s) that should be resampled. If None, all dimensions are resampled.
+            Input tensor axes to resample; 2 is the first spatial axis. Negative axes are
+            supported. If None, all spatial axes are resampled.
         downsample_stride : int or Sequence[int], default=2
-            Factor by which to subsample.
+            Positive downsampling factor, either scalar or one value per spatial axis.
         upsample_scale_factor : int or Sequence[int], default=2
-            Factor by which to upsample.
+            Positive upsampling factor, either scalar or one value per spatial axis.
         mode : {'linear', 'nearest', 'bicubic', 'area', 'nearest-exact'}, default='linear'
             Interpolation mode for upsampling.
         shape : tuple or None, default=None
             Spatial dimensions (without batch or channel dims) to upsample the subsampled tensor
-            into.
+            into. If None and selected down/up factors match, restore the input spatial shape.
 
         Examples
         --------
@@ -1428,12 +1429,45 @@ class ResampleVoxelDimensions(nn.Module):
         Perform the forward pass of `ResampleVoxelDimensions`.
         """
 
+        # Normalize axes and factors to the input's spatial dimensions.
+        ndim = input_tensor.ndim
+        dimensions = self.resample_dimension
+        if dimensions is None:
+            dimensions = range(2, ndim)
+        elif isinstance(dimensions, int):
+            dimensions = (dimensions,)
+        dimensions = tuple(dim + ndim if dim < 0 else dim for dim in dimensions)
+        if any(dim < 2 or dim >= ndim for dim in dimensions):
+            raise ValueError('resample_dimension must contain only spatial axes.')
+
+        strides = self.downsample_stride
+        scales = self.upsample_scale_factor
+        if isinstance(strides, (int, float)):
+            strides = (strides,) * (ndim - 2)
+        if isinstance(scales, (int, float)):
+            scales = (scales,) * (ndim - 2)
+        if len(strides) != ndim - 2 or len(scales) != ndim - 2:
+            raise ValueError('Resampling factors must have one value per spatial axis.')
+        if any(value <= 0 for value in strides) or any(value <= 0 for value in scales):
+            raise ValueError('Resampling factors must be positive.')
+
+        # Leave unselected axes unchanged and avoid rounding shrinkage for matched factors.
+        downsample_scale = []
+        upsample_scale = []
+        for dim in range(2, ndim):
+            downsample_scale.append(1 / strides[dim - 2] if dim in dimensions else 1)
+            upsample_scale.append(scales[dim - 2] if dim in dimensions else 1)
+        shape = self.shape
+        matching_factors = all(strides[dim - 2] == scales[dim - 2] for dim in dimensions)
+        if shape is None and matching_factors:
+            shape = input_tensor.shape[2:]
+
         return nef.resample_voxel_dimensions(
             input_tensor=input_tensor,
-            downsample_scale=self.downsample_stride,
-            upsample_scale=self.upsample_scale_factor,
+            downsample_scale=downsample_scale,
+            upsample_scale=upsample_scale,
             mode=self.mode,
-            shape=self.shape
+            shape=shape
         )
 
 
