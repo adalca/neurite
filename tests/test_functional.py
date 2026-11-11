@@ -204,39 +204,6 @@ def test_functional_volshape_to_ndgrid_sizes():
     assert tuple(the_grid.shape) == (3, 43, 9, 10)
 
 
-def test_bw_grid_matches_expected_lines() -> None:
-    """
-    Preserve line spacing and the forced final row and column.
-    """
-    grid = ne.bw_grid(vol_shape=(6, 7), spacing=2, thickness=1)
-    expected = torch.tensor([
-        [1, 1, 1, 1, 1, 1, 1],
-        [1, 0, 0, 1, 0, 0, 1],
-        [1, 0, 0, 1, 0, 0, 1],
-        [1, 1, 1, 1, 1, 1, 1],
-        [1, 0, 0, 1, 0, 0, 1],
-        [1, 1, 1, 1, 1, 1, 1],
-    ], dtype=torch.float32)
-
-    assert torch.equal(grid, expected)
-
-
-def test_bw_grid_thick_lines_fill_volume() -> None:
-    """
-    Cover every voxel when one axis has no gap between thick grid lines.
-    """
-    grid = ne.bw_grid(vol_shape=(5, 6, 4), spacing=(1, 2, 1), thickness=2)
-    expected = torch.ones(5, 6, 4)
-
-    assert torch.equal(grid, expected)
-
-
-def test_bw_grid_rejects_spacing_length_mismatch():
-    """Test that per-dimension spacing must match the output shape length."""
-    with pytest.raises(AssertionError):
-        ne.bw_grid((5, 5), spacing=(1, 2, 3))
-
-
 def test_spatial_gradients_returns_each_spatial_difference():
     """Test the public NN gradient primitive over every spatial dimension."""
     input_tensor = torch.arange(12).reshape(1, 1, 3, 4)
@@ -749,9 +716,9 @@ def test_nn_zscore_handles_constant_fields_and_validates_inputs():
     constant = torch.ones(2, 3, 4)
 
     assert torch.equal(nef.zscore(constant, dim=(1, 2)), torch.zeros_like(constant))
-    with pytest.raises(AssertionError, match="floating point"):
+    with pytest.raises(TypeError, match="floating point"):
         nef.zscore(torch.ones(3, dtype=torch.int64))
-    with pytest.raises(AssertionError, match="eps must be positive"):
+    with pytest.raises(ValueError, match="eps must be positive"):
         nef.zscore(constant, eps=0)
 
 

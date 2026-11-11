@@ -7,3 +7,6 @@ values within that range are not detected.
 
 The spectral functions `spectral_filter` and `spectral_noise` own the `[B, C, *V]`
 implementation. Top-level wrappers delegate here; see [the spectral API guide](../neurite.md#spectral-filtering-and-sampling).
+
+The grid, standardization, and cropped-noise operations share the contracts described in
+[the shared primitives guide](../neurite.md#grids-standardization-and-cropped-noise).

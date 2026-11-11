@@ -43,6 +43,7 @@ __all__ = [
     "unbatch_nonspatial",
     "random_smoothed_noise",
     "upsample_noise",
+    "upsample_crop",
     "fractal_noise",
     "parse_non_spatial_dims",
 ]
@@ -635,6 +636,8 @@ def zscore(
     input_tensor: torch.Tensor,
     dim: Union[int, Tuple[int, ...], None] = None,
     eps: float = 1e-8,
+    *,
+    unbiased: bool = True,
 ) -> torch.Tensor:
     """
     Standardize a tensor to zero mean and unit standard deviation.
@@ -648,6 +651,9 @@ def zscore(
         standardizes the complete tensor.
     eps : float, default=1e-8
         Lower bound for the standard deviation, preventing division by zero.
+    unbiased : bool, default=True
+        Use sample variance for groups with more than one value. False uses population
+        variance. Finite singleton groups return zero with zero gradients, including float16.
 
     Returns
     -------
@@ -663,12 +669,12 @@ def zscore(
     >>> standardized.mean(dim=(1, 2, 3))
     tensor([0., 0.])
     """
-    return nef.zscore(input_tensor, dim=dim, eps=eps)
+    return nef.zscore(input_tensor, dim=dim, eps=eps, unbiased=unbiased)
 
 
 def volshape_to_ndgrid(
     size: Sequence[int],
-    device: Union[str, torch.device] = "cpu",
+    device: Union[str, torch.device, None] = None,
     dtype: Union[str, torch.dtype] = torch.float32,
     normalize: bool = False,
     indexing: Literal["ij", "xy"] = "ij",
@@ -685,7 +691,7 @@ def volshape_to_ndgrid(
     size : Tuple[int]
         Size of the spatial dimensions. e.g. (H, W) or (D, W, H)
     device : Union[str, torch.device], optional
-        The device on which the grid will reside. By default "cpu"
+        The device on which the grid will reside. None uses the current PyTorch default device
     dtype : Union[str, torch.dtype], optional
         The data type of the tensor grid, by default `torch.float32`
     indexing : Literal["ij", "xy"], optional
@@ -725,8 +731,10 @@ def volshape_to_ndgrid(
     >>> print(the_grid.shape)
     torch.Size([2, 19, 32])
     """
+    full_size = (1, 1, *size)
+
     return nef.volshape_to_ndgrid(
-        size=(1, 1, *size),
+        size=full_size,
         device=device,
         dtype=dtype,
         normalize=normalize,
@@ -736,11 +744,11 @@ def volshape_to_ndgrid(
 
 
 def bw_grid(
-    vol_shape: Sequence[int],
+    vol_shape: Union[int, Sequence[int]],
     spacing: Union[int, Sequence[int]],
     thickness: int = 1,
     indexing: Literal["ij", "xy"] = "ij",
-    device: Union[str, torch.device] = "cpu",
+    device: Optional[Union[str, torch.device]] = None,
     dtype: Union[str, torch.dtype] = torch.float32,
 ) -> torch.Tensor:
     """
@@ -748,18 +756,18 @@ def bw_grid(
 
     Parameters
     ----------
-    vol_shape : Sequence[int]
-        Shape of the output tensor.
+    vol_shape : int or Sequence[int]
+        Positive output dimensions. A scalar creates a one-dimensional grid.
     spacing : int or Sequence[int]
-        Legacy grid spacing. Line starts repeat every `spacing + 1` pixels. If an int, the same
-        spacing is used for every dimension. If a sequence, it must have one value per dimension in
-        `vol_shape`.
+        Nonnegative legacy spacing: line starts repeat every `spacing + 1` pixels.
+        A scalar applies to every dimension; a sequence needs one value per dimension.
+        Zero on any axis fills the entire grid.
     thickness : int, default=1
         Line thickness in pixels.
     indexing : {'ij', 'xy'}, default='ij'
         Cartesian (`xy`) or matrix (`ij`) indexing mode passed to `torch.meshgrid`.
-    device : str or torch.device, default='cpu'
-        Device on which to create the grid.
+    device : str or torch.device, optional
+        Output device. None uses the current PyTorch default device.
     dtype : str or torch.dtype, default=torch.float32
         Data type of the output tensor.
 
@@ -767,6 +775,14 @@ def bw_grid(
     -------
     torch.Tensor
         A tensor of shape `vol_shape` with white lines (value 1) on a black background (value 0).
+
+    Raises
+    ------
+    TypeError
+        Shape, spacing, or thickness contains noninteger values.
+    ValueError
+        Dimensions or thickness are nonpositive, spacing is negative or has the wrong
+        length, or indexing is not "ij" or "xy".
 
     Examples
     --------
@@ -1300,7 +1316,8 @@ def gaussian_kernel(
     sigma : float, int, or Sequence[float or int], optional
         Standard deviation of the Gaussian kernel. If float/int, same sigma is used for all
         dimensions. If Sequence, different sigmas can be specified per dimension and length
-        determines dimensionality (1D, 2D, or 3D). Default is 1.
+        determines dimensionality (1D, 2D, or 3D). Default is 1. Values must be finite and
+        nonnegative. Zero gives a unit impulse along that axis, so it is not smoothed.
     truncate : int, float, or Sequence[int or float], optional
         Number of standard deviations at which to truncate the kernel. If scalar, same
         truncate value is used for all dimensions. If Sequence, different truncate values
@@ -1312,7 +1329,8 @@ def gaussian_kernel(
         How to normalize the kernel:
         - 'sum': divide by the discrete sum of kernel values so the kernel sums to 1.
         - 'gaussian': divide by the analytical Gaussian normalization constant
-          (2*pi)^(ndim/2) * prod(sigmas). The center value equals the true PDF peak.
+          (2*pi)^(ndim/2) * prod(sigmas) over positive-sigma axes. Zero-sigma axes
+          contribute unit mass.
         - None: no normalization. Returns raw exp(-0.5 * (x/sigma)^2) values.
     device : torch.device, optional
         Device on which to create the kernel tensor. Default is None.
@@ -1382,7 +1400,8 @@ def gaussian_smoothing(
     input_tensor : torch.Tensor
         Tensor of shape ``[*non_spatial, *spatial]`` with one to three spatial dimensions.
     sigma : float, int, or sequence
-        Gaussian standard deviation per spatial dimension.
+        Nonnegative Gaussian standard deviation per spatial dimension. Zero leaves an
+        axis unsmoothed.
     truncate : float, int, or Sequence[float or int], default=3
         Kernel radius in multiples of `sigma` per spatial dimension.
     normalize : {'sum', 'gaussian'} or None, default='sum'
@@ -1772,6 +1791,37 @@ def random_smoothed_noise(
     return unbatch_nonspatial(noise, tuple(non_spatial_shape))
 
 
+def upsample_crop(input_tensor, size, crop_shape, non_spatial_dims=None):
+    """Interpolate independent fields and retain their central spatial crop.
+
+    Parameters
+    ----------
+    input_tensor : torch.Tensor
+        Floating fields [*non_spatial, *V] with one to three spatial dimensions.
+    size : int or Sequence[int]
+        Full interpolation shape, before cropping.
+    crop_shape : int or Sequence[int]
+        Positive output spatial sizes, no larger than ``size``.
+    non_spatial_dims : Sequence[int], optional
+        Leading independent dimensions. None treats every axis as spatial; (0, 1)
+        accepts batch/channel fields. Interpolation uses align_corners=False.
+
+    Returns
+    -------
+    torch.Tensor
+        Central crop [*non_spatial, *crop_shape], preserving dtype, device, and gradients.
+
+    Notes
+    -----
+    Expanded fields are processed separately to bound temporary storage. Oversized 3D
+    grids use direct sampling, which can introduce small floating-point differences.
+    """
+    tensor, original_shape = batch_nonspatial(input_tensor, non_spatial_dims)
+
+    cropped = nef.upsample_crop(tensor, size, crop_shape)
+    return unbatch_nonspatial(cropped, original_shape)
+
+
 def upsample_noise(
     shape: Sequence[int],
     scale: Union[float, int, Sequence[Union[float, int]]],
@@ -1779,6 +1829,8 @@ def upsample_noise(
     device: Union[torch.device, None] = None,
     dtype: torch.dtype = torch.float32,
     generator: Optional[torch.Generator] = None,
+    *,
+    crop_shape=None,
 ) -> torch.Tensor:
     """
     Generate smooth noise by upsampling from a coarse grid.
@@ -1807,11 +1859,14 @@ def upsample_noise(
         Data type for the noise field.
     generator : torch.Generator, optional
         Generator controlling random sampling.
+    crop_shape : int or Sequence[int], optional
+        Central spatial crop of the sampled grid. None returns the full grid. Sampling
+        scales and random draws still use ``shape``. No standardization is applied.
 
     Returns
     -------
     torch.Tensor
-        Upsampled noise with the specified shape.
+        Upsampled noise with the requested crop, or the full shape when crop_shape is None.
 
     Examples
     --------
@@ -1838,12 +1893,15 @@ def upsample_noise(
     for dim_size in non_spatial_shape:
         batch_size *= dim_size
 
+    noise_shape = (batch_size, 1, *spatial_shape)
+
     noise = nef.upsample_noise(
-        shape=(batch_size, 1, *spatial_shape),
+        shape=noise_shape,
         scale=scale,
         device=device,
         dtype=dtype,
         generator=generator,
+        crop_shape=crop_shape,
     )
     return unbatch_nonspatial(noise, tuple(non_spatial_shape))
 
@@ -1860,6 +1918,8 @@ def fractal_noise(
     dtype: torch.dtype = torch.float32,
     generator: Optional[torch.Generator] = None,
     standardize: bool = True,
+    *,
+    crop_shape=None,
 ) -> torch.Tensor:
     """
     Generate fractal noise by combining multiple scales of smooth noise.
@@ -1906,6 +1966,10 @@ def fractal_noise(
         Generator controlling random sampling.
     standardize : bool, default=True
         Whether to standardize each output field to zero mean and ``magnitude`` deviation.
+    crop_shape : int or Sequence[int], optional
+        Positive central spatial crop, no larger than the sampled grid. None returns the full
+        grid. Invalid crops are rejected before sampling. Scales and random draws still use
+        ``shape``; final standardization uses the crop.
 
     Returns
     -------
@@ -1940,8 +2004,10 @@ def fractal_noise(
     for dim_size in non_spatial_shape:
         batch_size *= dim_size
 
+    noise_shape = (batch_size, 1, *spatial_shape)
+
     noise = nef.fractal_noise(
-        shape=(batch_size, 1, *spatial_shape),
+        shape=noise_shape,
         scales=scales,
         magnitude=magnitude,
         weights=weights,
@@ -1950,6 +2016,7 @@ def fractal_noise(
         method=method,
         dtype=dtype,
         generator=generator,
+        crop_shape=crop_shape,
         standardize=standardize,
     )
     return unbatch_nonspatial(noise, tuple(non_spatial_shape))

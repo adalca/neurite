@@ -21,6 +21,9 @@ import torch.nn.functional as F
 # Custom imports
 from neurite.utils.utils import bernoulli, infer_linear_interpolation_mode
 
+# Maximum voxel count supported by PyTorch's trilinear interpolation kernel.
+_TRILINEAR_MAX_ELEMENTS = 2**31 - 1
+
 
 def identity(input_argument):
     "Returns the `input_argument`."
@@ -51,7 +54,8 @@ def gaussian_kernel(
     sigma : float, int, or Sequence[float or int], optional
         Standard deviation of the Gaussian kernel. If float/int, same sigma is used for all
         dimensions. If Sequence, different sigmas can be specified per dimension and length
-        determines dimensionality (1D, 2D, or 3D). Default is 1.
+        determines dimensionality (1D, 2D, or 3D). Default is 1. Values must be finite and
+        nonnegative. Zero gives a unit impulse along that axis, so it is not smoothed.
     truncate : int, float, or Sequence[int or float], optional
         Number of standard deviations at which to truncate the kernel. If scalar, same
         truncate value is used for all dimensions. If Sequence, different truncate values
@@ -63,7 +67,8 @@ def gaussian_kernel(
         How to normalize the kernel:
         - 'sum': divide by the discrete sum of kernel values so the kernel sums to 1.
         - 'gaussian': divide by the analytical Gaussian normalization constant
-          (2*pi)^(ndim/2) * prod(sigmas). The center value equals the true PDF peak.
+          (2*pi)^(ndim/2) * prod(sigmas) over positive-sigma axes. Zero-sigma axes
+          contribute unit mass.
         - None: no normalization. Returns raw exp(-0.5 * (x/sigma)^2) values.
     device : torch.device, optional
         Device on which to create the kernel tensor. Default is None.
@@ -107,58 +112,53 @@ def gaussian_kernel(
     This ensures the kernel is always odd-sized and captures the specified number of
     standard deviations. A truncate value of 3 captures ~99.7% of the Gaussian distribution.
     """
+    # Normalize and validate the per-axis kernel parameters.
     if isinstance(sigma, (float, int)):
-        assert ndim is not None, (
-            "When sigma is a scalar, ndim must be specified to determine dimensionality"
-        )
-        assert ndim in [1, 2, 3], f"ndim must be 1, 2, or 3, got {ndim}"
+        if ndim not in (1, 2, 3):
+            raise ValueError("ndim must be 1, 2, or 3 when sigma is scalar")
         sigma_list = [float(sigma)] * ndim
-
     elif isinstance(sigma, Sequence):
-        sigma_list = [float(s) for s in sigma]
+        sigma_list = [float(value) for value in sigma]
         ndim = len(sigma_list)
-        assert ndim in [1, 2, 3], (
-            f"sigma length determines dimensionality and must be 1, 2, or 3. "
-            f"Got length {ndim}"
-        )
+        if ndim not in (1, 2, 3):
+            raise ValueError("sigma must contain one to three values")
     else:
-        raise TypeError(f"sigma must be a number or sequence, got {type(sigma)}")
+        raise TypeError("sigma must be a number or sequence")
+    if any(not math.isfinite(value) or value < 0 for value in sigma_list):
+        raise ValueError("sigma must be finite and nonnegative")
 
     if isinstance(truncate, (int, float)):
         truncate_list = [float(truncate)] * ndim
-
     elif isinstance(truncate, Sequence):
-        assert len(truncate) == ndim, (
-            f"If truncate is a sequence, it must have length equal to sigma length "
-            f"({ndim}). Got length {len(truncate)}"
-        )
-        truncate_list = [float(t) for t in truncate]
+        truncate_list = [float(value) for value in truncate]
+        if len(truncate_list) != ndim:
+            raise ValueError("truncate must have one value per spatial dimension")
     else:
-        raise TypeError(f"truncate must be a number or sequence, got {type(truncate)}")
+        raise TypeError("truncate must be a number or sequence")
+    if any(not math.isfinite(value) or value < 0 for value in truncate_list):
+        raise ValueError("truncate must be finite and nonnegative")
+    if normalize not in ("sum", "gaussian", None):
+        raise ValueError("normalize must be 'sum', 'gaussian', or None")
+    safe_sigmas = [value if value > 0 else 1.0 for value in sigma_list]
+    positive_axes = sum(value > 0 for value in sigma_list)
 
-    # Compute kernel size for each dimension: 2 * int(truncate * sigma + 0.5) + 1
-    kernel_size_list = [2 * int(t * s + 0.5) + 1 for s, t in zip(sigma_list, truncate_list)]
+    # A zero-width axis has one coordinate, giving a discrete unit impulse.
+    coords = []
+    for axis_sigma, axis_truncate in zip(sigma_list, truncate_list):
+        size = 2 * int(axis_truncate * axis_sigma + 0.5) + 1
+        coordinate = torch.arange(size, device=device, dtype=dtype).float()
+        coords.append(coordinate - (size - 1) / 2)
+    mesh = torch.meshgrid(*coords, indexing='ij')
+    grid = torch.stack(mesh, dim=-1)
+    sigma_tensor = torch.tensor(safe_sigmas, device=device, dtype=dtype)
+    squared_distance = (grid ** 2 / sigma_tensor**2).sum(dim=-1)
+    kernel = torch.exp(-0.5 * squared_distance)
 
-    # Create coordinate grid centered at zero
-    coords = [
-        torch.arange(ks, device=device, dtype=dtype).float() - (ks - 1) / 2
-        for ks in kernel_size_list
-    ]
-
-    grid = torch.stack(torch.meshgrid(*coords, indexing='ij'), dim=-1)
-    sigma_tensor = torch.tensor(sigma_list, device=device, dtype=dtype)
-
-    # Calculate the Gaussian function: exp(-0.5 * sum((x / sigma)^2))
-    kernel = torch.exp(-0.5 * (grid ** 2 / sigma_tensor**2).sum(dim=-1))
-
-    assert normalize in {"sum", "gaussian", None}, (
-        f"normalize must be 'sum', 'gaussian', or None, got '{normalize}'"
-    )
-
+    # Keep the existing normalization for all positive-width kernels.
     if normalize == "sum":
         kernel /= kernel.sum()
     elif normalize == "gaussian":
-        norm_const = (2 * torch.pi) ** (ndim / 2) * torch.prod(sigma_tensor)
+        norm_const = (2 * torch.pi) ** (positive_axes / 2) * torch.prod(sigma_tensor)
         kernel /= norm_const
     return kernel
 
@@ -1305,7 +1305,7 @@ def sample_image_from_labels(
 
 def volshape_to_ndgrid(
     size: Sequence[int],
-    device: Union[str, torch.device] = "cpu",
+    device: Union[str, torch.device, None] = None,
     dtype: Union[str, torch.dtype] = torch.float32,
     normalize: bool = False,
     indexing: Literal["ij", "xy"] = "ij",
@@ -1321,8 +1321,8 @@ def volshape_to_ndgrid(
     ----------
     size : Sequence[int]
         Size in (B, C, *spatial) format. B and C are ignored; only spatial dims are used.
-    device : str or torch.device, default="cpu"
-        The device on which the grid will reside.
+    device : str or torch.device, optional
+        Output device. None uses the current PyTorch default device.
     dtype : str or torch.dtype, default=torch.float32
         The data type of the tensor grid.
     normalize : bool, default=False
@@ -1976,6 +1976,8 @@ def zscore(
     input_tensor: torch.Tensor,
     dim: Union[int, Tuple[int, ...], None] = None,
     eps: float = 1e-8,
+    *,
+    unbiased: bool = True,
 ) -> torch.Tensor:
     """
     Standardize a tensor to zero mean and unit standard deviation.
@@ -1989,6 +1991,9 @@ def zscore(
         standardizes the complete tensor.
     eps : float, default=1e-8
         Lower bound for the standard deviation, preventing division by zero.
+    unbiased : bool, default=True
+        Use sample variance for groups with more than one value. False uses population
+        variance. Finite singleton groups return zero with zero gradients, including float16.
 
     Returns
     -------
@@ -1999,7 +2004,8 @@ def zscore(
     -----
     Dimensions reduced during standardization are retained internally so the result broadcasts to
     the original shape. Inputs with a standard deviation below `eps` are centered and divided by
-    `eps`.
+    `eps`. For nonsingleton float16 groups that can have zero variance, use a representable
+    epsilon such as 1e-4 or standardize in float32; the default epsilon rounds to zero in float16.
 
     Examples
     --------
@@ -2009,11 +2015,23 @@ def zscore(
     >>> nef.zscore(tensor)
     tensor([-1.,  0.,  1.])
     """
-    assert input_tensor.is_floating_point(), "input_tensor must be floating point"
-    assert eps > 0, "eps must be positive"
+    if not input_tensor.is_floating_point():
+        raise TypeError("input_tensor must be floating point")
+    if not eps > 0:
+        raise ValueError("eps must be positive")
+    dims = (dim,) if isinstance(dim, int) else dim
+    reduction_size = input_tensor.numel()
+    if dims and input_tensor.ndim:
+        reduction_size = math.prod(input_tensor.shape[axis] for axis in dims)
+    use_unbiased = unbiased and reduction_size > 1
 
+    # Preserve sample variance for ordinary groups and keep singletons finite.
     mean = input_tensor.mean(dim=dim, keepdim=True)
-    std = input_tensor.std(dim=dim, keepdim=True).clamp_min(eps)
+    if reduction_size == 1:
+        return input_tensor - mean
+
+    std = input_tensor.std(dim=dim, keepdim=True, unbiased=use_unbiased)
+    std = std.clamp_min(eps)
     return (input_tensor - mean) / std
 
 
@@ -2146,11 +2164,11 @@ def resize(
 
 
 def bw_grid(
-    vol_shape: Sequence[int],
+    vol_shape: Union[int, Sequence[int]],
     spacing: Union[int, Sequence[int]],
     thickness: int = 1,
     indexing: Literal["ij", "xy"] = "ij",
-    device: Union[str, torch.device] = "cpu",
+    device: Optional[Union[str, torch.device]] = None,
     dtype: Union[str, torch.dtype] = torch.float32,
 ) -> torch.Tensor:
     """
@@ -2158,18 +2176,18 @@ def bw_grid(
 
     Parameters
     ----------
-    vol_shape : Sequence[int]
-        Shape of the output tensor.
+    vol_shape : int or Sequence[int]
+        Positive output dimensions. A scalar creates a one-dimensional grid.
     spacing : int or Sequence[int]
-        Legacy grid spacing. Line starts repeat every `spacing + 1` pixels. If an int, the same
-        spacing is used for every dimension. If a sequence, it must have one value per dimension in
-        `vol_shape`.
+        Nonnegative legacy spacing: line starts repeat every `spacing + 1` pixels.
+        A scalar applies to every dimension; a sequence needs one value per dimension.
+        Zero on any axis fills the entire grid.
     thickness : int, default=1
         Line thickness in pixels.
     indexing : {'ij', 'xy'}, default='ij'
         Cartesian (`xy`) or matrix (`ij`) indexing mode passed to `torch.meshgrid`.
-    device : str or torch.device, default='cpu'
-        Device on which to create the grid.
+    device : str or torch.device, optional
+        Output device. None uses the current PyTorch default device.
     dtype : str or torch.dtype, default=torch.float32
         Data type of the output tensor.
 
@@ -2178,6 +2196,14 @@ def bw_grid(
     torch.Tensor
         A tensor of shape `vol_shape` with white lines (value 1) on a black background (value 0).
 
+    Raises
+    ------
+    TypeError
+        Shape, spacing, or thickness contains noninteger values.
+    ValueError
+        Dimensions or thickness are nonpositive, spacing is negative or has the wrong
+        length, or indexing is not "ij" or "xy".
+
     Examples
     --------
     >>> import neurite.nn.functional as nef
@@ -2185,40 +2211,48 @@ def bw_grid(
     >>> grid.shape
     torch.Size([1, 1, 5, 5])
     """
-    shape_values = list(vol_shape)
-    assert len(shape_values) > 0, "vol_shape must contain at least one dimension."
-    assert all(isinstance(value, int) and value > 0 for value in shape_values), (
-        f"vol_shape must contain positive integers, got {vol_shape}."
-    )
+    # Normalize dimensions and spacing before checking their values.
+    shape_values = [vol_shape] if isinstance(vol_shape, int) else list(vol_shape)
+    if any(not isinstance(value, int) or isinstance(value, bool) for value in shape_values):
+        raise TypeError("vol_shape must contain integers")
+    if not shape_values or any(value < 1 for value in shape_values):
+        raise ValueError("vol_shape must contain positive dimensions")
 
-    if isinstance(spacing, int):
-        spacing = [spacing] * len(shape_values)
-    else:
-        spacing = list(spacing)
+    spacing = [spacing] * len(shape_values) if isinstance(spacing, int) else list(spacing)
+    if any(not isinstance(value, int) or isinstance(value, bool) for value in spacing):
+        raise TypeError("spacing must contain integers")
+    if len(spacing) != len(shape_values):
+        raise ValueError("spacing and vol_shape must have the same length")
+    if any(value < 0 for value in spacing):
+        raise ValueError("spacing must be nonnegative")
 
-    assert len(spacing) == len(shape_values), "spacing and vol_shape must have the same length."
-    assert all(isinstance(value, int) and value > 0 for value in spacing), (
-        f"spacing must contain positive integers, got {spacing}."
-    )
-    assert isinstance(thickness, int) and thickness > 0, (
-        f"thickness must be a positive integer, got {thickness}."
-    )
-    assert indexing in ("ij", "xy"), f"indexing must be 'ij' or 'xy', got {indexing}."
-
+    # Check drawing options before allocating the output, including zero-spacing grids.
+    if not isinstance(thickness, int) or isinstance(thickness, bool):
+        raise TypeError("thickness must be an integer")
+    if thickness < 1:
+        raise ValueError("thickness must be positive")
+    if indexing not in ("ij", "xy"):
+        raise ValueError("indexing must be 'ij' or 'xy'")
     normalized_dtype = dtype if isinstance(dtype, torch.dtype) else getattr(torch, dtype)
+
+    # A line at every pixel along any axis fills the entire volume.
+    if 0 in spacing:
+        return torch.ones(shape_values, device=device, dtype=normalized_dtype)
+
     grid_image = torch.zeros(shape_values, device=device, dtype=normalized_dtype)
 
+    # Draw periodic lines and include the final boundary along each axis.
     for dim, size in enumerate(shape_values):
         ranges = []
         for axis_size in shape_values:
             ranges.append(torch.arange(0, axis_size, device=device, dtype=torch.long))
 
         for offset_value in range(thickness):
-            line_coords = torch.arange(
-                offset_value, size, spacing[dim] + 1, device=device, dtype=torch.long
-            )
+            step = spacing[dim] + 1
+            line_coords = torch.arange(offset_value, size, step, device=device, dtype=torch.long)
             last_coord = torch.tensor([size - 1], device=device, dtype=torch.long)
-            ranges[dim] = torch.unique(torch.cat([line_coords, last_coord]))
+            line_coords = torch.cat((line_coords, last_coord))
+            ranges[dim] = torch.unique(line_coords)
             grid_image[torch.meshgrid(*ranges, indexing=indexing)] = 1
 
     return grid_image
@@ -2432,12 +2466,101 @@ def random_smoothed_noise(
     return zscore(noise, dim=spatial_dims) * magnitude
 
 
+def upsample_crop(input_tensor, size, crop_shape):
+    """Interpolate a field and retain its central crop with bounded temporary storage.
+
+    Parameters
+    ----------
+    input_tensor : torch.Tensor
+        Floating coarse fields [B, C, *V] with one to three spatial dimensions.
+    size : int or Sequence[int]
+        Full interpolation shape, before cropping. Scalars apply to every spatial axis.
+    crop_shape : int or Sequence[int]
+        Positive output spatial sizes, no larger than ``size``. An odd discarded width
+        leaves the extra voxel on the upper side.
+
+    Returns
+    -------
+    torch.Tensor
+        Cropped fields [B, C, *crop_shape], preserving dtype, device, and gradients.
+
+    Notes
+    -----
+    Uses linear interpolation with align_corners=False. Ordinary grids interpolate one
+    field at a time. Three-dimensional grids beyond PyTorch's signed 32-bit index limit
+    use direct sampling in depth slabs; floating-point results may differ slightly. Only
+    this large-grid path promotes float16 and bfloat16 sampling to float32 internally.
+    """
+    ndim = input_tensor.ndim - 2
+    if ndim not in (1, 2, 3):
+        raise ValueError("input_tensor must have shape [B, C, *V] with 1-3 spatial axes")
+    if not input_tensor.is_floating_point():
+        raise TypeError("input_tensor must be floating point")
+    size = (size,) * ndim if isinstance(size, int) else tuple(size)
+    crop_shape = (crop_shape,) * ndim if isinstance(crop_shape, int) else tuple(crop_shape)
+    if len(size) != ndim or len(crop_shape) != ndim:
+        raise ValueError("size and crop_shape must have one value per spatial dimension")
+    if any(not isinstance(value, int) for value in (*size, *crop_shape)):
+        raise TypeError("size and crop_shape must contain integers")
+    if min(input_tensor.shape) < 1 or min(size) < 1 or min(crop_shape) < 1:
+        raise ValueError("input and output shapes must be positive")
+    if any(cropped > full for cropped, full in zip(crop_shape, size)):
+        raise ValueError("crop_shape must fit within size")
+    offsets = tuple((full - cropped) // 2 for full, cropped in zip(size, crop_shape))
+    output_shape = (*input_tensor.shape[:2], *crop_shape)
+    mode = infer_linear_interpolation_mode(ndim)
+
+    # Keep the original interpolation path when there is no spatial crop.
+    if crop_shape == size:
+        return F.interpolate(input_tensor, size=size, mode=mode, align_corners=False)
+
+    # PyTorch's trilinear kernel cannot index a full grid above 2**31 - 1 voxels.
+    if ndim == 3 and math.prod(size) > _TRILINEAR_MAX_ELEMENTS:
+        sampling_tensor = input_tensor
+        if input_tensor.dtype in (torch.float16, torch.bfloat16):
+            sampling_tensor = input_tensor.float()
+
+        # Keep voxel centers accurate before converting them to normalized coordinates.
+        coordinates = []
+        for cropped, offset, full in zip(crop_shape, offsets, size):
+            index = torch.arange(cropped, device=input_tensor.device, dtype=sampling_tensor.dtype)
+            coordinates.append((index + offset + 0.5) * (2 / full) - 1)
+        output = input_tensor.new_empty(output_shape)
+
+        # Sixteen depth planes bound each temporary sampling grid.
+        for start in range(0, crop_shape[0], 16):
+            stop = min(start + 16, crop_shape[0])
+            axes = (coordinates[0][start:stop], coordinates[1], coordinates[2])
+            mesh = torch.meshgrid(*axes, indexing="ij")
+            grid = torch.stack(tuple(reversed(mesh)), dim=-1)[None]  # [1, Z, H, W, 3]
+            grid = grid.expand(input_tensor.shape[0], -1, -1, -1, -1)
+            options = {"mode": "bilinear", "padding_mode": "border", "align_corners": False}
+            output[:, :, start:stop] = F.grid_sample(sampling_tensor, grid, **options)
+        return output
+
+    # Release each expanded field after copying its central crop into the output.
+    slices = []
+    for offset, cropped in zip(offsets, crop_shape):
+        slices.append(slice(offset, offset + cropped))
+    output = input_tensor.new_empty(output_shape)
+
+    for batch in range(input_tensor.shape[0]):
+        for channel in range(input_tensor.shape[1]):
+            field = input_tensor[batch:batch + 1, channel:channel + 1]
+            expanded = F.interpolate(field, size=size, mode=mode, align_corners=False)
+            output[batch, channel] = expanded[(0, 0, *slices)]
+            del expanded
+    return output
+
+
 def upsample_noise(
     shape: Sequence[int],
     scale: Union[float, int, Sequence[Union[float, int]]],
     device: Union[torch.device, None] = None,
     dtype: torch.dtype = torch.float32,
     generator: Optional[torch.Generator] = None,
+    *,
+    crop_shape=None,
 ) -> torch.Tensor:
     """
     Generate smooth noise by upsampling from a coarse grid in (B, C, *spatial) format.
@@ -2454,11 +2577,14 @@ def upsample_noise(
         Data type for the noise field.
     generator : torch.Generator, optional
         Generator controlling random sampling.
+    crop_shape : int or Sequence[int], optional
+        Central spatial crop of the sampled grid. None returns the full grid. Sampling
+        scales and random draws still use ``shape``. No standardization is applied.
 
     Returns
     -------
     torch.Tensor
-        Upsampled noise with shape (B, C, *spatial).
+        Upsampled noise with shape (B, C, *crop_shape), or the full spatial shape.
 
     Examples
     --------
@@ -2487,7 +2613,11 @@ def upsample_noise(
     for size, axis_scale in zip(spatial_shape, scales):
         coarse_spatial.append(max(int(size // axis_scale), 2))
     coarse_shape = (*shape[:2], *coarse_spatial)
+
     noise = torch.randn(coarse_shape, device=device, dtype=dtype, generator=generator)
+
+    if crop_shape is not None:
+        return upsample_crop(noise, spatial_shape, crop_shape)
 
     mode = infer_linear_interpolation_mode(num_spatial=len(spatial_shape))
     return F.interpolate(noise, size=spatial_shape, mode=mode, align_corners=False)
@@ -2504,6 +2634,8 @@ def fractal_noise(
     dtype: torch.dtype = torch.float32,
     generator: Optional[torch.Generator] = None,
     standardize: bool = True,
+    *,
+    crop_shape=None,
 ) -> torch.Tensor:
     """
     Generate fractal noise in (B, C, *spatial) format.
@@ -2531,11 +2663,15 @@ def fractal_noise(
         Generator controlling random sampling.
     standardize : bool, default=True
         Whether to standardize each output field to zero mean and ``magnitude`` deviation.
+    crop_shape : int or Sequence[int], optional
+        Positive central spatial crop, no larger than the sampled grid. None returns the full
+        grid. Invalid crops are rejected before sampling. Scales and random draws still use
+        ``shape``; final standardization uses the crop.
 
     Returns
     -------
     torch.Tensor
-        Fractal noise with shape (B, C, *spatial).
+        Fractal noise with shape (B, C, *crop_shape), or the full spatial shape.
 
     Examples
     --------
@@ -2570,7 +2706,27 @@ def fractal_noise(
     if method not in {"blur", "upsample"}:
         raise ValueError("method must be 'blur' or 'upsample'")
 
+    # Validate the crop for both methods before allocating fields or drawing random values.
+    crop_offsets = None
+    if crop_shape is not None:
+        if isinstance(crop_shape, int):
+            crop_shape = (crop_shape,) * len(spatial_shape)
+        else:
+            crop_shape = tuple(crop_shape)
+        if len(crop_shape) != len(spatial_shape):
+            raise ValueError("crop_shape must have one value per spatial dimension")
+        if any(not isinstance(value, int) or isinstance(value, bool) for value in crop_shape):
+            raise TypeError("crop_shape must contain integers")
+        if any(value < 1 for value in crop_shape):
+            raise ValueError("crop_shape must contain positive sizes")
+        if any(cropped > full for cropped, full in zip(crop_shape, spatial_shape)):
+            raise ValueError("crop_shape must fit within the spatial shape")
+        shape_pairs = zip(spatial_shape, crop_shape)
+        crop_offsets = tuple((full - cropped) // 2 for full, cropped in shape_pairs)
+
+    crop_options = {} if crop_shape is None else {"crop_shape": crop_shape}
     noise = None
+
     for scale, weight in zip(scales, weights):
         if method == 'blur':
             sample = random_smoothed_noise(
@@ -2589,7 +2745,12 @@ def fractal_noise(
                 device=device,
                 dtype=dtype,
                 generator=generator,
+                **crop_options,
             )
+
+        # Blurred octaves are standardized on the full grid before their central crop.
+        if method == 'blur' and crop_shape is not None:
+            sample = crop(sample, size=crop_shape, offset=crop_offsets).clone()
 
         sample *= weight
 
@@ -2597,6 +2758,7 @@ def fractal_noise(
             noise = sample
         else:
             noise += sample
+        del sample
 
     if standardize:
         spatial_dims = tuple(range(2, noise.ndim))

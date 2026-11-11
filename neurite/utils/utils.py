@@ -131,12 +131,11 @@ def infer_linear_interpolation_mode(
     >>> infer_linear_interpolation_mode(3)
     'trilinear'
     """
-    if num_spatial == 1:
-        return 'linear'
-    elif num_spatial == 2:
-        return 'bilinear'
-    elif num_spatial == 3:
-        return 'trilinear'
+    modes = {1: "linear", 2: "bilinear", 3: "trilinear"}
+    if num_spatial not in modes:
+        raise ValueError("num_spatial must be 1, 2, or 3")
+
+    return modes[num_spatial]
 
 
 def downsampling_conv_blocks(
