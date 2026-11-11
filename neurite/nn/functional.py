@@ -2603,3 +2603,98 @@ def fractal_noise(
         noise = zscore(noise, dim=spatial_dims)
 
     return noise * magnitude
+
+
+def spectral_filter(tensor: torch.Tensor, power: torch.Tensor) -> torch.Tensor:
+    """Filter real fields by the square root of an unshifted power spectrum.
+
+    Parameters
+    ----------
+    tensor : torch.Tensor
+        Real float32 or float64 input, shaped ``[B, C, *V]`` with one to three spatial axes.
+    power : torch.Tensor
+        Shared spectrum shaped ``[*V]``, on the same device and with the same dtype as
+        ``tensor``. Values must be finite, nonnegative, and invariant under simultaneous
+        frequency inversion on all axes. Frequencies use ``torch.fft.fftfreq`` ordering.
+
+    Returns
+    -------
+    torch.Tensor
+        Filtered real fields with the input shape, dtype, and device.
+
+    Notes
+    -----
+    The amplitude multiplier is ``sqrt(power)``. Thus white unit-variance noise has expected
+    output power ``power`` under the orthonormal FFT convention. For an arbitrary input,
+    its existing spectrum is multiplied by ``power``. No mean or variance normalization
+    is applied. Filtering is periodic; sample a larger field and crop to reduce wraparound.
+    Gradients at exactly zero power use the zero subgradient convention.
+    """
+    if tensor.ndim not in (3, 4, 5) or any(size < 1 for size in tensor.shape):
+        raise ValueError("tensor must have nonempty shape [B, C, *V] with 1-3 spatial axes")
+    if tensor.dtype not in (torch.float32, torch.float64):
+        raise TypeError("tensor must have dtype float32 or float64")
+    if power.shape != tensor.shape[2:]:
+        raise ValueError("power must have the spatial shape of tensor")
+    if power.dtype != tensor.dtype or power.device != tensor.device:
+        raise ValueError("power and tensor must share dtype and device")
+    if not torch.isfinite(power).all() or torch.any(power < 0):
+        raise ValueError("power must be finite and nonnegative")
+
+    # Check the full discrete inversion, including even-size Nyquist planes.
+    inverted = power
+    for axis, size in enumerate(power.shape):
+        indices = torch.arange(size, device=power.device).neg().remainder(size)
+        inverted = inverted.index_select(axis, indices)
+    tolerance = 32 * torch.finfo(power.dtype).eps
+    if torch.any((power - inverted).abs() > tolerance * power.amax()):
+        raise ValueError("power must be symmetric under simultaneous frequency inversion")
+
+    # Average without overflowing the sum of two large, finite nonnegative powers.
+    symmetric_power = power + (inverted - power) * 0.5
+
+    # Real FFT stores only the independent half of the final frequency axis.
+    half_power = symmetric_power[..., :power.shape[-1] // 2 + 1]
+    positive = half_power > 0
+    safe_power = torch.where(positive, half_power, torch.ones_like(half_power))
+    amplitude = safe_power.sqrt() * positive
+    axes = tuple(range(2, tensor.ndim))
+    transformed = torch.fft.rfftn(tensor, dim=axes, norm="ortho")
+    filtered = transformed * amplitude  # [B, C, *half_V]
+    return torch.fft.irfftn(filtered, s=tensor.shape[2:], dim=axes, norm="ortho")
+
+
+def spectral_noise(
+    shape: Sequence[int],
+    power: torch.Tensor,
+    device: Union[torch.device, str, None] = None,
+    dtype: torch.dtype = torch.float32,
+    generator: Optional[torch.Generator] = None,
+) -> torch.Tensor:
+    """Sample Gaussian spectral fields in batch/channel format.
+
+    Parameters
+    ----------
+    shape : sequence[int]
+        Output shape ``[B, C, *V]``, with one to three spatial axes.
+    power : torch.Tensor
+        Shared spatial power spectrum; see ``spectral_filter``.
+    device : torch.device or str, optional
+        Sampling device. Defaults to the spectrum's device.
+    dtype : torch.dtype, default=torch.float32
+        Sampling dtype, which must match the spectrum.
+    generator : torch.Generator, optional
+        Random generator on the sampling device.
+
+    Returns
+    -------
+    torch.Tensor
+        Gaussian fields with the requested shape and expected spectrum, without sample
+        standardization. Reusing an equivalent generator state reproduces the sample.
+    """
+    shape = tuple(shape)
+    if len(shape) not in (3, 4, 5) or any(size < 1 for size in shape):
+        raise ValueError("shape must be nonempty [B, C, *V] with 1-3 spatial axes")
+    device = power.device if device is None else device
+    noise = torch.randn(shape, device=device, dtype=dtype, generator=generator)
+    return spectral_filter(noise, power)

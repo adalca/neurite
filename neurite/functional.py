@@ -14,6 +14,8 @@ import torch.nn.functional as F
 import neurite.nn.functional as nef
 
 __all__ = [
+    "spectral_filter",
+    "spectral_noise",
     "mse",
     "dice",
     "ncc",
@@ -1951,3 +1953,74 @@ def fractal_noise(
         standardize=standardize,
     )
     return unbatch_nonspatial(noise, tuple(non_spatial_shape))
+
+
+def spectral_filter(
+    tensor: torch.Tensor,
+    power: torch.Tensor,
+    non_spatial_dims: Union[Sequence[int], None] = None,
+) -> torch.Tensor:
+    """Filter fields while preserving arbitrary leading non-spatial dimensions.
+
+    Parameters
+    ----------
+    tensor : torch.Tensor
+        Float32 or float64 tensor with one to three spatial axes.
+    power : torch.Tensor
+        Shared, nonnegative, inversion-symmetric spatial spectrum in unshifted FFT order.
+        Must have the spatial shape, dtype, and device of ``tensor``.
+    non_spatial_dims : sequence[int] or None, optional
+        Contiguous leading non-spatial axes. None treats every axis as spatial.
+
+    Returns
+    -------
+    torch.Tensor
+        Filtered tensor with the original shape. Delegates to
+        ``neurite.nn.functional.spectral_filter`` without intensity normalization.
+    """
+    batched, original_shape = batch_nonspatial(tensor, non_spatial_dims)
+    filtered = nef.spectral_filter(batched, power)
+    return unbatch_nonspatial(filtered, original_shape)
+
+
+def spectral_noise(
+    shape: Sequence[int],
+    power: torch.Tensor,
+    non_spatial_dims: Union[Sequence[int], None] = None,
+    device: Union[torch.device, str, None] = None,
+    dtype: torch.dtype = torch.float32,
+    generator: Optional[torch.Generator] = None,
+) -> torch.Tensor:
+    """Sample spectral noise while preserving leading non-spatial dimensions.
+
+    Parameters
+    ----------
+    shape : sequence[int]
+        Requested output shape, containing one to three spatial axes.
+    power : torch.Tensor
+        Shared spatial spectrum; see ``neurite.nn.functional.spectral_filter``.
+    non_spatial_dims : sequence[int] or None, optional
+        Contiguous leading non-spatial axes. None requests a pure spatial field.
+    device : torch.device or str, optional
+        Sampling device, defaulting to the spectrum's device.
+    dtype : torch.dtype, default=torch.float32
+        Output dtype, matching the spectrum.
+    generator : torch.Generator, optional
+        Generator controlling random sampling on the output device.
+
+    Returns
+    -------
+    torch.Tensor
+        Noise with the requested shape, dtype, and device, without standardization.
+    """
+    shape = tuple(shape)
+    count, _ = parse_non_spatial_dims(non_spatial_dims, len(shape))
+    prefix = shape[:count]
+    batch = 1
+    for size in prefix:
+        batch *= size
+    batched_shape = (batch, 1, *shape[count:])
+    sampled = nef.spectral_noise(
+        batched_shape, power, device=device, dtype=dtype, generator=generator,
+    )
+    return unbatch_nonspatial(sampled, prefix)
