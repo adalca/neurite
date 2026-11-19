@@ -43,7 +43,7 @@ __all__ = [
     "unbatch_nonspatial",
     "random_smoothed_noise",
     "upsample_noise",
-    "upsample_crop",
+    "resample_crop",
     "fractal_noise",
     "parse_non_spatial_dims",
 ]
@@ -1791,13 +1791,20 @@ def random_smoothed_noise(
     return unbatch_nonspatial(noise, tuple(non_spatial_shape))
 
 
-def upsample_crop(input_tensor, size, crop_shape, non_spatial_dims=None):
-    """Interpolate independent fields and retain their central spatial crop.
+def resample_crop(
+    input_tensor: torch.Tensor,
+    size: Union[int, Sequence[int]],
+    crop_shape: Union[int, Sequence[int]],
+    non_spatial_dims: Optional[Sequence[int]] = None,
+    *,
+    chunk_depth: int = 16,
+) -> torch.Tensor:
+    """Resample independent spatial fields and return the center crop.
 
     Parameters
     ----------
     input_tensor : torch.Tensor
-        Floating fields [*non_spatial, *V] with one to three spatial dimensions.
+        Floating fields of shape (*non_spatial, *spatial) with one to three spatial axes.
     size : int or Sequence[int]
         Full interpolation shape, before cropping.
     crop_shape : int or Sequence[int]
@@ -1805,6 +1812,8 @@ def upsample_crop(input_tensor, size, crop_shape, non_spatial_dims=None):
     non_spatial_dims : Sequence[int], optional
         Leading independent dimensions. None treats every axis as spatial; (0, 1)
         accepts batch/channel fields. Interpolation uses align_corners=False.
+    chunk_depth : int, default=16
+        Maximum number of depth planes per sampling call for oversized 3D grids.
 
     Returns
     -------
@@ -1818,7 +1827,7 @@ def upsample_crop(input_tensor, size, crop_shape, non_spatial_dims=None):
     """
     tensor, original_shape = batch_nonspatial(input_tensor, non_spatial_dims)
 
-    cropped = nef.upsample_crop(tensor, size, crop_shape)
+    cropped = nef.resample_crop(tensor, size, crop_shape, chunk_depth=chunk_depth)
     return unbatch_nonspatial(cropped, original_shape)
 
 
@@ -2024,8 +2033,10 @@ def fractal_noise(
 
 def spectral_filter(
     tensor: torch.Tensor,
-    power: torch.Tensor,
+    power_spectrum: torch.Tensor,
     non_spatial_dims: Union[Sequence[int], None] = None,
+    *,
+    fft_norm: Optional[Literal["forward", "backward", "ortho"]] = "ortho",
 ) -> torch.Tensor:
     """Filter fields while preserving arbitrary leading non-spatial dimensions.
 
@@ -2033,11 +2044,13 @@ def spectral_filter(
     ----------
     tensor : torch.Tensor
         Float32 or float64 tensor with one to three spatial axes.
-    power : torch.Tensor
+    power_spectrum : torch.Tensor
         Shared, nonnegative, inversion-symmetric spatial spectrum in unshifted FFT order.
         Must have the spatial shape, dtype, and device of ``tensor``.
     non_spatial_dims : sequence[int] or None, optional
         Contiguous leading non-spatial axes. None treats every axis as spatial.
+    fft_norm : {'forward', 'backward', 'ortho'} or None, default='ortho'
+        Normalization mode for both FFT calls. None uses PyTorch's 'backward' mode.
 
     Returns
     -------
@@ -2046,13 +2059,13 @@ def spectral_filter(
         ``neurite.nn.functional.spectral_filter`` without intensity normalization.
     """
     batched, original_shape = batch_nonspatial(tensor, non_spatial_dims)
-    filtered = nef.spectral_filter(batched, power)
+    filtered = nef.spectral_filter(batched, power_spectrum, fft_norm=fft_norm)
     return unbatch_nonspatial(filtered, original_shape)
 
 
 def spectral_noise(
     shape: Sequence[int],
-    power: torch.Tensor,
+    power_spectrum: torch.Tensor,
     non_spatial_dims: Union[Sequence[int], None] = None,
     device: Union[torch.device, str, None] = None,
     dtype: torch.dtype = torch.float32,
@@ -2064,7 +2077,7 @@ def spectral_noise(
     ----------
     shape : sequence[int]
         Requested output shape, containing one to three spatial axes.
-    power : torch.Tensor
+    power_spectrum : torch.Tensor
         Shared spatial spectrum; see ``neurite.nn.functional.spectral_filter``.
     non_spatial_dims : sequence[int] or None, optional
         Contiguous leading non-spatial axes. None requests a pure spatial field.
@@ -2088,6 +2101,6 @@ def spectral_noise(
         batch *= size
     batched_shape = (batch, 1, *shape[count:])
     sampled = nef.spectral_noise(
-        batched_shape, power, device=device, dtype=dtype, generator=generator,
+        batched_shape, power_spectrum, device=device, dtype=dtype, generator=generator,
     )
     return unbatch_nonspatial(sampled, prefix)

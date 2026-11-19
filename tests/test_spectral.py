@@ -8,19 +8,22 @@ import neurite.nn.functional as nef
 
 @pytest.mark.parametrize("shape", [(17,), (12, 15), (7, 8, 9)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-def test_fft_reference(shape, dtype):
+@pytest.mark.parametrize("fft_norm", ["ortho", "forward", "backward", None])
+def test_fft_reference(shape, dtype, fft_norm):
     """Real FFT implementation matches full FFT, including odd sizes and Nyquist planes."""
     generator = torch.Generator().manual_seed(19)
     tensor = torch.randn((2, 3, *shape), dtype=dtype, generator=generator)
     kernel = torch.randn(shape, dtype=dtype, generator=generator)
     power = torch.fft.fftn(kernel, norm="ortho").abs().square()
     axes = tuple(range(2, tensor.ndim))
-    transformed = torch.fft.fftn(tensor, dim=axes, norm="ortho")
-    reference = torch.fft.ifftn(transformed * power.sqrt(), dim=axes, norm="ortho").real
-    result = nef.spectral_filter(tensor, power)
+    transformed = torch.fft.fftn(tensor, dim=axes, norm=fft_norm)
+    reference = torch.fft.ifftn(transformed * power.sqrt(), dim=axes, norm=fft_norm).real
+    result = nef.spectral_filter(tensor, power_spectrum=power, fft_norm=fft_norm)
     torch.testing.assert_close(result, reference)
-    torch.testing.assert_close(nef.spectral_filter(tensor, torch.ones_like(power)), tensor)
-    torch.testing.assert_close(nef.spectral_filter(tensor, torch.full_like(power, 9)), 3 * tensor)
+    unit = nef.spectral_filter(tensor, torch.ones_like(power), fft_norm=fft_norm)
+    scaled = nef.spectral_filter(tensor, torch.full_like(power, 9), fft_norm=fft_norm)
+    torch.testing.assert_close(unit, tensor)
+    torch.testing.assert_close(scaled, 3 * tensor)
 
 
 @pytest.mark.parametrize("prefix", [(), (3,), (2, 3), (2, 3, 2)])
@@ -31,15 +34,21 @@ def test_wrapper_equivalence(prefix):
     power = torch.ones(9, 11, dtype=torch.float64)
     tensor = torch.randn(shape, dtype=torch.float64, requires_grad=True)
     direct = nef.spectral_filter(tensor.reshape(-1, 1, 9, 11), power).reshape(shape)
-    wrapped = ne.spectral_filter(tensor, power, dims)
+    wrapped = ne.spectral_filter(
+        tensor, power_spectrum=power, non_spatial_dims=dims, fft_norm="forward"
+    )
     torch.testing.assert_close(wrapped, direct)
     gradient = torch.autograd.grad(wrapped.square().sum(), tensor)[0]
     torch.testing.assert_close(gradient, 2 * tensor)
     first = torch.Generator().manual_seed(42)
     second = torch.Generator().manual_seed(42)
-    sampled = ne.spectral_noise(shape, power, dims, dtype=torch.float64, generator=first)
+    sampled = ne.spectral_noise(
+        shape, power_spectrum=power, non_spatial_dims=dims, dtype=torch.float64, generator=first
+    )
     nn_shape = (tensor.numel() // 99, 1, 9, 11)
-    direct = nef.spectral_noise(nn_shape, power, dtype=torch.float64, generator=second)
+    direct = nef.spectral_noise(
+        nn_shape, power_spectrum=power, dtype=torch.float64, generator=second
+    )
     torch.testing.assert_close(sampled, direct.reshape(shape), rtol=0, atol=0)
 
 

@@ -115,7 +115,7 @@ def test_gaussian_kernel_rejects_invalid_sigma(sigma):
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float64])
 @pytest.mark.parametrize("shape", [(9,), (7, 9), (5, 7, 9)])
-def test_upsample_crop_matches_dense_values_and_gradients(device, dtype, shape):
+def test_resample_crop_matches_dense_values_and_gradients(device, dtype, shape):
     """Central cropping preserves interpolation values and backward derivatives."""
     if device == "cuda" and not torch.cuda.is_available():
         pytest.skip("CUDA is unavailable")
@@ -128,7 +128,7 @@ def test_upsample_crop_matches_dense_values_and_gradients(device, dtype, shape):
     expected = expanded[(slice(None), slice(None), *slices)]
     gradient = torch.ones_like(expected)
 
-    actual = ne.upsample_crop(coarse, size, shape, non_spatial_dims=(0, 1))
+    actual = ne.resample_crop(coarse, size, shape, non_spatial_dims=(0, 1))
     dense_gradient = torch.autograd.grad(expected, coarse, gradient, retain_graph=True)[0]
     actual_gradient = torch.autograd.grad(actual, coarse, gradient)[0]
 
@@ -137,18 +137,18 @@ def test_upsample_crop_matches_dense_values_and_gradients(device, dtype, shape):
 
 
 @pytest.mark.parametrize("leading", [(), (2,), (2, 3)])
-def test_upsample_crop_preserves_nonspatial_dimensions(leading):
+def test_resample_crop_preserves_nonspatial_dimensions(leading):
     """The top-level operator accepts pure spatial fields and leading field dimensions."""
     value = torch.ones((*leading, 4, 5))
     non_spatial_dims = tuple(range(len(leading))) or None
 
-    result = ne.upsample_crop(value, (13, 14), (7, 8), non_spatial_dims)
+    result = ne.resample_crop(value, (13, 14), (7, 8), non_spatial_dims)
 
     assert result.shape == (*leading, 7, 8)
     assert torch.equal(result, torch.ones_like(result))
 
 
-def test_upsample_crop_bounds_expanded_field_allocations(monkeypatch):
+def test_resample_crop_bounds_expanded_field_allocations(monkeypatch):
     """Ordinary cropped interpolation expands only one independent field at a time."""
     original = F.interpolate
     calls = []
@@ -161,29 +161,38 @@ def test_upsample_crop_bounds_expanded_field_allocations(monkeypatch):
 
     monkeypatch.setattr(F, "interpolate", tracked)
 
-    result = nef.upsample_crop(value, (15, 17), (7, 9))
+    result = nef.resample_crop(value, (15, 17), (7, 9))
 
     assert result.shape == (2, 3, 7, 9)
     assert calls == [(1, 1)] * 6
 
 
-def test_upsample_crop_direct_sampling_matches_dense(monkeypatch):
+def test_resample_crop_direct_sampling_matches_dense(monkeypatch):
     """Check the oversized-grid path against an affordable interpolation reference."""
     monkeypatch.setattr(nef, "_TRILINEAR_MAX_ELEMENTS", 1)
+    grid_sample = F.grid_sample
+    depths = []
+
+    def record_chunk(input_tensor, grid, **kwargs):
+        depths.append(grid.shape[1])
+        return grid_sample(input_tensor, grid, **kwargs)
+
+    monkeypatch.setattr(F, "grid_sample", record_chunk)
     coarse = torch.randn(2, 3, 4, 6, 8, requires_grad=True)
     expanded = F.interpolate(coarse, size=(23, 27, 31), mode="trilinear", align_corners=False)
     expected = expanded[:, :, 4:19, 5:22, 6:25]
     gradient = torch.randn_like(expected)
 
-    result = nef.upsample_crop(coarse, (23, 27, 31), (15, 17, 19))
+    result = ne.resample_crop(coarse, (23, 27, 31), (15, 17, 19), (0, 1), chunk_depth=4)
     first = torch.autograd.grad(expected, coarse, gradient, retain_graph=True)[0]
     second = torch.autograd.grad(result, coarse, gradient)[0]
 
+    assert depths == [4, 4, 4, 3]
     torch.testing.assert_close(result, expected, rtol=2e-5, atol=3e-6)
     torch.testing.assert_close(second, first, rtol=3e-4, atol=3e-4)
 
 
-def test_upsample_crop_exceeds_int32_grid_without_full_allocation():
+def test_resample_crop_exceeds_int32_grid_without_full_allocation():
     """A linear field has known values even when the padded grid exceeds 2**31 voxels."""
     coarse = torch.arange(27).float().reshape(1, 1, 3, 3, 3).requires_grad_()
     shape = (8, 9, 10)
@@ -195,7 +204,7 @@ def test_upsample_crop_exceeds_int32_grid_without_full_allocation():
     depth, height, width = torch.meshgrid(*coordinates, indexing="ij")
     expected = 9 * depth + 3 * height + width
 
-    result = nef.upsample_crop(coarse, size, shape)
+    result = nef.resample_crop(coarse, size, shape)
     result.sum().backward()
 
     assert math.prod(size) > 2**31
@@ -215,7 +224,7 @@ def test_large_grid_low_precision_center_and_gradient(device, dtype, size):
     expected_gradient = torch.zeros_like(coarse)
     expected_gradient[:, :, 1, 1, 1] = 1
 
-    result = nef.upsample_crop(coarse, size, (1, 1, 1))
+    result = nef.resample_crop(coarse, size, (1, 1, 1))
     result.sum().backward()
 
     assert result.dtype == dtype
@@ -260,12 +269,21 @@ def test_cropped_fractal_standardizes_the_returned_region():
 
 
 @pytest.mark.parametrize("size, crop_shape", [((0, 8), (2, 3)), ((8,), (2, 3)), ((8, 8), (9, 3))])
-def test_upsample_crop_rejects_invalid_shapes(size, crop_shape):
+def test_resample_crop_rejects_invalid_shapes(size, crop_shape):
     """Reject nonpositive, inconsistent, or oversized crops."""
     value = torch.ones(1, 1, 4, 4)
 
     with pytest.raises(ValueError):
-        nef.upsample_crop(value, size, crop_shape)
+        nef.resample_crop(value, size, crop_shape)
+
+
+@pytest.mark.parametrize(
+    ("chunk_depth", "error"), [(0, ValueError), (-1, ValueError), (True, TypeError)]
+)
+def test_resample_crop_rejects_invalid_chunk_depth(chunk_depth, error):
+    """Reject chunk depths that cannot count a positive number of planes."""
+    with pytest.raises(error, match="chunk_depth"):
+        ne.resample_crop(torch.ones(4, 4, 4), (8, 8, 8), (4, 4, 4), chunk_depth=chunk_depth)
 
 
 @pytest.mark.parametrize("function, shape", [

@@ -5,7 +5,7 @@ cause floating-point errors that `eps` does not prevent. Local squared NCC coeff
 for finite values in [0, 1], with absolute tolerance 1e-5, before averaging or reduction. Incorrect
 values within that range are not detected.
 
-The spectral functions `spectral_filter` and `spectral_noise` own the `[B, C, *V]`
+The spectral functions `spectral_filter` and `spectral_noise` own the `(B, C, *spatial)`
 implementation. Top-level wrappers delegate here; see [the spectral API guide](../neurite.md#spectral-filtering-and-sampling).
 
 The grid, standardization, and cropped-noise operations share the contracts described in

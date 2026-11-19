@@ -2466,18 +2466,26 @@ def random_smoothed_noise(
     return zscore(noise, dim=spatial_dims) * magnitude
 
 
-def upsample_crop(input_tensor, size, crop_shape):
-    """Interpolate a field and retain its central crop with bounded temporary storage.
+def resample_crop(
+    input_tensor: torch.Tensor,
+    size: Union[int, Sequence[int]],
+    crop_shape: Union[int, Sequence[int]],
+    *,
+    chunk_depth: int = 16,
+) -> torch.Tensor:
+    """Resample a spatial field and return the center crop.
 
     Parameters
     ----------
     input_tensor : torch.Tensor
-        Floating coarse fields [B, C, *V] with one to three spatial dimensions.
+        Floating fields of shape (B, C, *spatial) with one to three spatial axes.
     size : int or Sequence[int]
         Full interpolation shape, before cropping. Scalars apply to every spatial axis.
     crop_shape : int or Sequence[int]
         Positive output spatial sizes, no larger than ``size``. An odd discarded width
         leaves the extra voxel on the upper side.
+    chunk_depth : int, default=16
+        Positive maximum number of depth planes per sampling call for oversized 3D grids.
 
     Returns
     -------
@@ -2488,14 +2496,18 @@ def upsample_crop(input_tensor, size, crop_shape):
     -----
     Uses linear interpolation with align_corners=False. Ordinary grids interpolate one
     field at a time. Three-dimensional grids beyond PyTorch's signed 32-bit index limit
-    use direct sampling in depth slabs; floating-point results may differ slightly. Only
+    use direct sampling in depth chunks. Floating-point results may differ slightly. Only
     this large-grid path promotes float16 and bfloat16 sampling to float32 internally.
     """
     ndim = input_tensor.ndim - 2
     if ndim not in (1, 2, 3):
-        raise ValueError("input_tensor must have shape [B, C, *V] with 1-3 spatial axes")
+        raise ValueError("input_tensor must have shape (B, C, *spatial) with 1-3 spatial axes")
     if not input_tensor.is_floating_point():
         raise TypeError("input_tensor must be floating point")
+    if not isinstance(chunk_depth, int) or isinstance(chunk_depth, bool):
+        raise TypeError("chunk_depth must be an integer")
+    if chunk_depth < 1:
+        raise ValueError("chunk_depth must be positive")
     size = (size,) * ndim if isinstance(size, int) else tuple(size)
     crop_shape = (crop_shape,) * ndim if isinstance(crop_shape, int) else tuple(crop_shape)
     if len(size) != ndim or len(crop_shape) != ndim:
@@ -2527,9 +2539,8 @@ def upsample_crop(input_tensor, size, crop_shape):
             coordinates.append((index + offset + 0.5) * (2 / full) - 1)
         output = input_tensor.new_empty(output_shape)
 
-        # Sixteen depth planes bound each temporary sampling grid.
-        for start in range(0, crop_shape[0], 16):
-            stop = min(start + 16, crop_shape[0])
+        for start in range(0, crop_shape[0], chunk_depth):
+            stop = min(start + chunk_depth, crop_shape[0])
             axes = (coordinates[0][start:stop], coordinates[1], coordinates[2])
             mesh = torch.meshgrid(*axes, indexing="ij")
             grid = torch.stack(tuple(reversed(mesh)), dim=-1)[None]  # [1, Z, H, W, 3]
@@ -2617,7 +2628,7 @@ def upsample_noise(
     noise = torch.randn(coarse_shape, device=device, dtype=dtype, generator=generator)
 
     if crop_shape is not None:
-        return upsample_crop(noise, spatial_shape, crop_shape)
+        return resample_crop(noise, spatial_shape, crop_shape)
 
     mode = infer_linear_interpolation_mode(num_spatial=len(spatial_shape))
     return F.interpolate(noise, size=spatial_shape, mode=mode, align_corners=False)
@@ -2767,17 +2778,24 @@ def fractal_noise(
     return noise * magnitude
 
 
-def spectral_filter(tensor: torch.Tensor, power: torch.Tensor) -> torch.Tensor:
+def spectral_filter(
+    tensor: torch.Tensor,
+    power_spectrum: torch.Tensor,
+    *,
+    fft_norm: Optional[Literal["forward", "backward", "ortho"]] = "ortho",
+) -> torch.Tensor:
     """Filter real fields by the square root of an unshifted power spectrum.
 
     Parameters
     ----------
     tensor : torch.Tensor
-        Real float32 or float64 input, shaped ``[B, C, *V]`` with one to three spatial axes.
-    power : torch.Tensor
-        Shared spectrum shaped ``[*V]``, on the same device and with the same dtype as
+        Real float32 or float64 input of shape ``(B, C, *spatial)`` with one to three spatial axes.
+    power_spectrum : torch.Tensor
+        Shared spectrum of shape ``(*spatial,)``, on the same device and with the same dtype as
         ``tensor``. Values must be finite, nonnegative, and invariant under simultaneous
         frequency inversion on all axes. Frequencies use ``torch.fft.fftfreq`` ordering.
+    fft_norm : {'forward', 'backward', 'ortho'} or None, default='ortho'
+        Normalization mode for both FFT calls. None uses PyTorch's 'backward' mode.
 
     Returns
     -------
@@ -2786,49 +2804,50 @@ def spectral_filter(tensor: torch.Tensor, power: torch.Tensor) -> torch.Tensor:
 
     Notes
     -----
-    The amplitude multiplier is ``sqrt(power)``. Thus white unit-variance noise has expected
-    output power ``power`` under the orthonormal FFT convention. For an arbitrary input,
-    its existing spectrum is multiplied by ``power``. No mean or variance normalization
-    is applied. Filtering is periodic; sample a larger field and crop to reduce wraparound.
+    The amplitude multiplier is ``sqrt(power_spectrum)``. White unit-variance noise has
+    expected output power ``power_spectrum`` under the orthonormal FFT convention. For an
+    arbitrary input, ``power_spectrum`` multiplies the input spectrum. The output mean and
+    variance depend on the input and the power spectrum. Filtering is periodic. Sample a
+    larger field and crop to reduce wraparound.
     Gradients at exactly zero power use the zero subgradient convention.
     """
     if tensor.ndim not in (3, 4, 5) or any(size < 1 for size in tensor.shape):
-        raise ValueError("tensor must have nonempty shape [B, C, *V] with 1-3 spatial axes")
+        raise ValueError("tensor must have nonempty shape (B, C, *spatial) with 1-3 spatial axes")
     if tensor.dtype not in (torch.float32, torch.float64):
         raise TypeError("tensor must have dtype float32 or float64")
-    if power.shape != tensor.shape[2:]:
-        raise ValueError("power must have the spatial shape of tensor")
-    if power.dtype != tensor.dtype or power.device != tensor.device:
-        raise ValueError("power and tensor must share dtype and device")
-    if not torch.isfinite(power).all() or torch.any(power < 0):
-        raise ValueError("power must be finite and nonnegative")
+    if power_spectrum.shape != tensor.shape[2:]:
+        raise ValueError("power_spectrum must have the spatial shape of tensor")
+    if power_spectrum.dtype != tensor.dtype or power_spectrum.device != tensor.device:
+        raise ValueError("power_spectrum and tensor must share dtype and device")
+    if not torch.isfinite(power_spectrum).all() or torch.any(power_spectrum < 0):
+        raise ValueError("power_spectrum must be finite and nonnegative")
 
     # Check the full discrete inversion, including even-size Nyquist planes.
-    inverted = power
-    for axis, size in enumerate(power.shape):
-        indices = torch.arange(size, device=power.device).neg().remainder(size)
+    inverted = power_spectrum
+    for axis, size in enumerate(power_spectrum.shape):
+        indices = torch.arange(size, device=power_spectrum.device).neg().remainder(size)
         inverted = inverted.index_select(axis, indices)
-    tolerance = 32 * torch.finfo(power.dtype).eps
-    if torch.any((power - inverted).abs() > tolerance * power.amax()):
-        raise ValueError("power must be symmetric under simultaneous frequency inversion")
+    tolerance = 32 * torch.finfo(power_spectrum.dtype).eps
+    if torch.any((power_spectrum - inverted).abs() > tolerance * power_spectrum.amax()):
+        raise ValueError("power_spectrum must be symmetric under simultaneous frequency inversion")
 
     # Average without overflowing the sum of two large, finite nonnegative powers.
-    symmetric_power = power + (inverted - power) * 0.5
+    symmetric_power = power_spectrum + (inverted - power_spectrum) * 0.5
 
     # Real FFT stores only the independent half of the final frequency axis.
-    half_power = symmetric_power[..., :power.shape[-1] // 2 + 1]
+    half_power = symmetric_power[..., :power_spectrum.shape[-1] // 2 + 1]
     positive = half_power > 0
     safe_power = torch.where(positive, half_power, torch.ones_like(half_power))
     amplitude = safe_power.sqrt() * positive
     axes = tuple(range(2, tensor.ndim))
-    transformed = torch.fft.rfftn(tensor, dim=axes, norm="ortho")
-    filtered = transformed * amplitude  # [B, C, *half_V]
-    return torch.fft.irfftn(filtered, s=tensor.shape[2:], dim=axes, norm="ortho")
+    transformed = torch.fft.rfftn(tensor, dim=axes, norm=fft_norm)
+    filtered = transformed * amplitude
+    return torch.fft.irfftn(filtered, s=tensor.shape[2:], dim=axes, norm=fft_norm)
 
 
 def spectral_noise(
     shape: Sequence[int],
-    power: torch.Tensor,
+    power_spectrum: torch.Tensor,
     device: Union[torch.device, str, None] = None,
     dtype: torch.dtype = torch.float32,
     generator: Optional[torch.Generator] = None,
@@ -2838,8 +2857,8 @@ def spectral_noise(
     Parameters
     ----------
     shape : sequence[int]
-        Output shape ``[B, C, *V]``, with one to three spatial axes.
-    power : torch.Tensor
+        Output shape ``(B, C, *spatial)``, with one to three spatial axes.
+    power_spectrum : torch.Tensor
         Shared spatial power spectrum; see ``spectral_filter``.
     device : torch.device or str, optional
         Sampling device. Defaults to the spectrum's device.
@@ -2856,7 +2875,7 @@ def spectral_noise(
     """
     shape = tuple(shape)
     if len(shape) not in (3, 4, 5) or any(size < 1 for size in shape):
-        raise ValueError("shape must be nonempty [B, C, *V] with 1-3 spatial axes")
-    device = power.device if device is None else device
+        raise ValueError("shape must be nonempty (B, C, *spatial) with 1-3 spatial axes")
+    device = power_spectrum.device if device is None else device
     noise = torch.randn(shape, device=device, dtype=dtype, generator=generator)
-    return spectral_filter(noise, power)
+    return spectral_filter(noise, power_spectrum)
