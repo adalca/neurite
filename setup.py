@@ -17,7 +17,7 @@ version = match.group(1)
 setuptools.setup(
     name='neurite',
     version=version,
-    license='MIT',
+    license='Apache-2.0',
     description='Neural Networks Toolbox for Medical Imaging',
     url='https://github.com/adalca/neurite',
     keywords=['imaging', 'cnn'],
@@ -26,7 +26,7 @@ setuptools.setup(
     classifiers=[
         'Intended Audience :: Science/Research',
         'Programming Language :: Python :: 3',
-        'License :: OSI Approved :: MIT License',
+        'License :: OSI Approved :: Apache Software License',
         'Operating System :: OS Independent',
     ],
     install_requires=[
